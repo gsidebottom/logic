@@ -36,7 +36,8 @@ Per level ⟨g1×g2×g3 : r⟩ (`levels.py`, `levels.csv`, 70 schemes):
 | ⟨6×6×6:153⟩ Moosbauer–Poole | 0.708 | 189/189/189 | 15.75 | 9.229 | 18.3 | |
 | ⟨2×4×5:32⟩ AlphaEvolve | 0.800 | 40/52/42 | 11.80 | 4.962 | 10.95 | |
 | ⟨2×2×2:7⟩ DPS-accurate | 0.875 | 11/11/11 | 8.25 | 3.855 | 10.53 | coefficients in Q(√3) |
-| ⟨2×2×2:7⟩ Strassen / Winograd | 0.875 | 11/11/11 | 8.25 | 6.890 / 10.66 | 14.1 / 19.8 | the library's SW |
+| ⟨2×2×2:7⟩ DPS dyadic (ISSAC 2024, Eq. 38) | 0.875 | 11/11/11 | 8.25 | 4.865 | 10.84 | coefficients 1, 1/2, 1/4: the library's SW since 2026-11-02 |
+| ⟨2×2×2:7⟩ Strassen / Winograd | 0.875 | 11/11/11 | 8.25 | 6.890 / 10.66 | 14.1 / 19.8 | the library's SW until 2026-11-02 (Winograd) |
 | ⟨3×3×3:23⟩ (best of JS, AlphaEvolve, 55, 58) | 0.852 | 32/32/32 | 10.67 | 12.7 | 34.1 | |
 
 Everything larger than 4×4 (the Kauers–Wood and Kemper 4×5×6 … 6×6×7 schemes, the 5×5s,

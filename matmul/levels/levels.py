@@ -154,6 +154,7 @@ def main():
         add(base, "kauers-wood" if "Kauers" in base else "kemper" if "Kemper" in base else "moosbauer-poole", shape, L, R, Ps)
     # PLinOpt data (DPS and others), already in our convention
     for prefix, shape in (("2x2x2_7_Strassen", (2, 2, 2)), ("2x2x2_7_Winograd", (2, 2, 2)), ("2x2x2_7_DPS-accurate", (2, 2, 2)),
+                          ("2x2x2_7_DPS-evenpow-12.2034", (2, 2, 2)),   # DPS24 Eq. (38), dyadic: the library's SW level since 2026-11-02
                           ("2x2x2_7_DPS-integral-12.0662", (2, 2, 2)), ("2x2x2_7_DPS-smallrat-12.2034", (2, 2, 2)),
                           ("3x3x3_23_55", (3, 3, 3)), ("3x3x3_23_58", (3, 3, 3)), ("3x3x3_23_Grey-221", (3, 3, 3)), ("3x3x3_JS", (3, 3, 3)),
                           ("3x3x6_40", (3, 3, 6)), ("3x3x6_40_DPS-accurate", (3, 3, 6)), ("3x6x3_40", (3, 6, 3)), ("3x6x3_40_DPS-accurate", (3, 6, 3)),

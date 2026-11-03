@@ -4,8 +4,9 @@ The Rust port of the C library in `matmul/fastmm` (`fmm.h`): C = A B for row-maj
 matrices, n x n or an m x k matrix A times a k x n matrix B, by fused levels of the rank-48
 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (their 262-operation accurate program,
 PLinOpt's 4x4x4_48_accurate_262), of their accurate <3x3x6:40> scheme in its three orientations
-(rectangular levels: a plan tracks the shape of every level's products) and of
-Strassen-Winograd over Accelerate's GEMM, with GEMM streams, pipelined passes and padding, as a
+(rectangular levels: a plan tracks the shape of every level's products) and of a <2x2x2:7> level
+(DPS's dyadic accurate point of ISSAC 2024; Strassen-Winograd's programs with `gen_kernels.py --sw
+winograd`) over Accelerate's GEMM, with GEMM streams, pipelined passes and padding, as a
 calibrated planner picks for this machine, shape and precision.  On an M4 Pro, from n = 3000 to
 16384, it is 1.04-1.60x (f32) and 1.29-1.99x (f64) faster than Accelerate's GEMM, with the C
 library's plans, speed and results (bit for bit).
@@ -29,8 +30,9 @@ it.  Without a calibration covering a shape every call runs Accelerate's GEMM, s
 always correct.  `fmm::plan(n, f64, max_growth)` and `fmm::plan_mkn(m, k, n, f64, max_growth)`
 tell which plan a call runs and its predicted time and error.  `max_growth` is the error budget on the plan's
 predicted error over the GEMM's: 0 the default of 1 (a plan predicted no less accurate than the
-GEMM it replaces), a positive value that budget (2 admits the plans with a Strassen level on top,
-the fastest in deep f64), a negative value no budget (the fastest plan).  The model: the GEMM's
+GEMM it replaces; the plans with a 2x2 level on top qualify too since the level's programs are
+DPS's dyadic point, where Strassen-Winograd's needed a budget of 2), a positive value that budget,
+a negative value no budget (the fastest plan).  The model: the GEMM's
 own error against the exact product, one factor per level measured one level over the GEMM at
 2304, and a depth factor once per level after the first, all from the calibration.
 

@@ -1,0 +1,83 @@
+# library test, Rust crosscheck and Rust tests on the installed dps7 calibration; 2026-11-02 22:38
+## test_fmm (library cache ~/Library/Caches/fmm)  22:38
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0006 s  Accelerate   0.0006 s  speedup  1.02  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0054 s  Accelerate   0.0054 s  speedup  1.01  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0151 s  Accelerate   0.0163 s  speedup  1.08  rel. difference 2.92e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0366 s  Accelerate   0.0418 s  speedup  1.14  rel. difference 3.39e-06  ok
+f32 n=5000  ld=5000  budget 0    plan D48/G3                         fmm   0.0638 s  Accelerate   0.0762 s  speedup  1.19  rel. difference 3.64e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2369 s  Accelerate   0.3316 s  speedup  1.40  rel. difference 5.47e-06  ok
+f32 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   0.3194 s  Accelerate   0.4428 s  speedup  1.39  rel. difference 5.12e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0365 s  Accelerate   0.0399 s  speedup  1.09  rel. difference 3.76e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2373 s  Accelerate   0.3302 s  speedup  1.39  rel. difference 4.96e-06  ok
+# calibrating 48 entries (f32)
+f32 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0115 s  Accelerate   0.0121 s  speedup  1.05  rel. difference 2.50e-06  ok  (predicted 0.0116 s, calibrated for this shape; planning 0.008 s)
+   calibration 8 s
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.008 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0051 s  Accelerate   0.0051 s  speedup  1.01  rel. difference 0.00e+00  ok  (predicted 0.0047 s, estimated; planning 0.008 s)
+f32 6912x6912x3456       budget 0    plan D48/G3                         fmm   0.0764 s  Accelerate   0.0996 s  speedup  1.30  rel. difference 4.08e-06  ok  (predicted 0.0812 s, estimated; planning 0.009 s)
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0022 s  Accelerate   0.0022 s  speedup  1.00  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0177 s  Accelerate   0.0212 s  speedup  1.20  rel. difference 4.92e-15  ok
+f64 n=3000  ld=3000  budget 0    plan D48/G3                         fmm   0.0493 s  Accelerate   0.0626 s  speedup  1.27  rel. difference 5.21e-15  ok
+f64 n=4096  ld=4096  budget 0    plan D48/G3                         fmm   0.1331 s  Accelerate   0.1670 s  speedup  1.25  rel. difference 5.50e-15  ok
+f64 n=5000  ld=5000  budget 0    plan D48/G3                         fmm   0.2489 s  Accelerate   0.3019 s  speedup  1.21  rel. difference 7.29e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+2/D48/G6                   fmm   0.8129 s  Accelerate   1.3871 s  speedup  1.71  rel. difference 9.28e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+2/D48/G6 padded to 9008    fmm   1.1113 s  Accelerate   1.7611 s  speedup  1.58  rel. difference 9.50e-15  ok
+f64 n=4096  ld=4160  budget 0    plan D48/G3                         fmm   0.1382 s  Accelerate   0.1704 s  speedup  1.23  rel. difference 6.46e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+2/D48/G6                   fmm   0.8136 s  Accelerate   1.2964 s  speedup  1.59  rel. difference 9.51e-15  ok
+# calibrating 48 entries (f64)
+f64 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0367 s  Accelerate   0.0479 s  speedup  1.30  rel. difference 5.02e-15  ok  (predicted 0.0367 s, calibrated for this shape; planning 0.008 s)
+   calibration 15 s
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0139 s  Accelerate   0.0146 s  speedup  1.05  rel. difference 6.39e-15  ok  (predicted 0.0133 s, estimated; planning 0.008 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0180 s  Accelerate   0.0194 s  speedup  1.07  rel. difference 5.42e-15  ok  (predicted 0.0177 s, estimated; planning 0.008 s)
+f64 6912x6912x3456       budget 0    plan D48+4/R363/G6                  fmm   0.2563 s  Accelerate   0.3857 s  speedup  1.50  rel. difference 7.39e-15  ok  (predicted 0.2535 s, estimated; planning 0.010 s)
+all ok
+## crosscheck (Rust vs C on the shared cache)  22:39
+f32 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.000548 / 0.000548  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048           ld=2048  budget 0    plan rust G                              c G                              predicted 0.004733 / 0.004733  results identical  rel. difference from Accelerate 0.00e+00
+f32 3000           ld=3000  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.014914 / 0.014914  results identical  rel. difference from Accelerate 2.92e-06
+f32 4096           ld=4096  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.035163 / 0.035163  results identical  rel. difference from Accelerate 3.39e-06
+f32 5000           ld=5000  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.062122 / 0.062122  results identical  rel. difference from Accelerate 3.64e-06
+f32 8192           ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.235037 / 0.235037  results identical  rel. difference from Accelerate 5.47e-06
+f32 9000           ld=9000  budget 0    plan rust D48+4/D48/G6 padded to 9008    c D48+4/D48/G6 padded to 9008    predicted 0.327595 / 0.327595  results identical  rel. difference from Accelerate 5.12e-06
+f32 4096           ld=4160  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.035163 / 0.035163  results identical  rel. difference from Accelerate 3.76e-06
+f32 8192           ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.235037 / 0.235037  results identical  rel. difference from Accelerate 4.96e-06
+f32 3456x3456x1728 ld=3464  budget 0    plan rust R363/G6                        c R363/G6                        predicted 0.011611 / 0.011611  results identical  rel. difference from Accelerate 2.50e-06
+f32 1000x3000x2000 ld=3008  budget 0    plan rust G                              c G                              predicted 0.003250 / 0.003250  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048x4096x1024 ld=4104  budget 0    plan rust G                              c G                              predicted 0.004733 / 0.004733  results identical  rel. difference from Accelerate 0.00e+00
+f32 6912x6912x3456 ld=6920  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.081243 / 0.081243  results identical  rel. difference from Accelerate 4.08e-06
+f64 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.002113 / 0.002113  results identical  rel. difference from Accelerate 0.00e+00
+f64 2048           ld=2048  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.017214 / 0.017214  results identical  rel. difference from Accelerate 4.92e-15
+f64 3000           ld=3000  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.050137 / 0.050137  results identical  rel. difference from Accelerate 5.21e-15
+f64 4096           ld=4096  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.123415 / 0.123415  results identical  rel. difference from Accelerate 5.50e-15
+f64 5000           ld=5000  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.224971 / 0.224971  results identical  rel. difference from Accelerate 7.29e-15
+f64 8192           ld=8192  budget 0    plan rust D48+2/D48/G6                   c D48+2/D48/G6                   predicted 0.781761 / 0.781761  results identical  rel. difference from Accelerate 9.28e-15
+f64 9000           ld=9000  budget 0    plan rust D48+2/D48/G6 padded to 9008    c D48+2/D48/G6 padded to 9008    predicted 1.097614 / 1.097614  results identical  rel. difference from Accelerate 9.50e-15
+f64 4096           ld=4160  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.123415 / 0.123415  results identical  rel. difference from Accelerate 6.46e-15
+f64 8192           ld=8192  budget 4    plan rust D48+2/D48/G6                   c D48+2/D48/G6                   predicted 0.781761 / 0.781761  results identical  rel. difference from Accelerate 9.51e-15
+f64 3456x3456x1728 ld=3464  budget 0    plan rust R363/G6                        c R363/G6                        predicted 0.036701 / 0.036701  results identical  rel. difference from Accelerate 5.02e-15
+f64 1000x3000x2000 ld=3008  budget 0    plan rust SW/G4                          c SW/G4                          predicted 0.013304 / 0.013304  results identical  rel. difference from Accelerate 6.39e-15
+f64 2048x4096x1024 ld=4104  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.017712 / 0.017712  results identical  rel. difference from Accelerate 5.42e-15
+f64 6912x6912x3456 ld=6920  budget 0    plan rust D48+4/R363/G6                  c D48+4/R363/G6                  predicted 0.253467 / 0.253467  results identical  rel. difference from Accelerate 7.39e-15
+all identical
+## cargo test --release  22:39
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test entry_points ... ok
+test leading_dimensions_and_padding ... ok
+test plans_f32 ... ok
+test plans_f64 ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.35s
+
+   Doc-tests fmm
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+# done 22:40

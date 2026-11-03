@@ -1167,7 +1167,12 @@ it.
   \path{build/bench_fmm_acc284} for \acc's.  The runs labelled
   \texttt{bench\_fmm} in the result files used \acc's programs, the
   library's default until it switched to \acct
-  after these measurements.  \texttt{FMM\_EXACT}, \texttt{FMM\_NORMAL}
+  after these measurements.  The \texttt{2x2x2\_\allowbreak 7\_\allowbreak
+  Winograd} rows ran the library's $2\times2$ level with Strassen--Winograd's
+  programs, its default until November~2, 2026; since then the level's
+  default programs are the dyadic accurate point of \cite{DPS24} (their
+  Eq.~38), and \texttt{gen\_kernels.py --sw winograd} rebuilds the kernels
+  these rows used.  \texttt{FMM\_EXACT}, \texttt{FMM\_NORMAL}
   and \texttt{FMM\_SEED} select the reference, the distribution and the
   instance, and \texttt{FMM\_REFCACHE} shares references between
   builds.  The probes' programs are in \path{matmul/dps48/gamma/slp/}.

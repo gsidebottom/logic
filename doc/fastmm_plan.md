@@ -1383,3 +1383,36 @@ fused pass computes L directly, so splitting it into CoB and ALT only adds work.
 in place would take inner passes from 48 writes to 32, and per side the traffic comes to 14 n^2 with both conversion levels in
 one pass or 16 n^2 with two, against 16 n^2 today (arithmetic, not measured); one pass over 256 sub-blocks is unrealistic, a 5x5
 level's 118 streams already run at half the bandwidth.
+
+The 2x2 level's programs: DPS's dyadic accurate point (2026-11-02; Greg asked whether the 2x2 schemes of DPS's ISSAC 2024
+paper, hal-04441653, were considered, then "less error and the same time, let's do it").  They were considered: cited as DPS24
+in both papers, growth factors in the accuracy paper's Table 1, and the Q(sqrt3) point scored by the menu screen on Oct 28 (amp_eq
+3.855 against accurate_262's 2.828, R336's 2.280: a 2x2 level saves 12.5% for 8.25 n^2 of traffic, 40% more per product saved than
+R336 or D48, so no 2x2 scheme is a middle level, and the Kronecker square keeps the 3.855 at rank 49).  The one place a 2x2 level
+enters is the top of deep f64 plans, where SW (Winograd's 15-addition variant, chosen for the operation count before the fused
+passes showed the count is free) was rejected by the default budget by a hair (growth 1.07) and the budgeted pick tied it within
+1%.  The swap: the level's programs are now PLinOpt's 2x2x2_7_DPS-evenpow-12.2034 (Eq. 38 of DPS24: coefficients 1, 1/2, 1/4,
+exact scalings; Brent exact; amp 1.474 against Winograd 2.121 and Strassen 1.732, gamma_inf2 6.05 against 8 and 6.83, gamma_21
+12.2034; amp_eq 4.865, g_eq 10.84; the Q(sqrt3) point's 1.323 was not taken, its constants round), as cancellation-free programs
+from PLinOpt's optimizer -D (L 8 + 3, R 8 + 3, P 11 + 3 additions and scalings, 27 + 9 = 36 operations, the paper's Table 4 count;
+the kernel-method and transposed programs had 3-5 cancelling additions each and were not used; SLPchecker and an independent
+exact check against the .sms; schemes/opt/dps7_{L,R,P}.slp, one operation per line so kron() still forms SW2 from them).
+gen_kernels.py --sw winograd|PREFIX (default dps7); SW_PROGRAM and SW_OPS join the calibration cache's kernels key in C and Rust
+(the Oct 29 caches, which were measured with Winograd's kernels, are kept as results/calib5_*_winograd_2026-10-29.txt and, with
+the key rewritten, as results/calib_winograd_2026-11-02/ for the Winograd binary, make build/bench_fmm_winograd).  Measured, both
+binaries alternating, exact errors (results/sw_dps7_2026-11-02.txt): the level alone 0.88-1.35x the GEMM's error at 4096 and 8192
+in both precisions against Winograd's 1.44-1.95x (ratios 1.3-1.8 at one level, 2.5-3.6 at two, 3.7-4.0 at three, 5.1-6.3 at four
+recursive levels); the calibration's SW factor 1.41 -> 1.05 (f32), 1.51 -> 0.97 (f64), the other factors and rho unchanged within
+1%; pass times identical (8192 f64: L 0.010 R 0.010 P 0.009 s both), every plan's time within +-1% of the other binary's.  Plans
+with a 2x2 level on top lose 25-31% of their error: SW/R363+3/R633/G6 at 13824 f64 8.66e-15 against 1.25e-14 (GEMM 1.23e-14) in
+3.25 s either way, SW+3/R363/G6 at 3456 f64 3.47 against 4.62e-15 (GEMM 4.75), SW/R363/G6 at 6912 f64 4.43 against 6.40e-15
+(6.69), SW/D48+2/D48/G6 at 13824 f32 6.30 against 9.13e-6 (6.40) and at 6912 f32 4.40 against 5.95e-6 (3.85: the one plan still
+above the GEMM, three levels and twice as slow as the best there).  The default budget now takes SW+3/R363/G6 at 3456 f64 (0.071 s,
+0.73x) over R363/G4 (0.072 s, 0.58x); at 13824 f64 R336+3/R363/G3 (3.26 s, 0.55x) and SW/R363+3/R633/G6 (3.25 s, 0.70x) are
+within 0.5% and it takes the first; at 6912 f32 it still rejects SW+4/R363/G6 by a hair (predicted growth 1.02, measured 0.58:
+the depth factor, fitted on D48/D48, over-charges a level whose own factor is near one) for R363+4/R633/G6 at the same 0.14 s.
+The new calibration is installed (results/calib5_*.txt and ~/Library/Caches/fmm); test_fmm, the Rust crosscheck and cargo test
+in results/sw_dps7_tests_2026-11-02.txt.  Report: Section 4.4 "The 2x2 level's programs" (page 9, the last subsection of Accuracy), rows in the level and menu tables,
+and the sentences that said the Strassen plans breach the budget; the accuracy paper's Data section notes that its Winograd rows
+need --sw winograd now.  Not done: a dyadic 2x2 point searched for our amplification measure rather than DPS's gamma_21 (the
+Q(sqrt3) minimum is 1.323, a 10% margin over 1.474 at most, at one level of one plan), and a depth factor fitted per level.

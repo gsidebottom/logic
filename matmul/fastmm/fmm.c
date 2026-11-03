@@ -1,9 +1,10 @@
 /* fmm.c: fast matrix multiplication on Apple silicon (fmm.h), and the core of bench_fmm.
  *
- * A plan is a sequence of fused levels from the top -- SW (Strassen-Winograd <2x2x2:7>), D48
- * (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic, as their 262-operation
- * accurate program; see
- * gen_kernels.py), SW2 (Strassen^2) -- ending in a leaf: G (one GEMM, Accelerate), its products
+ * A plan is a sequence of fused levels from the top -- SW (the <2x2x2:7> level: DPS's dyadic
+ * accurate point, Eq. (38) of their ISSAC 2024 paper, or Strassen-Winograd with gen_kernels.py
+ * --sw winograd), D48 (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic, as their
+ * 262-operation accurate program; see gen_kernels.py), SW2 (the 2x2 level's Kronecker square) --
+ * ending in a leaf: G (one GEMM, Accelerate), its products
  * as k single-threaded GEMM streams (Gk) or with NEON products (GkNj), or classical blocked
  * (B2/B4/B8).  A fused level streams once over its input and output blocks with the scheme's
  * linear program evaluated per element position in registers (kernels.h, from gen_kernels.py);
@@ -127,8 +128,9 @@ static void evict(void) {
 
 /* ---- plans: fused levels from the top, ending in a leaf -------------------------------- */
 /* leaves: G = one GEMM; B2, B4, B8 = classical as g^3 block GEMMs of n/g accumulating into C.
- * fused levels: SW = Strassen-Winograd <2x2x2:7>, D48 = our <4x4x4:48>, SW2 = Strassen^2
- * <4x4x4:49>.  NONE (calibration only) skips the products, leaving a level's passes.  A plan
+ * fused levels: SW = the <2x2x2:7> level (DPS's dyadic accurate point by default, Strassen-Winograd
+ * with gen_kernels.py --sw winograd), D48 = DPS's <4x4x4:48>, SW2 = the 2x2 level's Kronecker
+ * square <4x4x4:49>.  NONE (calibration only) skips the products, leaving a level's passes.  A plan
  * entry is a level code; the G leaf below a fused level may add k << 8 (written Gk): the
  * level's products as k single-threaded GEMM streams taking products in turn.  Plain G runs
  * them one at a time with Accelerate's own threading, which drives each SME unit (one per
@@ -476,7 +478,8 @@ static void calib_load(calib_t *c, int f64) {
     if (!f) return;
     int ok_machine = 0, ok_pad = 0, ok_format = 0, ok_kernels = 0;
     char kernels[96];
-    snprintf(kernels, sizeof kernels, "%s %d R %d", DPS48_PROGRAM, (int)DPS48_OPS, (int)(R336_OPS + R363_OPS + R633_OPS));
+    snprintf(kernels, sizeof kernels, "%s %d R %d SW %s %d", DPS48_PROGRAM, (int)DPS48_OPS,
+             (int)(R336_OPS + R363_OPS + R633_OPS), SW_PROGRAM, (int)SW_OPS);
     shape_t s;
     double t;
     while (fgets(line, sizeof line, f)) {
@@ -491,7 +494,7 @@ static void calib_load(calib_t *c, int f64) {
     }
     fclose(f);
     if (!ok_machine || !ok_pad || !ok_format || !ok_kernels) {
-        printf("# calibration %s is from another machine, padding, format or D48 program: remeasuring\n", path);
+        printf("# calibration %s is from another machine, padding, format or kernels: remeasuring\n", path);
         memset(c, 0, sizeof *c);
     }
 }
@@ -513,8 +516,8 @@ static void calib_save(const calib_t *c, int f64) {
                "per product, GkSW, GkD48, ... = the same with k GEMM streams; PYkKpPs, PYkKpPo = pipelined "
                "sub-problems of level Y (steady time, fill and drain); E... = errors at n = N_E\n",
             f64 ? "f64" : "f32");
-    fprintf(f, "# machine %s\n# pad %zu\n# format %d\n# kernels %s %d R %d\n", machine(), fmm_pad(), CALIB_FORMAT,
-            DPS48_PROGRAM, (int)DPS48_OPS, (int)(R336_OPS + R363_OPS + R633_OPS));
+    fprintf(f, "# machine %s\n# pad %zu\n# format %d\n# kernels %s %d R %d SW %s %d\n", machine(), fmm_pad(), CALIB_FORMAT,
+            DPS48_PROGRAM, (int)DPS48_OPS, (int)(R336_OPS + R363_OPS + R633_OPS), SW_PROGRAM, (int)SW_OPS);
     int idx[CALIB_MAX];
     for (int i = 0; i < c->n; i++) idx[i] = i;
     for (int a = 0; a < c->n; a++)          /* by kind, then shape */
@@ -711,7 +714,7 @@ static double plan_growth(const errmod_t *e, const int *plan) {
     int levels = 0;
     for (int i = 0; i < PLAN_MAX && !lv_leaf(PLV(plan[i])); i++, levels++) {
         g *= e->f[PLV(plan[i])];
-        if (PLV(plan[i]) == LV_SW2) levels++;   /* two Strassen levels in one */
+        if (PLV(plan[i]) == LV_SW2) levels++;   /* two 2x2 levels in one */
     }
     for (int i = 1; i < levels; i++) g *= e->rho;
     return g;

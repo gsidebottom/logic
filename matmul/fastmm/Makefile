@@ -6,7 +6,7 @@ build/bench_fmm: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h bui
 
 # the kernels: dps48 from DPS's 262-operation accurate program (4x4x4_48_accurate_262), op-by-op
 # lists from ours (201)
-build/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp schemes/opt/r336_L.slp schemes/opt/r336_R.slp schemes/opt/r336_P.slp schemes/opt/r363_L.slp schemes/opt/r363_R.slp schemes/opt/r363_P.slp schemes/opt/r633_L.slp schemes/opt/r633_R.slp schemes/opt/r633_P.slp schemes/opt/t336_L.slp schemes/opt/t336_R.slp schemes/opt/t336_P.slp schemes/opt/t363_L.slp schemes/opt/t363_R.slp schemes/opt/t363_P.slp schemes/opt/t633_L.slp schemes/opt/t633_R.slp schemes/opt/t633_P.slp
+build/kernels.h: gen_kernels.py schemes/opt/dps7_L.slp schemes/opt/dps7_R.slp schemes/opt/dps7_P.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp schemes/opt/r336_L.slp schemes/opt/r336_R.slp schemes/opt/r336_P.slp schemes/opt/r363_L.slp schemes/opt/r363_R.slp schemes/opt/r363_P.slp schemes/opt/r633_L.slp schemes/opt/r633_R.slp schemes/opt/r633_P.slp schemes/opt/t336_L.slp schemes/opt/t336_R.slp schemes/opt/t336_P.slp schemes/opt/t363_L.slp schemes/opt/t363_R.slp schemes/opt/t363_P.slp schemes/opt/t633_L.slp schemes/opt/t633_R.slp schemes/opt/t633_P.slp
 	mkdir -p build && python3 gen_kernels.py $@
 
 # the same with every use of a scaled value as a fused multiply-add (x * 0.5 + y -> one FMLA);
@@ -49,6 +49,15 @@ build/libfmm.a: fmm.c fmm_impl.h fmm.h neon_gemm.h build/kernels.h
 # the library's entry points against Accelerate (FMM_CALIB_DIR=results build/test_fmm)
 build/test_fmm: test_fmm.c fmm.h build/libfmm.a
 	clang -O3 -mcpu=apple-m4 -Wall test_fmm.c build/libfmm.a -framework Accelerate -o $@
+
+# the same with the Strassen-Winograd programs for the 2x2 level (the default until 2026-11-02; since
+# then the level's programs are DPS's dyadic accurate point, schemes/opt/dps7_*): the A/B of
+# results/sw_dps7_2026-11-02.txt
+build/bench_fmm_winograd: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/winograd/kernels.h
+	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/winograd bench_fmm.c -framework Accelerate -o $@
+
+build/winograd/kernels.h: gen_kernels.py
+	mkdir -p build/winograd && python3 gen_kernels.py $@ --sw winograd
 
 # the same with dps48's fused kernels from the original rational rank-48 scheme (315 operations)
 build/bench_fmm_orig: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/orig/kernels.h

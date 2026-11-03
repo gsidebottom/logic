@@ -222,9 +222,11 @@ pub fn path(f64: bool) -> PathBuf {
     dir.join(if f64 { "calib5_f64.txt" } else { "calib5_f32.txt" })
 }
 
-/// the kernels the cache was measured with: the D48 program and the R levels' operation counts
+/// the kernels the cache was measured with: the D48 program, the R levels' operation counts and the
+/// 2x2 level's programs (the C library writes the same string)
 fn kernels_key() -> String {
-    format!("{} {} R {}", kernels::DPS48_PROGRAM, kernels::DPS48_OPS, kernels::R_OPS)
+    format!("{} {} R {} SW {} {}", kernels::DPS48_PROGRAM, kernels::DPS48_OPS, kernels::R_OPS,
+            kernels::SW_PROGRAM, kernels::SW_OPS)
 }
 
 /// the cache, if it was measured on this machine with this padding, format and kernels

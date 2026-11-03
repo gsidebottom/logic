@@ -5,7 +5,8 @@
 //! a calibrated cost model picks for this machine, shape and precision: fused levels of the
 //! rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (their 262-operation accurate
 //! program), of their accurate <3x3x6:40> scheme in its three orientations (rectangular levels, so
-//! a plan tracks the shape of every level's products) and of Strassen-Winograd over Accelerate's
+//! a plan tracks the shape of every level's products) and of a <2x2x2:7> level (DPS's dyadic
+//! accurate point of ISSAC 2024, or Strassen-Winograd) over Accelerate's
 //! GEMM, with GEMM streams and pipelined passes; `max_growth` is the error budget (0: the default
 //! of 1, a plan predicted no less accurate than the GEMM; positive: that budget; negative: none,
 //! the fastest plan) on the plan's predicted error growth

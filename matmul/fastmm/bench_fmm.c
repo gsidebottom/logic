@@ -3,14 +3,16 @@
  * Methods (row-major n x n, products on Accelerate's GEMM):
  *   classical  one GEMM
  *   blkG       classical as G^3 block GEMMs of size n/G (G = 2, 4, 8) accumulating into C
- *   sw1        Strassen-Winograd, one level (7 GEMMs of n/2), one fused pass per side
- *   sw2rec     Strassen-Winograd, two levels recursively (49 GEMMs of n/4), a pass per level
+ *   sw1        the SW level (<2x2x2:7>: DPS's dyadic accurate point by default, Strassen-Winograd
+ *              with gen_kernels.py --sw winograd), one level (7 GEMMs of n/2), one fused pass per side
+ *   sw2rec     two SW levels recursively (49 GEMMs of n/4), a pass per level
  *   sw3rec     three levels (343 GEMMs of n/8); sw4rec four levels (2,401 of n/16)
- *   sw2        Strassen-Winograd squared as one <4x4x4:49> level: one fused pass per side
- *   dps48      our <4x4x4:48> (201 operations) as one level: one fused pass per side
- *   dps48ops   the same program one block operation at a time (a pass per operation)
- *   dps48sw    hybrid: our 48 level on top, one Strassen level per product (336 GEMMs of n/8)
- *   sw2sw      Strassen^2 level on top, one Strassen level per product (343 GEMMs of n/8)
+ *   sw2        the SW scheme's Kronecker square as one <4x4x4:49> level: one fused pass per side
+ *   dps48      D48, the <4x4x4:48> level (DPS's 262-operation accurate program), as one level: one
+ *              fused pass per side
+ *   dps48ops   our 201-operation program one block operation at a time (a pass per operation)
+ *   dps48sw    hybrid: the 48 level on top, one SW level per product (336 GEMMs of n/8)
+ *   sw2sw      SW2 level on top, one SW level per product (343 GEMMs of n/8)
  *   dps48x2    two levels of our 48-scheme (2,304 GEMMs of n/16)
  *   r336       the accurate <3x3x6:40> scheme of Dumas, Pernet and Sedoglavic as one level (40
  *              GEMMs of (n/3, n/3, n/6)); r336x2 = R336/R363/G, r336x3 = R336/R363/R633/G (the

@@ -25,7 +25,7 @@
 fused levels of accurate square and rectangular schemes\\
 over a vendor GEMM, chosen by a calibrated planner}
 \author{Greg Sidebottom}
-\date{Draft --- October 28, 2026}
+\date{Draft --- November 2, 2026}
 
 \begin{document}
 \maketitle
@@ -36,7 +36,7 @@ scheme over a vendor General Matrix Multiplication (GEMM) routine.  We treat
 the levels as a menu: every level may use
 a different scheme, square or rectangular, and a plan is a sequence of levels
 ending in a GEMM leaf.  On Apple's M4~Pro, with Accelerate's GEMM at the
-leaves, the menu is Strassen--Winograd $\mm{2\times2\times2:7}$, the
+leaves, the menu is a $\mm{2\times2\times2:7}$ level, the
 $262$-operation accurate $\mm{4\times4\times4:48}$ algorithm of Dumas, Pernet
 and Sedoglavic, and their accurate $\mm{3\times3\times6:40}$ algorithm in its
 three orientations, which bring a square problem back to square after three
@@ -56,7 +56,10 @@ has 23--43\% less error at every size and precision tried, and less than the
 GEMM's own.  The planner's default budget, no less accurate than the GEMM,
 keeps every choice on that side: at $13824$ f64 it finds a plan as fast as
 the Strassen-topped one, $1.9\times$ over Accelerate, with half the GEMM's
-error.  As a test of the opposite
+error.  Replacing Strassen--Winograd's programs in the $2\times2$ level by the
+dyadic accurate point of Dumas, Pernet and Sedoglavic cuts the error of the
+plans with that level on top by 25--31\% at the same time, below the GEMM's.
+As a test of the opposite
 design -- cheap passes instead of accurate ones -- a ternary $\mm{3\times3\times6:42}$ scheme from Perminov's catalogue
 (ternary: every coefficient is $-1$, $0$ or $1$, so its passes need no
 scalings), whose three programs need 139 additions against about 370 operations for the accurate
@@ -85,7 +88,9 @@ Apple's M4~Pro with Accelerate's GEMM, by measurement.
 
 The approach is to mix.  A \emph{plan} is a sequence of \emph{levels} from the
 top of the problem down to a GEMM leaf, and every level may come from a
-different scheme: Strassen--Winograd's $\mm{2\times2\times2:7}$ (\lv{SW}), the
+different scheme: a $\mm{2\times2\times2:7}$ scheme (\lv{SW}: Strassen--Winograd's
+programs in this report's campaigns, since November~2 the dyadic accurate point
+of \cite{DPS24}, Section~\ref{sec:sw}), the
 accurate $\mm{4\times4\times4:48}$ algorithm of Dumas, Pernet and Sedoglavic
 \cite{DPS25,DPS26a} in its $262$-operation form \cite{PLinOpt,S26b} (\lv{D48}),
 and their accurate $\mm{3\times3\times6:40}$ algorithm \cite{DPS26b,PLinOpt} in
@@ -93,14 +98,14 @@ its three orientations $3\times3\times6$, $3\times6\times3$ and $6\times3\times3
 (\lv{R336}, \lv{R363}, \lv{R633}).  The three orientations applied in turn
 divide a square problem by $54$ and leave it square, where three $4\times4$
 levels divide by $64$.  A plan such as \lv{SW/R363+3/R633/G6} is one
-Strassen--Winograd level, then a $3\times6\times3$ level whose products are
+$2\times2$ level, then a $3\times6\times3$ level whose products are
 pipelined on three pass threads, then a $6\times3\times3$ level whose $40$
 products run as six single-threaded GEMM streams.  Mixing pays for three
 reasons that the measurements separate:
 
 \begin{enumerate}
 \item \emph{Order.}  A level writes more data than it reads (the $4\times4$
-  scheme three times as much, Strassen's $1.75$ times); the larger expansion
+  scheme three times as much, a $2\times2$ scheme $1.75$ times); the larger expansion
   belongs at the smaller level, so \lv{SW/D48/G} moves $9.75\,n^2$ words per
   side where \lv{D48/SW/G} moves $12.25\,n^2$ with the same $336$ products.
 \item \emph{Shape.}  A rectangular level hands down rectangular products; the
@@ -168,8 +173,9 @@ grids of blocks and forms the product with $48$ block products instead of
 $64$.  \lv{R336}, \lv{R363} and \lv{R633} are levels of the accurate
 $\mm{3\times3\times6:40}$ scheme in its three orientations, named by the grids
 they cut $A$ and $B$ into: \lv{R363} cuts $A$ $3\times6$ and $B$ $6\times3$
-and uses $40$ block products instead of $54$.  \lv{SW} is a Strassen--Winograd
-level ($2\times2$ grids, $7$ products instead of $8$).  \lv{G} is the leaf,
+and uses $40$ block products instead of $54$.  \lv{SW} is a $2\times2$
+level ($2\times2$ grids, $7$ products instead of $8$; Strassen--Winograd's
+programs in the campaigns of this report, Section~\ref{sec:sw}).  \lv{G} is the leaf,
 Accelerate's GEMM on the block products that remain, and \lv{G6} runs those
 products as six concurrent single-threaded GEMM streams.  \lv{+p} after a
 level runs its passes -- the sums that form the operands and accumulate the
@@ -348,6 +354,7 @@ does not.
 level & scheme & saving & streams $L/R/P$ & traffic ($n^2$) & amp$_{\text{eq}}$ & $\gamma_{\text{eq}}$\\
 \midrule
 \lv{SW} & Strassen--Winograd $\mm{2\times2\times2:7}$ & 0.875 & 11/11/11 & 8.25 & 10.66 & 19.8\\
+\lv{SW} & DPS's dyadic point, Section~\ref{sec:sw} & 0.875 & 11/11/11 & 8.25 & 4.87 & 10.84\\
 \lv{D48} & DPS accurate $\mm{4\times4\times4:48}$, 262-op.\ point & 0.750 & 64/64/64 & 12.00 & 2.828 & 5.657\\
 \lv{R336} & DPS accurate $\mm{3\times3\times6:40}$ & 0.741 & 49/58/58 & 11.89 & 2.280 & 6.162\\
 \lv{R363} & the same, orientation $3\times6\times3$ & 0.741 & 58/58/49 & 11.89 & 2.453 & 5.125\\
@@ -465,6 +472,7 @@ $\mm{5\times5\times6:110}$ Kemper & 0.733 & 135/140/140 & 14.73 & 10.38 & 22.9\\
 $\mm{6\times6\times6:153}$ Moosbauer--Poole & 0.708 & 189/189/189 & 15.75 & 9.229 & 18.3\\
 $\mm{2\times4\times5:32}$ AlphaEvolve & 0.800 & 40/52/42 & 11.80 & 4.962 & 10.95\\
 $\mm{2\times2\times2:7}$ DPS accurate (in $\mathbb{Q}(\sqrt3)$) & 0.875 & 11/11/11 & 8.25 & 3.855 & 10.53\\
+$\mm{2\times2\times2:7}$ DPS dyadic, Eq.~(38) of \cite{DPS24} & 0.875 & 11/11/11 & 8.25 & 4.87 & 10.84\\
 $\mm{2\times2\times2:7}$ Strassen / Winograd & 0.875 & 11/11/11 & 8.25 & 6.89 / 10.66 & 14.1 / 19.8\\
 $\mm{3\times3\times3:23}$ best of four & 0.852 & 32/32/32 & 10.67 & 12.7 & 34.1\\
 $\mm{3\times3\times6:40}$ Smirnov ($\pm1$ point, same class) & 0.741 & 49/58/58 & 11.89 & 9.754 & 26.1\\
@@ -552,7 +560,8 @@ compensated product of the f64 inputs: the GEMM alone, which gives $e_0$, one
 level of each scheme over the GEMM, which gives its factor, and \lv{D48/D48}.
 In f32 the factors are \lv{SW} $1.41$, \lv{D48} $0.62$, \lv{R336} $0.55$,
 \lv{R363} $0.45$, \lv{R633} $0.60$; in f64 $1.51$, $0.72$, $0.65$, $0.47$,
-$0.64$.  The accurate levels' factors are below one: their leaves accumulate
+$0.64$ (with the dyadic point's programs of Section~\ref{sec:sw}, \lv{SW}'s
+factors are $1.05$ and $0.97$).  The accurate levels' factors are below one: their leaves accumulate
 $k/g_2$ products instead of $k$, and the GEMM's own accumulation error is the
 larger term.  A second level does not get that again, so the factors do not
 simply multiply; the two-level plan measures the shortfall, a depth factor
@@ -587,6 +596,56 @@ costs $\le2$\% below $16384$ and cuts the error by 36\% at five levels, nothing
 at one to three, where the leaf GEMMs' error dominates.  It is a switch in the
 library (\texttt{FMM\_F64PASS}), not the default.
 
+\subsection{The $2\times2$ level's programs}\label{sec:sw}
+
+Every campaign of this report ran the $2\times2$ level with Strassen--Winograd's
+programs ($15$ additions), chosen for the operation count before the
+measurements showed that a pass costs its traffic, not its arithmetic.  Dumas,
+Pernet and Sedoglavic minimized a growth factor over Strassen's orbit
+\cite{DPS24}; their Eq.~(38) is a point whose coefficients are $1$, $\frac12$
+and $\frac14$ only, so its scalings are exact in floating point, with
+amplification (Table~\ref{tab:menu}'s measure) $1.47$ per level against
+Winograd's $2.12$ and Strassen's $1.73$, and $\gamma_{\infty,2}$ $6.05$
+against $8$ and $6.83$.  On November~2 it became the level's default programs
+(\path{schemes/opt/dps7_{L,R,P}.slp}: cancellation-free programs from PLinOpt's
+optimizer, $8+3$, $8+3$ and $11+3$ additions and scalings;
+\texttt{gen\_kernels.py --sw winograd} rebuilds the kernels every table above
+used).  Measured against the exact product, the two binaries otherwise
+identical and run alternately (\path{results/sw_dps7_2026-11-02.txt}):
+\begin{itemize}
+\item One level alone has $0.88$--$1.35\times$ the GEMM's error at $4096$ and
+  $8192$ in both precisions where Winograd's programs have $1.44$--$1.95\times$;
+  at two, three and four recursive levels the error is $2.5$--$3.6$,
+  $3.7$--$4.0$ and $5.1$--$6.3$ times smaller than with Winograd's.  The
+  calibration's factor for \lv{SW} falls from $1.41$ to $1.05$ in f32 and from
+  $1.51$ to $0.97$ in f64; the other levels' factors and the depth factor are
+  unchanged within $1\%$.
+\item The passes cost the same: at $8192$ f64 the three passes of one level take
+  $0.010$, $0.010$ and $0.009$~s with either program, and every plan's time is
+  within the run-to-run noise of the other binary's ($\pm1\%$).
+\item The plans with a $2\times2$ level on top lose $25$--$31\%$ of their error:
+  \lv{SW/R363+3/R633/G6} at $13824$ f64 $8.66\cdot10^{-15}$ against
+  $1.25\cdot10^{-14}$ (the GEMM's $1.23\cdot10^{-14}$) in $3.25$~s either way,
+  \lv{SW+3/R363/G6} at $3456$ f64 $3.47$ against $4.62\cdot10^{-15}$ (the
+  GEMM's $4.75$), \lv{SW/R363/G6} at $6912$ f64 $4.43$ against
+  $6.40\cdot10^{-15}$ ($6.69$), \lv{SW/D48+2/D48/G6} at $13824$ f32 $6.30$
+  against $9.13\cdot10^{-6}$ ($6.40$) and at $6912$ f32 $4.40$ against
+  $5.95\cdot10^{-6}$ ($3.85$).  Every plan with one level of it that the
+  planner picks now measures below the GEMM's error; the last, a three-level
+  plan twice as slow as the best at its size, is at $1.14\times$ ($1.55$ before).
+\item The default budget admits them.  At $3456$ f64 it returns
+  \lv{SW+3/R363/G6} ($0.071$~s, $0.73\times$ the GEMM's error) in place of
+  \lv{R363/G4} ($0.072$~s, $0.58\times$); at $13824$ f64 \lv{R336+3/R363/G3}
+  and \lv{SW/R363+3/R633/G6} are within $0.5\%$ of each other ($3.26$ and
+  $3.25$~s, errors $0.55\times$ and $0.70\times$), and the planner takes the
+  first; at $6912$ f32 it still rejects \lv{SW+4/R363/G6} by a hair (predicted
+  growth $1.02$, measured $0.58$) for \lv{R363+4/R633/G6} at the same
+  $0.14$~s.  That over-prediction, $1.8\times$, is the depth factor's: fitted on
+  \lv{D48/D48}, it charges a level whose own factor is near one as if it were
+  an accurate level's second.  The picks among the $3\times3\times6$ plans move
+  within $1\%$ between the two calibrations, as they did between earlier ones.
+\end{itemize}
+
 \section{The planner}\label{sec:planner}
 
 A plan is a sequence of levels from the top, ending in a leaf: \lv{G} (one
@@ -618,8 +677,9 @@ so that a growth of $1$ means as accurate as the GEMM, $0.5$ twice as
 accurate, $2$ twice the error.  With $g>0$ the planner returns the fastest
 plan whose growth is at most $g$: $g=1$ asks for a plan no less accurate than
 the GEMM it replaces, $g<1$ for a more accurate one, and $g>1$ admits plans
-up to $g$ times the GEMM's error, which is where the plans with a Strassen
-level and the deep plans live.  $g=0$ means the default budget, $1$; a negative $g$ means no budget, the
+up to $g$ times the GEMM's error, which is where the deep plans live and,
+with Strassen--Winograd's programs, the plans with a $2\times2$ level
+(Section~\ref{sec:sw}).  $g=0$ means the default budget, $1$; a negative $g$ means no budget, the
 fastest plan whatever its error (\lv{auto:none} in the benchmark), which is
 how the campaigns before the budget's introduction ran.  So no budget can
 return a less accurate plan than the default: at $13824$ f64 it returns
@@ -629,7 +689,9 @@ the default returns \lv{R363+3/R336/G3} at $0.52\times$ in the same time
 25\% (Section~\ref{sec:accuracy}), so a budget is a target rather than a
 guarantee, and near a boundary the choice is not robust; the Strassen-topped
 plans sit at $1.0$--$1.1$ and the plans without one below $0.85$, so the
-default separates the two families with the margin the model has.
+default separates the two families with the margin the model has (with the
+dyadic point's programs the $2\times2$-topped plans measure $0.6$--$1.0$ and
+most of them pass, Section~\ref{sec:sw}).
 
 \paragraph{Calibration.}
 Everything the model needs is measured once per machine and precision and
@@ -768,6 +830,8 @@ item), and its top six at $13824$ f32 are all $3\times3\times6$-family plans.
   $3456$ f64 the same happens: \lv{R363/G4} at $0.072$~s and $0.58\times$ the
   GEMM's error replaces \lv{SW+3/R363/G6} at $0.071$~s and $0.97\times$.  The
   Strassen plans remain available under an explicit budget of $2$ or none.
+  With the dyadic point's programs (Section~\ref{sec:sw}) the same plan
+  measures $8.66\cdot10^{-15}$, $0.70\times$ the GEMM's, in the same time.
 \item Every plan without a Strassen level has less error than the GEMM's own
   in both precisions ($2.26$ against $3.85\cdot10^{-6}$ at $6912$ f32, $2.46$
   against $6.40\cdot10^{-6}$ at $13824$ f32, $3.75$ against
@@ -1080,13 +1144,14 @@ measure of a scheme is its saving per block moved and its stream count, not
 its rank or the length of its programs; and the accuracy of a level is set by
 the point in its orbit and, at depth, by the roundings of its $P$ program,
 not by the operation count.  Under these measures the menu is short: two
-accurate schemes and Strassen--Winograd for the top of deep f64 plans.  A
+accurate schemes and a $2\times2$ scheme for the top of deep f64 plans.  A
 scheme enters the menu only if a plan containing it beats every plan without
 it on this machine, and the planner decides that per shape and precision from
 measurements, which is why the library can take a new level (or a new machine) without
 any change but a calibration.  Its default objective is time at the GEMM's
-own accuracy or better; the Strassen plans, the only ones that breach it, are
-there for whoever asks.
+own accuracy or better; the plans with a $2\times2$ level on top, the only ones
+that breached it with Strassen--Winograd's programs, are within it with the
+dyadic accurate point's (Section~\ref{sec:sw}).
 
 The limits are also measured.  The GEMM is 85--95\% of every plan, so no menu
 can take more than the products it saves, and below $n\approx3000$ nothing
@@ -1289,7 +1354,9 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
 \item[\lv{D48}, \lv{R336}, \lv{R363}, \lv{R633}, \lv{SW}, \lv{T336},
   \lv{T363}, \lv{T633}, \lv{X}.]  The levels of the menu (Table~\ref{tab:levels}):
   the accurate $4\times4$ scheme, the accurate $3\times3\times6$ scheme in
-  its three orientations, Strassen--Winograd, and the ternary $3\times3\times6$ scheme of Section~\ref{sec:ternary}
+  its three orientations, the $2\times2$ level (Strassen--Winograd's programs in
+  the campaigns, DPS's dyadic accurate point since November~2,
+  Section~\ref{sec:sw}), and the ternary $3\times3\times6$ scheme of Section~\ref{sec:ternary}
 (ternary: coefficients in $\{-1,0,1\}$, from Perminov's catalogue); \lv{X} in
   Table~\ref{tab:ternary} stands for \lv{R} or \lv{T}.
 \item[\lv{G}, \lv{G}$k$, \lv{B2}, \lv{+p}.]  The leaves and the pipeline
@@ -1349,7 +1416,9 @@ Everything is in the repository \cite{logic}, directory
 \path{matmul/fastmm/}: the library (\path{fmm.c}, \path{fmm_impl.h},
 \path{fmm.h}), the kernel generator (\path{gen_kernels.py}), the programs
 of the $3\times3\times6$ levels (\path{schemes/opt/r*}, PLinOpt-optimized;
-\path{schemes/r*}, the direct sums) and of the ternary levels
+\path{schemes/r*}, the direct sums), of the $2\times2$ level
+(\path{schemes/opt/dps7_*}; Strassen--Winograd's are in \path{gen_kernels.py})
+and of the ternary levels
 (\path{schemes/t*}), the Rust crate (\path{rust/}), the benchmark and the
 test (\path{bench_fmm.c}, \path{test_fmm.c}), the calibrations
 (\path{results/calib5_f32.txt}, \path{calib5_f64.txt}) and the raw
@@ -1362,7 +1431,11 @@ results of every run quoted here:
 \path{f64exact_2026-10-28.txt} (the f64 err64 column of
 Table~\ref{tab:results}), \path{gpu_gemm_2026-10-28.txt} (Table~\ref{tab:gpu};
 the tool is \path{gpu_gemm.m}, built by \texttt{make build/gpu\_gemm}, the script \path{run_gpu.sh}), \path{budget_campaign_2026-10-29.txt}
-(Table~\ref{tab:budget}; \path{run_budget.sh}), and the
+(Table~\ref{tab:budget}; \path{run_budget.sh}),
+\path{sw_dps7_2026-11-02.txt} (Section~\ref{sec:sw}; \path{run_sw_dps7.sh},
+the Strassen--Winograd binary by \texttt{make build/bench\_fmm\_winograd};
+the calibration before the change is \path{calib5_f32_winograd_2026-10-29.txt},
+\path{calib5_f64_winograd_2026-10-29.txt}), and the
 earlier campaigns of October 24--26 (streams, pipelines, accuracy, the
 $4\times4$ programs).  The menu screen is \path{matmul/levels/}
 (\path{levels.py}, \path{levels.csv}, \path{orbit_rect.py},

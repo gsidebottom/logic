@@ -262,7 +262,7 @@ $4\times4$ menu and rules out every larger shape and every Kronecker composite
 (Section~\ref{sec:menu}).  (iii)~A per-level error model, validated within
 25\%, and the orbit floors of the amplification for the two accurate classes
 (Section~\ref{sec:accuracy}).  (iv)~A planner over $(m,k,n)$ shapes with GEMM
-streams, pipelines, padding to multiples of $2^a3^b$, an error budget, and
+streams, pipelines, padding to multiples of $2^i3^j$, an error budget, and
 shape estimates that price uncalibrated rectangular problems within 2\%
 (Section~\ref{sec:planner}).  (v)~Measurements on the M4~Pro:
 $1.73\times$ and $1.91\times$ over Accelerate at $n=13824$ in f32 and f64,
@@ -519,7 +519,7 @@ writes its output blocks once), that is $W(n,n,n) = n^2\bigl(3 +
 r(\tfrac{1}{g_1g_2} + \tfrac{1}{g_2g_3} + \tfrac{1}{g_1g_3})\bigr)$ on a
 square problem, and takes
 \begin{equation}\label{eq:level}
-T(m,k,n) \;=\; r\,T_{\text{below}}\!\Bigl(\frac{m}{g_1},\frac{k}{g_2},
+\text{time}(m,k,n) \;=\; r\,\text{time}_{\text{below}}\!\Bigl(\frac{m}{g_1},\frac{k}{g_2},
 \frac{n}{g_3}\Bigr) \;+\; \frac{w\,W(m,k,n)}{\mathcal{B}}
 \end{equation}
 seconds.  Two numbers of a scheme decide the second term: its \emph{traffic},
@@ -589,8 +589,8 @@ unchanged.
 
 Accelerate drives each performance cluster's SME unit from one thread, so its
 GEMM keeps two or three cores busy and leaves the rest idle.  The $r$ products
-of a level are independent, and a leaf \lv{G}$k$ runs them as $k$
-single-threaded GEMM streams taking products in turn: three streams beat
+of a level are independent, and a leaf \lv{G3}, \lv{G4} or \lv{G6} runs them
+as three, four or six single-threaded GEMM streams taking products in turn: three streams beat
 Accelerate's own threading by 10\% (f32) and 8\% (f64) at $2048$, more streams
 win for the smallest products (f32 at $1024$, f64 at $512$) and lose badly
 for large ones (six streams $+26$--$34$\% in f64 at $1024$).  The calibration
@@ -735,11 +735,11 @@ worth a dyadic search.
 
 \subsection{The error model and its validation}
 
-A plan's error is well described by the GEMM's own error scale times one
-factor per fused level and a depth factor per level after the first, growing
-like $\sqrt{k}$ with the inner dimension,
+A plan's error is well described by the GEMM's own error scale, which grows
+like $\sqrt{k}$ with the inner dimension, times one factor per fused level and
+a depth factor per level after the first,
 \begin{equation}\label{eq:errmodel}
-\text{err}(\text{plan};\,m,k,n) \;=\; e_0\,\sqrt{k/N_E}\ \rho^{\,L-1}\prod_{\text{levels }X} f_X,
+\text{err}(\text{plan};\,m,k,n) \;=\; e_0\,\sqrt{k/N_E}\ \rho^{\,d-1}\prod_{\text{levels }X} f_X,
 \end{equation}
 with the order of the levels immaterial (measured: \lv{SW} then \lv{D48} and
 \lv{D48} then \lv{SW} within 2\%) and streams and pipelines leaving the
@@ -755,8 +755,8 @@ $k/g_2$ products instead of $k$, and the GEMM's own accumulation error is the
 larger term.  A second level does not get that again, so the factors do not
 simply multiply; the two-level plan measures the shortfall, a depth factor
 $\rho$ ($2.19$ in f32, $1.53$ in f64) by which the product of the factors is
-multiplied once per level after the first, $\rho^{L-1}$ for $L$ fused levels
-in \eqref{eq:errmodel}.  Against the exact errors of the campaigns' plans at
+multiplied once per level after the first, $\rho^{d-1}$ for a plan of $d$
+fused levels in \eqref{eq:errmodel}.  Against the exact errors of the campaigns' plans at
 $3456$--$13824$ (Tables~\ref{tab:results} and \ref{tab:budget}) the model
 predicts the plans without a $2\times2$ level within $0.66$--$1.12$ of the
 measurement (the under-predictions are at $13824$ f64, where the GEMM's own
@@ -838,7 +838,8 @@ identical and run alternately (\path{results/sw_dps7_2026-11-02.txt}):
 \section{The planner}\label{sec:planner}
 
 A plan is a sequence of levels from the top, ending in a leaf: \lv{G} (one
-GEMM, Accelerate's threading), \lv{G}$k$ ($k$ GEMM streams), or the classical
+GEMM, Accelerate's threading), \lv{G3}, \lv{G4} or \lv{G6} (three, four or six
+GEMM streams), or the classical
 blocked GEMM \lv{B2} on its own.  The planner is a dynamic program over the
 first level:
 \begin{equation}\label{eq:dp}
@@ -857,18 +858,18 @@ sub-problems are a level over GEMM streams may instead be pipelined
 sub-problem plus fill and drain.
 
 \paragraph{The error budget.}\label{par:budget}
-Every call takes a number $g$: \lv{max\_growth} in the C and Rust
-interfaces, \lv{auto:}$g$ in the benchmark.  For each candidate plan the
+Every call takes a number $b$: \lv{max\_growth} in the C and Rust
+interfaces, \lv{auto:}$b$ in the benchmark.  For each candidate plan the
 planner computes its predicted \emph{error growth}, the factor
-$\rho^{L-1}\prod_X f_X$ of the error model \eqref{eq:errmodel}: the plan's predicted
+$\rho^{d-1}\prod_X f_X$ of the error model \eqref{eq:errmodel}: the plan's predicted
 error divided by the classical GEMM's predicted error on the same problem,
 so that a growth of $1$ means as accurate as the GEMM, $0.5$ twice as
-accurate, $2$ twice the error.  With $g>0$ the planner returns the fastest
-plan whose growth is at most $g$: $g=1$ asks for a plan no less accurate than
-the GEMM it replaces, $g<1$ for a more accurate one, and $g>1$ admits plans
-up to $g$ times the GEMM's error, which is where the deep plans live and,
+accurate, $2$ twice the error.  With $b>0$ the planner returns the fastest
+plan whose growth is at most $b$: $b=1$ asks for a plan no less accurate than
+the GEMM it replaces, $b<1$ for a more accurate one, and $b>1$ admits plans
+up to $b$ times the GEMM's error, which is where the deep plans live and,
 with Strassen--Winograd's programs, the plans with a $2\times2$ level
-(Section~\ref{sec:sw}).  $g=0$ means the default budget, $1$; a negative $g$ means no budget, the
+(Section~\ref{sec:sw}).  $b=0$ means the default budget, $1$; a negative $b$ means no budget, the
 fastest plan whatever its error (\lv{auto:none} in the benchmark), which is
 how the campaigns before the budget's introduction ran.  So no budget can
 return a less accurate plan than the default: at $13824$ f64 it returns
@@ -908,7 +909,7 @@ passes \eqref{eq:traffic}.  The estimates predicted every measured rectangular c
 
 \paragraph{Sizes and shapes the levels do not divide.}
 A plan runs at the smallest shape its levels divide: every dimension is
-rounded up to the same multiple of $2^a3^b$ ($a\le10$, $b\le3$; 44 candidates),
+rounded up to the same multiple of $2^i3^j$ ($i\le10$, $j\le3$; 44 candidates),
 the operands copied into zeroed matrices and the result copied back, priced at
 $2\times$ the words at $80$~GB/s.  The planner takes the cheapest padded
 candidate, so an $n$ that $3$ does not divide gets a $4\times4$ plan unless
@@ -1553,16 +1554,19 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   Section~\ref{sec:sw}), and the ternary $3\times3\times6$ scheme of Section~\ref{sec:ternary}
 (ternary: coefficients in $\{-1,0,1\}$, from Perminov's catalogue); \lv{X} in
   Table~\ref{tab:ternary} stands for \lv{R} or \lv{T}.
-\item[\lv{G}, \lv{G}$k$, \lv{B2}, \lv{+p}.]  The leaves and the pipeline
-  mark: \lv{G} is one Accelerate GEMM with its own threading, \lv{G}$k$ the
-  products as $k$ single-threaded GEMM streams, \lv{B2} the classical
+\item[\lv{G}, \lv{G3}, \lv{G4}, \lv{G6}, \lv{B2}, \lv{+p}.]  The leaves and the
+  pipeline mark: \lv{G} is one Accelerate GEMM with its own threading,
+  \lv{G3}, \lv{G4}, \lv{G6} the products as three, four or six single-threaded
+  GEMM streams (the digit is the stream count), \lv{B2} the classical
   $2\times2$ blocked product as a level (eight products, the calibration's
   reference); \lv{+p} after a level runs its passes on $p$ threads overlapped
   with the products below.
-\item[Word, traffic.]  A word is one matrix element, an f32 or an f64
-  ($w$ bytes, $4$ or $8$); a level's traffic is the number of words its three
-  passes move, $W(m,k,n)$ of \eqref{eq:traffic}, quoted for a scheme as
-  $W(n,n,n)/n^2$, the words per $n^2$ on a square problem.
+\item[Word, traffic, $\mathcal{B}$.]  A word is one matrix element, an f32 or
+  an f64 ($w$ bytes, $4$ or $8$); a level's traffic is the number of words its
+  three passes move, $W(m,k,n)$ of \eqref{eq:traffic}, quoted for a scheme as
+  $W(n,n,n)/n^2$, the words per $n^2$ on a square problem; $\mathcal{B}$ is the
+  streaming bandwidth the passes reach, in bytes per second, in
+  \eqref{eq:level}.
 \item[Streams, pipelines.]  Section~\ref{sec:machine}: several
   single-threaded GEMM calls side by side, and a level's passes overlapped
   with the products of the level below.
@@ -1570,14 +1574,17 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   product (Section~\ref{sec:intro}), and the same quantity against
   Accelerate's product, which includes the GEMM's own error and is kept only
   for comparison with the earlier campaigns.
-\item[Error growth, \lv{max\_growth}, \lv{auto:}$g$.]  A plan's predicted
-  error divided by the GEMM's, the product of the model's per-level factors
-  $f_X$; the budget $g$ a call sets on it: $0$ the default of $1$, a negative value
-no budget (Section~\ref{sec:planner}).
-\item[$\amp$, $\ginf$, $N_E$, $e_0$.]  The amplification measures of a
-  scheme (root-sum-square and worst-case, Section~\ref{sec:accuracy}); the
-  size at which the error model is calibrated ($2304$) and its classical
-  error scale there.
+\item[Error growth, \lv{max\_growth}, \lv{auto:}$b$.]  A plan's predicted
+  error divided by the GEMM's, the factor $\rho^{d-1}\prod_X f_X$ of the error
+  model, its per-level factors times its depth factor; the budget $b$ a call
+  sets on it: $0$ the default of $1$, a negative value no budget
+  (Section~\ref{sec:planner}).
+\item[$\amp$, $\ginf$, $N_E$, $e_0$, $f_X$, $\rho$, $d$.]  The amplification
+  measures of a scheme (root-sum-square and worst-case,
+  Section~\ref{sec:accuracy}); the size at which the error model
+  \eqref{eq:errmodel} is calibrated ($2304$) and its classical error scale
+  there; the model's factor for level $X$ and its depth factor; the number of
+  fused levels in a plan.
 \item[Kronecker composite.]  The scheme obtained as the Kronecker product of
   two schemes (one level of each, fused), screened out in
   Section~\ref{sec:menu}.

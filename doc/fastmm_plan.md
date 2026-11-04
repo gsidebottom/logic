@@ -1480,3 +1480,23 @@ instead of B (which was also the right operand; beta, tried first, is BLAS's sca
 is W(n,n,n)/n^2 = 3 + r(1/g1g2 + 1/g2g3 + 1/g1g3), written with its arguments everywhere instead of the bare W/n^2; the
 first "words" in the introduction carries "(matrix elements)" and the glossary has an entry "Word, traffic".  (3) Figure 1
 rebuilt with M_ij = S_ij T_ij (the previous entry).
+
+Notation audit after the W cleanup (2026-11-04).  Greg asked whether the depth-factor section (4.2) needed the same word/W
+cleanup.  It has no words or W, but an inventory of every math symbol in the report (scratchpad script symbols.py: each
+letter with the lines it appears on) found five letters carrying two meanings, as B had.  L was the number of fused levels
+in rho^{L-1} (the error model, its text, the planner's growth) and the left pass and matrix everywhere else: now d, a plan
+of d fused levels under the depth factor rho^{d-1}.  T(m,k,n) was the time of a level in the cost equation while T_i are
+the right factors of Figures 1 and 2: now time(m,k,n) and time_below, in words like err(plan; m,k,n) and cost(s).  beta,
+the bandwidth since Nov 3, is BLAS's scalar in the glossary's C <- alpha AB + beta C and the Discussion's "alpha, beta and
+transposes": now a calligraphic B, folded into the Nov 3 commit (67a8f32, amended from da38b7a).  k was the inner dimension
+and the stream count of the leaf Gk in Section 2.4, the planner and the glossary: now the leaves G3, G4, G6 by name (three,
+four or six streams; the glossary says the digit is the stream count).  g was the error budget (max_growth, auto:g) in the
+same planner section as the grids g_1 g_2 g_3 and g_X: now b, and the padding exponents 2^a 3^b of the introduction and the
+planner are 2^i 3^j so that b has one meaning.  In the same section the opening sentence attached "growing like sqrt(k)
+with the inner dimension" to the depth factor; the GEMM's error scale is what grows, and the sentence now says so.
+Glossary: the "Error growth" entry omitted the depth factor (the growth is rho^{d-1} prod f_X, as the planner says); the
+symbols entry gains f_X, rho and d; the word entry gains the bandwidth.  Left alone, with reason: Table 4's r_1, r_2, t_i,
+s_i, p_i in Figure 2 (its names, confined to the figure and its caption); p the pass-thread count beside the P pass; X a
+level in both the math and the ternary table's typewriter X; s and t the shapes in the planner's recurrence.  No number
+changed.  26 pages, no undefined references, Figures 1 and 2 on pages 3 and 7; the build's warnings are the bibliography's
+underfull lines, the same as before.

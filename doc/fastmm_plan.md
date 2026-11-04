@@ -1470,3 +1470,13 @@ reference instead of on a page of its own.
 "The larger expansion belongs at the smaller level" (2026-11-03): Greg asked whether smaller meant size or lower.  It meant
 the lower level, nearer the leaf, whose sub-problems are smaller (SW/D48/G 9.75 n^2 words per side against D48/SW/G 12.25);
 the introduction now says so.
+
+Words, W and the larger products (2026-11-03).  Greg asked three things of the report.  (1) "after two levels its products
+are larger": larger matrix products, not larger scalars; the introduction's shape item now says the block products handed
+down after two 3x3x6 levels are larger matrix products (at 13824, 768x768 by 768x1536 against 864x864 by 864x864 after two
+4x4 levels, 1.4x the work each), which Accelerate runs at a 13% higher rate.  (2) What a word is: one matrix element, an
+f32 or an f64; Section 2.2 now opens by saying so, w is its size in bytes (4 or 8), the bandwidth symbol is a calligraphic B
+instead of B (which was also the right operand; beta, tried first, is BLAS's scalar in the glossary's C <- alpha AB + beta C), W(m,k,n) of Eq. (2) is the words a level's three passes move, and a scheme's traffic
+is W(n,n,n)/n^2 = 3 + r(1/g1g2 + 1/g2g3 + 1/g1g3), written with its arguments everywhere instead of the bare W/n^2; the
+first "words" in the introduction carries "(matrix elements)" and the glossary has an entry "Word, traffic".  (3) Figure 1
+rebuilt with M_ij = S_ij T_ij (the previous entry).

@@ -139,13 +139,16 @@ the bottom.  Mixing pays for three reasons that the measurements separate:
 \item \emph{Order.}  A level writes more data than it reads (the $4\times4$
   scheme three times as much, a $2\times2$ scheme $1.75$ times); the larger expansion
   belongs at the lower level, nearer the leaf, where the sub-problems are
-  smaller, so \lv{SW/D48/G} moves $9.75\,n^2$ words per
+  smaller, so \lv{SW/D48/G} moves $9.75\,n^2$ words (matrix elements) per
   side where \lv{D48/SW/G} moves $12.25\,n^2$ with the same $336$ products.
 \item \emph{Shape.}  A rectangular level hands down rectangular products; the
   $3\times3\times6$ cycle keeps $0.741$ of the products per level against the
   $4\times4$ scheme's $0.75$, moves $11.89\,n^2$ words against $12$, stays under
-  $58$ streams per pass against $64$, and after two levels its products are
-  larger, so Accelerate runs them 13\% faster.
+  $58$ streams per pass against $64$, and after two levels the block products
+  it hands down are larger matrix products (at $n=13824$, $768\times768$ by
+  $768\times1536$ against $864\times864$ by $864\times864$ after two
+  $4\times4$ levels, $1.4\times$ the work each), which Accelerate runs at a
+  13\% higher rate.
 \item \emph{Accuracy.}  Each level multiplies the leaf error by a factor set by
   the scheme and the point chosen in its orbit; the $3\times3\times6$
   algorithm's factor is $0.74$--$0.79$ of the $4\times4$ algorithm's per level in
@@ -503,20 +506,26 @@ memory system hides.
 
 \subsection{The cost of a level}
 
-Write $w$ for the word size and $B$ for the streaming bandwidth the passes
-reach.  A level on an $(m\times k)(k\times n)$ problem moves
+A \emph{word} is one matrix element, an f32 or an f64; write $w$ for its
+size in bytes ($4$ or $8$) and $\mathcal{B}$ for the streaming bandwidth the
+passes reach, in bytes per second.  A level on an $(m\times k)(k\times n)$ problem
+moves
 \begin{equation}\label{eq:traffic}
 W(m,k,n) \;=\; (g_1g_2+r)\,\frac{mk}{g_1g_2} \;+\; (g_2g_3+r)\,\frac{kn}{g_2g_3}
 \;+\; (g_1g_3+r)\,\frac{mn}{g_1g_3}
 \end{equation}
-words through its three passes, that is $n^2\bigl(3 + r(\tfrac{1}{g_1g_2} +
-\tfrac{1}{g_2g_3} + \tfrac{1}{g_1g_3})\bigr)$ on a square problem, and costs
+words through its three passes (each pass reads its input blocks once and
+writes its output blocks once), that is $W(n,n,n) = n^2\bigl(3 +
+r(\tfrac{1}{g_1g_2} + \tfrac{1}{g_2g_3} + \tfrac{1}{g_1g_3})\bigr)$ on a
+square problem, and takes
 \begin{equation}\label{eq:level}
 T(m,k,n) \;=\; r\,T_{\text{below}}\!\Bigl(\frac{m}{g_1},\frac{k}{g_2},
-\frac{n}{g_3}\Bigr) \;+\; \frac{w\,W(m,k,n)}{B}.
+\frac{n}{g_3}\Bigr) \;+\; \frac{w\,W(m,k,n)}{\mathcal{B}}
 \end{equation}
-Two numbers of a scheme decide the second term: its \emph{traffic}
-$W/n^2$ and its \emph{streams}, the number of blocks a pass reads and writes
+seconds.  Two numbers of a scheme decide the second term: its \emph{traffic},
+the words it moves per $n^2$ on a square problem, $W(n,n,n)/n^2 = 3 +
+r(\tfrac{1}{g_1g_2} + \tfrac{1}{g_2g_3} + \tfrac{1}{g_1g_3})$, and its
+\emph{streams}, the number of blocks a pass reads and writes
 at once, $g_1g_2+r$, $g_2g_3+r$ and $g_1g_3+r$.  Beyond about $64$ streams a
 pass loses bandwidth: a $\mm{5\times5\times5:93}$ level's $118$-stream passes
 ran at half the bandwidth of the $64$-stream passes of the $4\times4$ scheme.
@@ -1550,6 +1559,10 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   $2\times2$ blocked product as a level (eight products, the calibration's
   reference); \lv{+p} after a level runs its passes on $p$ threads overlapped
   with the products below.
+\item[Word, traffic.]  A word is one matrix element, an f32 or an f64
+  ($w$ bytes, $4$ or $8$); a level's traffic is the number of words its three
+  passes move, $W(m,k,n)$ of \eqref{eq:traffic}, quoted for a scheme as
+  $W(n,n,n)/n^2$, the words per $n^2$ on a square problem.
 \item[Streams, pipelines.]  Section~\ref{sec:machine}: several
   single-threaded GEMM calls side by side, and a level's passes overlapped
   with the products of the level below.

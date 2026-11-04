@@ -1458,3 +1458,11 @@ within 1% at 1.9x over Accelerate with half the GEMM's error.  The body's other 
 Strassen level" -> "without a 2x2 level" (model validation, results), "the Strassen-topped plans" -> "the plans with
 Strassen-Winograd's 2x2 level on top" (planner), "the Strassen plan's 3.27" -> "that plan's" (the plan is named just before),
 and the results item now says that with the dyadic point's programs SW/R363+3/R633/G6 passes the default budget.
+
+Level names spelled out (2026-11-03).  Greg asked what the D and R of D48 and R336 stand for; the paper never said.  The
+introduction's paragraph that defines the names and the glossary's entry on the levels now say it: D for the scheme's authors,
+Dumas, Pernet and Sedoglavic, 48 for its rank; R for rectangular, the digits the grid g1 x g2 x g3 the level cuts the problem
+into (two conventions, chosen on Oct 24 and Oct 28).  Figure 1's level-3 product reads M_ij = S_ij T_ij like the other bands,
+at Greg's suggestion.  The two added lines pushed Figure 2 from the top of page 6 (text below it) to a float page: its source
+now sits before the "Each pass is fused" paragraph and it is [t] rather than [tp], so it lands at the top of the page after its
+reference instead of on a page of its own.

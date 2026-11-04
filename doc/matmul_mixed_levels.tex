@@ -194,7 +194,7 @@ the bottom.  Mixing pays for three reasons that the measurements separate:
 \node at (6.25,-7.4) {$\times$};
 \matbox{7.6}{-6.6}{1.6}{0.8}{3}{3}{$T_{ij}$}{$3\times3$ grid\\ $384\times768$}
 \node at (8.95,-7.4) {$=$};
-\matbox{10.3}{-6.6}{1.6}{1.6}{6}{3}{$M_{ij}$}{$6\times3$ grid\\ $384\times768$}
+\matbox{10.3}{-6.6}{1.6}{1.6}{6}{3}{$M_{ij}=S_{ij}T_{ij}$}{$6\times3$ grid\\ $384\times768$}
 \node[anchor=west,align=left] at (11.75,-7.4) {$7\cdot40=280$ sub-problems\\ $(2304\times1152)(1152\times2304)$};
 % between bands 3 and 4
 \draw[down] (3.7,-8.35) -- (3.7,-9.7);
@@ -276,11 +276,13 @@ programs, calibrations and raw results are in the repository \cite{logic}.
 \paragraph{The result in three tables.}
 Plans are written from the top of the problem down to the leaves, the levels
 separated by slashes.  \lv{D48} is a level of the accurate
-$\mm{4\times4\times4:48}$ scheme: it cuts $A$, $B$ and $C$ into $4\times4$
+$\mm{4\times4\times4:48}$ scheme (\lv{D} for its authors, Dumas, Pernet and
+Sedoglavic, $48$ for its rank): it cuts $A$, $B$ and $C$ into $4\times4$
 grids of blocks and forms the product with $48$ block products instead of
 $64$.  \lv{R336}, \lv{R363} and \lv{R633} are levels of the accurate
-$\mm{3\times3\times6:40}$ scheme in its three orientations, named by the grids
-they cut $A$ and $B$ into: \lv{R363} cuts $A$ $3\times6$ and $B$ $6\times3$
+$\mm{3\times3\times6:40}$ scheme in its three orientations (\lv{R} for
+rectangular), named by the grids they cut $A$ and $B$ into: \lv{R363} cuts
+$A$ $3\times6$ and $B$ $6\times3$
 and uses $40$ block products instead of $54$.  \lv{SW} is a $2\times2$
 level ($2\times2$ grids, $7$ products instead of $8$; Strassen--Winograd's
 programs in the campaigns of this report, Section~\ref{sec:sw}).  \lv{G} is the leaf,
@@ -424,13 +426,7 @@ per side, and the three programs are what a level executes
 \item the products $M_i=S_iT_i$ run (GEMMs, or a level below);
 \item the $P$ pass reads the $r$ products and writes the $g_1g_3$ blocks of $C$.
 \end{itemize}
-Each pass is \emph{fused}: one loop over the element positions of a block,
-with the whole program evaluated on scalars in registers at each position.
-A pass therefore reads every input block once and writes every output block
-once, and the program's operation count costs only arithmetic, which the
-memory system hides.
-
-\begin{figure}[tp]
+\begin{figure}[t]
 \centering
 \begin{tikzpicture}[x=1cm,y=1cm,scale=0.95,
   every node/.style={font=\footnotesize},
@@ -496,6 +492,13 @@ compute ($27$ additions and $6$ halvings here; $27$ and $9$ scalings in the
 library's cancellation-free programs).}
 \label{fig:lrp}
 \end{figure}
+
+Each pass is \emph{fused}: one loop over the element positions of a block,
+with the whole program evaluated on scalars in registers at each position.
+A pass therefore reads every input block once and writes every output block
+once, and the program's operation count costs only arithmetic, which the
+memory system hides.
+
 
 \subsection{The cost of a level}
 
@@ -1532,8 +1535,10 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   leaf, the GEMM; the notation is in Section~\ref{sec:intro}.
 \item[\lv{D48}, \lv{R336}, \lv{R363}, \lv{R633}, \lv{SW}, \lv{T336},
   \lv{T363}, \lv{T633}, \lv{X}.]  The levels of the menu (Table~\ref{tab:levels}):
-  the accurate $4\times4$ scheme, the accurate $3\times3\times6$ scheme in
-  its three orientations, the $2\times2$ level (Strassen--Winograd's programs in
+  the accurate $4\times4$ scheme (\lv{D} for its authors, Dumas, Pernet and
+  Sedoglavic, $48$ for its rank), the accurate $3\times3\times6$ scheme in
+  its three orientations (\lv{R} for rectangular, the digits the grid
+  $g_1\times g_2\times g_3$ it cuts the problem into), the $2\times2$ level (Strassen--Winograd's programs in
   the campaigns, DPS's dyadic accurate point since November~2,
   Section~\ref{sec:sw}), and the ternary $3\times3\times6$ scheme of Section~\ref{sec:ternary}
 (ternary: coefficients in $\{-1,0,1\}$, from Perminov's catalogue); \lv{X} in

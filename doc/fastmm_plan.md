@@ -1466,3 +1466,7 @@ into (two conventions, chosen on Oct 24 and Oct 28).  Figure 1's level-3 product
 at Greg's suggestion.  The two added lines pushed Figure 2 from the top of page 6 (text below it) to a float page: its source
 now sits before the "Each pass is fused" paragraph and it is [t] rather than [tp], so it lands at the top of the page after its
 reference instead of on a page of its own.
+
+"The larger expansion belongs at the smaller level" (2026-11-03): Greg asked whether smaller meant size or lower.  It meant
+the lower level, nearer the leaf, whose sub-problems are smaller (SW/D48/G 9.75 n^2 words per side against D48/SW/G 12.25);
+the introduction now says so.

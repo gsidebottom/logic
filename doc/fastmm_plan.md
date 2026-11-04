@@ -1450,3 +1450,11 @@ the minus sign, so (38) is right and only Table 4's t_3 is off (with the printed
 is row 7, t_6's).  The caption now cites that row.
 Greg asked why the r's became q's: no reason beyond caution (r beside an L/R/P explanation); at his request the figure keeps
 Table 4's r_1, r_2, with a parenthesis in the caption that they are scratch values of the left program (2026-11-03).
+
+Abstract wording (2026-11-03).  Greg: "at 13824 f64 it finds a plan as fast as the Strassen-topped one" does not say what the
+Strassen-topped one is.  The abstract now says it: the fastest plan there puts a 2x2 level over two 3x3x6 levels and, with
+Strassen-Winograd's programs in that level, had the GEMM's own error, so the budget took two 3x3x6 levels alone, as fast to
+within 1% at 1.9x over Accelerate with half the GEMM's error.  The body's other shorthands went the same way: "plans without a
+Strassen level" -> "without a 2x2 level" (model validation, results), "the Strassen-topped plans" -> "the plans with
+Strassen-Winograd's 2x2 level on top" (planner), "the Strassen plan's 3.27" -> "that plan's" (the plan is named just before),
+and the results item now says that with the dyadic point's programs SW/R363+3/R633/G6 passes the default budget.

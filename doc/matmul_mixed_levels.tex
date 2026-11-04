@@ -82,9 +82,12 @@ $1.71\times$.  Measured against the exact product, the $3\times3\times6$-family
 plan that runs in the time of the best plan from the $4\times4$ scheme alone
 has 23--43\% less error at every size and precision tried, and less than the
 GEMM's own.  The planner's default budget, no less accurate than the GEMM,
-keeps every choice on that side: at $13824$ f64 it finds a plan as fast as
-the Strassen-topped one, $1.9\times$ over Accelerate, with half the GEMM's
-error.  Replacing Strassen--Winograd's programs in the $2\times2$ level by the
+keeps every choice on that side: at $13824$ f64 the fastest plan puts a
+$2\times2$ level over two $3\times3\times6$ levels and, with
+Strassen--Winograd's programs in that level, had the GEMM's own error, so the
+budget took two $3\times3\times6$ levels alone, as fast to within 1\% at
+$1.9\times$ over Accelerate and with half the GEMM's error.  Replacing
+Strassen--Winograd's programs in the $2\times2$ level by the
 dyadic accurate point of Dumas, Pernet and Sedoglavic cuts the error of the
 plans with that level on top by 25--31\% at the same time, below the GEMM's.
 As a test of the opposite
@@ -742,7 +745,7 @@ $\rho$ ($2.19$ in f32, $1.53$ in f64) by which the product of the factors is
 multiplied once per level after the first, $\rho^{L-1}$ for $L$ fused levels
 in \eqref{eq:errmodel}.  Against the exact errors of the campaigns' plans at
 $3456$--$13824$ (Tables~\ref{tab:results} and \ref{tab:budget}) the model
-predicts the plans without a Strassen level within $0.66$--$1.12$ of the
+predicts the plans without a $2\times2$ level within $0.66$--$1.12$ of the
 measurement (the under-predictions are at $13824$ f64, where the GEMM's own
 error exceeds its $\sqrt{k}$ extrapolation by $1.3\times$) and over-predicts
 the plans with one by up to $1.6\times$ in f32, the safe side; the growth
@@ -860,8 +863,9 @@ return a less accurate plan than the default: at $13824$ f64 it returns
 the default returns \lv{R363+3/R336/G3} at $0.52\times$ in the same time
 (Table~\ref{tab:budget}).  The growth is the model's estimate, good to about
 25\% (Section~\ref{sec:accuracy}), so a budget is a target rather than a
-guarantee, and near a boundary the choice is not robust; the Strassen-topped
-plans sit at $1.0$--$1.1$ and the plans without one below $0.85$, so the
+guarantee, and near a boundary the choice is not robust; the plans with
+Strassen--Winograd's $2\times2$ level on top sit at $1.0$--$1.1$ and the plans
+without one below $0.85$, so the
 default separates the two families with the margin the model has (with the
 dyadic point's programs the $2\times2$-topped plans measure $0.6$--$1.0$ and
 most of them pass, Section~\ref{sec:sw}).
@@ -998,14 +1002,15 @@ item), and its top six at $13824$ f32 are all $3\times3\times6$-family plans.
   ($1.25\cdot10^{-14}$ against $8.28\cdot10^{-15}$; the GEMM's own is
   $1.23\cdot10^{-14}$).  The default budget rejects it (predicted growth
   $1.07$) and takes \lv{R363+3/R336/G3}, a plan no earlier campaign had
-  measured: $3.30$~s against the Strassen plan's $3.27$ in the same run, with
+  measured: $3.30$~s against that plan's $3.27$ in the same run, with
   error $6.40\cdot10^{-15}$, half the GEMM's (Table~\ref{tab:budget}).  At
   $3456$ f64 the same happens: \lv{R363/G4} at $0.072$~s and $0.58\times$ the
-  GEMM's error replaces \lv{SW+3/R363/G6} at $0.071$~s and $0.97\times$.  The
-  Strassen plans remain available under an explicit budget of $2$ or none.
-  With the dyadic point's programs (Section~\ref{sec:sw}) the same plan
-  measures $8.66\cdot10^{-15}$, $0.70\times$ the GEMM's, in the same time.
-\item Every plan without a Strassen level has less error than the GEMM's own
+  GEMM's error replaces \lv{SW+3/R363/G6} at $0.071$~s and $0.97\times$.  With
+  Strassen--Winograd's programs those plans remain available under an explicit
+  budget of $2$ or none; with the dyadic point's programs
+  (Section~\ref{sec:sw}) \lv{SW/R363+3/R633/G6} measures $8.66\cdot10^{-15}$,
+  $0.70\times$ the GEMM's, in the same time, and passes the default budget.
+\item Every plan without a $2\times2$ level has less error than the GEMM's own
   in both precisions ($2.26$ against $3.85\cdot10^{-6}$ at $6912$ f32, $2.46$
   against $6.40\cdot10^{-6}$ at $13824$ f32, $3.75$ against
   $6.69\cdot10^{-15}$ at $6912$ f64, $5.81$ against $1.23\cdot10^{-14}$ at

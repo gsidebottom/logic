@@ -1500,3 +1500,13 @@ s_i, p_i in Figure 2 (its names, confined to the figure and its caption); p the 
 level in both the math and the ternary table's typewriter X; s and t the shapes in the planner's recurrence.  No number
 changed.  26 pages, no undefined references, Figures 1 and 2 on pages 3 and 7; the build's warnings are the bibliography's
 underfull lines, the same as before.
+
+README for matmul/fastmm (2026-11-04).  Greg asked for a README, after pushing the repository and asking that the mm444
+paper's new Section 6.1 point at the library instead of its "GS: where the library will be available" TODO (the paper
+now cites the directory as a bib entry, Sidebottom:2026:fastmm, measurements at commit 19fb30e).  The README says what the
+library is (fused levels of D48, R336/R363/R633, SW over Accelerate GEMM leaves, planner, budget), the measured 1.38-1.89x
+at 6912-13824 under the default budget, the fused-pass idea and the 12 n^2 against 38 n^2 words, the plan-name syntax,
+the requirements (Apple silicon, clang, Accelerate, Python with numpy, a PLinOpt clone at matmul/dps48/plinopt for the
+4x4 programs), the build and bench_fmm usage with its methods and the FMM_* variables, the library's entry points, the
+files, and which logs the mm444 paper's numbers come from (orig315_2026-10-25, accuracy_campaign_2026-10-25,
+altbasis_sim_2026-10-31, the report's results table).  The Rust crate keeps its own README.  Not pushed.

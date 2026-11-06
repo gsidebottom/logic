@@ -10,6 +10,7 @@ pub mod pencil;
 pub mod probe;
 pub mod dual;
 pub mod flip;
+pub mod flip_group;
 pub mod floors;
 pub mod mm55;
 pub mod zrescore;

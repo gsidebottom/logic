@@ -1,0 +1,7 @@
+c flip descend: <4,4,4> from rank 49 (/Users/greg/projects/logic/matmul/external/strassen2-4x4x49.bits), save<=49, write<=48, lift<=0, 12 threads, 5 min, group-moves 0 shuffles 2
+c [     60s] reductions 0 | landings 0 | distinct [] | trajectories 1253 | diffuse-flips 14.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c [    120s] reductions 0 | landings 0 | distinct [] | trajectories 2514 | diffuse-flips 29.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c [    181s] reductions 0 | landings 0 | distinct [] | trajectories 3775 | diffuse-flips 44.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c [    241s] reductions 0 | landings 0 | distinct [] | trajectories 5037 | diffuse-flips 60.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c final [    300s]: reductions 0 | landings 0 | trajectories 6273 | diffuse-flips 74.8M | worker min rank 49 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c DONE: min rank 49; distinct landings by rank: []

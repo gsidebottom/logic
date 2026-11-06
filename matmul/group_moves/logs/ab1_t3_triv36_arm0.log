@@ -1,0 +1,11 @@
+c flip descend: <3,3,4> from rank 36 (trivial), save<=30, write<=29, lift<=0, 12 threads, 5 min, group-moves 0 shuffles 2
+c [      0s] new min rank 30 (landing #1)
+c [    0.0s] worker min rank 30
+c [      7s] new min rank 29 (landing #1)
+c [    6.7s] worker min rank 29
+c [     60s] reductions 5568 | landings 1593 | distinct [(29, 362), (30, 1000)] | trajectories 1286 | diffuse-flips 17.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c [    120s] reductions 10880 | landings 3530 | distinct [(29, 760), (30, 2064)] | trajectories 2562 | diffuse-flips 33.7M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c [    180s] reductions 16177 | landings 5502 | distinct [(29, 1082), (30, 3140)] | trajectories 3840 | diffuse-flips 50.3M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c [    240s] reductions 21449 | landings 7426 | distinct [(29, 1358), (30, 4188)] | trajectories 5106 | diffuse-flips 66.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c final [    300s]: reductions 26690 | landings 9394 | trajectories 6379 | diffuse-flips 83.5M | worker min rank 29 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c DONE: min rank 29; distinct landings by rank: [(29, 1560), (30, 5254)]

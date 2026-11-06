@@ -1,0 +1,7 @@
+c flip WALK: <3,3,4> rank 29, 1 seeds, 0 archived, 12 threads, 5 min
+c [     60s] landings 297187 | new distinct 1421 | pool 1421 (+1421) | group g1 13392 g2sep 16846 g2shared 37382 shuffles 0 saved 67697
+c [    120s] landings 584219 | new distinct 1593 | pool 1593 (+1593) | group g1 26243 g2sep 33270 g2shared 73191 shuffles 0 saved 132870
+c [    181s] landings 865680 | new distinct 1779 | pool 1779 (+1779) | group g1 38766 g2sep 49131 g2shared 107678 shuffles 0 saved 195819
+c [    241s] landings 1153228 | new distinct 1923 | pool 1923 (+1923) | group g1 51671 g2sep 65648 g2shared 143313 shuffles 0 saved 260947
+c final [    300s]: landings 1437018 | new distinct 2073 | group g1 64651 g2sep 81988 g2shared 178330 shuffles 0 saved 325372
+c walk done: 2073 new distinct schemes

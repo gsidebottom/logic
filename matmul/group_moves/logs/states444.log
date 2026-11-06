@@ -1,0 +1,17 @@
+c flip descend: <4,4,4> from rank 64 (trivial), save<=56, write<=56, lift<=0, 12 threads, 0.75 min, group-moves 0 shuffles 2
+c [      0s] new min rank 56 (landing #1)
+c [    0.3s] worker min rank 56
+c [      0s] new min rank 55 (landing #1)
+c [    0.3s] worker min rank 55
+c [      1s] new min rank 54 (landing #1)
+c [    0.7s] worker min rank 54
+c [      1s] new min rank 53 (landing #1)
+c [    1.4s] worker min rank 53
+c [      4s] new min rank 52 (landing #1)
+c [    4.0s] worker min rank 52
+c [      5s] new min rank 51 (landing #1)
+c [    5.3s] worker min rank 49
+c [      5s] new min rank 50 (landing #1)
+c [      5s] new min rank 49 (landing #1)
+c final [     45s]: reductions 3979 | landings 3344 | trajectories 1105 | diffuse-flips 15.1M | worker min rank 49 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+c DONE: min rank 49; distinct landings by rank: [(49, 278), (50, 687), (51, 569), (52, 436), (53, 333), (54, 227), (55, 211), (56, 187)]

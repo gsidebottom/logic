@@ -1,0 +1,24 @@
+=== build 18:05:20
+   Compiling logic v0.1.0 (/Users/greg/projects/logic)
+    Finished `release` profile [optimized] target(s) in 7.51s
+=== tests 18:05:27
+test cook_pbp::tests::detect_and_emit_flipped_embedded_pigeonhole ... ok
+test flip_group::tests::g1_three_terms_to_two ... ok
+test flip_group::tests::factorize_reproduces_matrix ... ok
+test flip::tests::moves_preserve_validity ... ok
+test flip::tests::roundtrip_bits_summands ... ok
+test flip::tests::merge_and_guided_preserve_validity ... ok
+test flip::tests::descends_below_trivial_rank ... ok
+test flip_group::tests::moves_preserve_validity ... ok
+test flip_group::tests::rectangular_moves_preserve_validity ... ok
+test flip_group::tests::line_cost_against_exact_pencil_rank ... ok
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 429 filtered out; finished in 5.10s
+=== t5 18:05:48
+=== t5_walk29_arm0 start 18:05:48
+    exit 0 c walk done: 2570 new distinct schemes
+=== t5_walk29_arm1 start 18:10:48
+    exit 0 c walk done: 2073 new distinct schemes
+=== t5_walk29_arm3 start 18:15:48
+    exit 0 c walk done: 1956 new distinct schemes
+=== t5 done 18:20:48
+chain exit 0 18:20:48

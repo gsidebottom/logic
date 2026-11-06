@@ -1,0 +1,27 @@
+=== t1_triv64_arm0 start 16:56:11
+    exit 124 4 min-rank lines; c final [    300s]: reductions 82127 | landings 1832 | trajectories 92239 | diffuse-flips 1474.1M | worker min rank 49 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0
+=== t1_triv64_arm1 start 17:02:41
+    exit 0 3 min-rank lines; c DONE: min rank 64; distinct landings by rank: []
+=== t1_triv64_arm3 start 17:07:44
+    exit 0 6 min-rank lines; c DONE: min rank 64; distinct landings by rank: []
+=== t3_triv36_arm0 start 17:12:46
+    exit 0 3 min-rank lines; c DONE: min rank 29; distinct landings by rank: [(29, 1560), (30, 5254)]
+=== t3_triv36_arm1 start 17:18:47
+    exit 0 3 min-rank lines; c DONE: min rank 29; distinct landings by rank: [(29, 974), (30, 3823)]
+=== t3_triv36_arm3 start 17:24:32
+    exit 0 3 min-rank lines; c DONE: min rank 29; distinct landings by rank: [(29, 1063), (30, 3960)]
+=== t2_str49_arm0 start 17:30:06
+    exit 0 1 min-rank lines; c DONE: min rank 49; distinct landings by rank: []
+=== t2_str49_arm1 start 17:35:06
+    exit 0 1 min-rank lines; c DONE: min rank 49; distinct landings by rank: []
+=== t2_str49_arm3 start 17:40:06
+    exit 0 1 min-rank lines; c DONE: min rank 49; distinct landings by rank: []
+=== t1-t3 done 17:45:06
+=== t4_walk47_arm0 start 17:45:06
+    exit 0 c walk done: 3 new distinct schemes
+=== t4_walk47_arm1 start 17:50:06
+    exit 0 c walk done: 3 new distinct schemes
+=== t4_walk47_arm3 start 17:55:06
+    exit 0 c walk done: 3 new distinct schemes
+=== t4 done 18:00:06
+runner exit 0

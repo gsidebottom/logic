@@ -14,6 +14,14 @@
 //!   --seek N          reduction-seek attempts per round (default 4000)
 //!   --stall N         stalls before trajectory restart (default 16)
 //!   --seed S          RNG seed (default 1)
+//!   --trivial         start from the trivial n1*n2*n3-product scheme
+//!                     (no --seed-file needed)
+//!   --write-at R      write landing files only at rank <= R (default:
+//!                     --save-at; reporting still covers every rank <= save-at)
+//!   --group-moves M   subspace re-decomposition moves (src/flip_group.rs):
+//!                     bit 0 group reductions, bit 1 plateau shuffles
+//!                     (default 0 = the engine before 2026-11-06)
+//!   --shuffles N      plateau line shuffles per stalled round (default 2)
 //! example:
 //!   flip 4 4 4 --seed-file matmul/seeds4triv/trivial64.bits \
 //!        --minutes 90 --threads 10
@@ -52,6 +60,8 @@ fn main() {
         seek_attempts: arg_val(&args, "--seek").unwrap_or(4000),
         stall_limit: arg_val(&args, "--stall").unwrap_or(16),
         seed: arg_val(&args, "--seed").unwrap_or(1),
+        group_moves: arg_val(&args, "--group-moves").unwrap_or(0),
+        shuffles: arg_val(&args, "--shuffles").unwrap_or(2),
     };
     if args.iter().any(|a| a == "--walk") {
         let seeds_dir: String =
@@ -119,8 +129,13 @@ fn main() {
         println!("c walk done: {n} new distinct schemes");
         return;
     }
-    let seed_file: String = arg_val(&args, "--seed-file")
-        .expect("--seed-file required");
+    let trivial = args.iter().any(|a| a == "--trivial");
+    let seed_file: String = if trivial {
+        "trivial".to_string()
+    } else {
+        arg_val(&args, "--seed-file").expect("--seed-file or --trivial required")
+    };
+    let write_at: usize = arg_val(&args, "--write-at").unwrap_or(cfg.save_at);
     let out: String =
         arg_val(&args, "--out").unwrap_or_else(|| "matmul/found4r".into());
     let lift_below: usize = arg_val(&args, "--lift-below").unwrap_or(48);
@@ -128,24 +143,50 @@ fn main() {
         arg_val(&args, "--matmul-dir").unwrap_or_else(|| "matmul".into());
     std::fs::create_dir_all(&out).unwrap();
 
-    let txt = std::fs::read_to_string(&seed_file).expect("seed file");
-    let bits: Vec<u8> = txt
-        .split_whitespace()
-        .last()
-        .unwrap()
-        .bytes()
-        .map(|b| b - b'0')
-        .collect();
-    let seed = bits_to_summands(&bits, &cfg);
+    let seed: Vec<Summand> = if trivial {
+        let (n1, n2, n3) = (cfg.n1, cfg.n2, cfg.n3);
+        let mut s = Vec::with_capacity(n1 * n2 * n3);
+        for i in 0..n1 {
+            for k in 0..n2 {
+                for j in 0..n3 {
+                    s.push([
+                        1u32 << (i * n2 + k),
+                        1u32 << (k * n3 + j),
+                        1u32 << (i * n3 + j),
+                    ]);
+                }
+            }
+        }
+        s
+    } else {
+        let txt = std::fs::read_to_string(&seed_file).expect("seed file");
+        let bits: Vec<u8> = txt
+            .split_whitespace()
+            .last()
+            .unwrap()
+            .bytes()
+            .map(|b| b - b'0')
+            .collect();
+        bits_to_summands(&bits, &cfg)
+    };
+    {
+        // the seed must be a scheme: check it against the Brent equations
+        use logic::anf::{brent, verify, Dims};
+        let anf = brent(Dims { n1: cfg.n1, n2: cfg.n2, n3: cfg.n3, r: seed.len() });
+        assert_eq!(verify(&anf, &summands_to_bits(&seed, &cfg)), 0, "seed fails Brent");
+    }
     println!(
-        "c flip descend: <{},{},{}> from rank {} ({}), save<={}, lift<={}, {} threads, {} min",
-        cfg.n1, cfg.n2, cfg.n3, seed.len(), seed_file, cfg.save_at,
-        lift_below, cfg.threads, cfg.minutes
+        "c flip descend: <{},{},{}> from rank {} ({}), save<={}, write<={}, lift<={}, {} threads, {} min, group-moves {} shuffles {}",
+        cfg.n1, cfg.n2, cfg.n3, seed.len(), seed_file, cfg.save_at, write_at,
+        lift_below, cfg.threads, cfg.minutes, cfg.group_moves, cfg.shuffles
     );
 
     let record = cfg.record;
     let outdir = out.clone();
     let (counts, min_rank) = descend_campaign(seed, cfg, |rk, bits, seq| {
+        if rk > write_at && rk >= record {
+            return;
+        }
         let s: String =
             bits.iter().map(|b| (b + b'0') as char).collect();
         let path = format!("{outdir}/r{rk}-{seq:05}.bits");

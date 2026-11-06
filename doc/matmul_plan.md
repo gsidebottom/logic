@@ -2597,6 +2597,39 @@ the two source papers for this track):
   22.6274 x49 and nothing lower; accurate role 0, the same role, 22.6274 x248 of 10,000.  Not covered: whole-orbit searches on the other factors.  gamma_inf,2 is gamma48's only objective; gamma_inf,inf was
   minimized only over the 648 dyadic points; gamma_2,inf and gamma_2,2 were never objectives.  `results_turns_2026-11-01.txt`.
 
+- **Group re-decomposition moves (Tomar's lemma line, 2026-11-06): built, measured, NEGATIVE at equal budget.**
+  Alexandre's remark on arXiv:2610.11823 ("a really interesting lemma ... allows to reduce several tensor
+  decomposition rank in fmm.univ-lille.fr as a by product and the extension of Blaser's results") is its Lemma 2.1,
+  the quotient (capacity) lemma: at most r - R(S) first factors of a rank-r decomposition lie in a subspace S
+  (Section 3.4 turns it around into upper bounds R(S) <= 23 - k for the 3x3 classes, 107 of 111 exact), together
+  with the classical projection lemma his new page projalongmode.html states (<n,m,p+1:r> gives <n,m,p:r-m>, and
+  the two transposes); his fmm_digest commits b305bcf (Nov 4, 24 entries) and 7b560e3 (Nov 6, 38 entries) lower
+  catalog entries by that projection (<9,17,18> 1600 -> 1591, then <9,17,17> 1591 - 17 = 1574).  No use at our
+  sizes: every projection of a catalog entry lands above the entry (<3,3,6>:40 -> <3,3,5> 37 against 36; <4,4,5>:61
+  -> 4x4 57), and lifting optimal small schemes is the paper's completion search, not ours.  What could transfer is
+  the lemma's object: the partial sum of the terms whose factors lie in a subspace S of one slot's space can be
+  re-decomposed with factors in S.  Move 1 (src/flip_group.rs, flag --group-moves, default off = the old engine):
+  G1 same-factor groups (k terms u x b_i x c_i -> rank(sum b_i c_i^T) terms; k = 2 is the merge), G2 lines
+  {p, q, p+q} with k >= 3 terms re-decomposed at the exact pencil rank of (M_p, M_q) over F2 (greedy shared
+  rank-ones by the determinant lemma; equals pencil_rank_brute on 300 random 4x5 pencils), plus plateau
+  "shuffles" (cost = k re-decompositions) with bit 1.  A k = 3 line reduction is one flip + one merge; k >= 4 goes
+  beyond the flip graph.  Validity by construction, the collector re-verifies Brent; 10 tests.  Equal budget (12
+  threads, 5 min, seed 7, one run per arm, matmul/group_moves/README.md): 4x4 from trivial 64, baseline 49 at
+  211 s (1 of 92 k trajectories), moves 56 / 55 with 61 % / 52 % of the diffusion flips; <3,3,4> from trivial 36:
+  1560 distinct 29s against 974 / 1063, per trajectory 0.245 against 0.210 / 0.223 (the moves took 16 % of the
+  reductions, G2 ones the baseline has no move for, without changing what a trajectory reaches); Strassen^2 49:
+  nothing in any arm, the group scan never fires and halves the throughput; walk at 47: 3 new 47s per arm (7
+  distinct, 14-47 summands from the seeds), no 46; walk at 29 from AlphaTensor's F2 <3,3,4>: 2570 against
+  2073 / 1956 new distinct 29s, no 28.  Direct probe (src/bin/group_probe.rs) on baseline-visited states, <3,3,4>
+  1386 states at 29-30 and 4x4 2928 states at 49-56: the baseline reducer lowers 668 / 2385, the group moves
+  (alone or after 200 shuffles) 461 / 1986, GROUP-ONLY 0 / 0, although 96 % / 91 % of the states carry a line of
+  k >= 4 terms (6.8 k / 33.7 k such lines).  Verdict: exact re-decomposition of dimension <= 2 factor subspaces
+  never opens a state flips + merges cannot open, at either format, and costs 0.2-0.4 ms per scan (2x slower
+  guided rounds).  Not pursued: planes (dimension 3, a 3-slice tensor rank, tiny instances) would be the next
+  step, and the probe is the cheap test to run first.  Side fixes: workers check the stop flag every round (the
+  baseline arm hung 90 s past its budget at exit), and a walk landing below the target rank is verified and
+  announced instead of discarded.
+
 ## 1. The thesis — why native representation should win
 
 The CNF costs local search a 43× variable blowup (26,541 vs 621) — flips

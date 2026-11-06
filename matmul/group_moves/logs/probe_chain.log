@@ -1,0 +1,25 @@
+=== build 18:21:01
+    Finished `release` profile [optimized] target(s) in 0.49s
+=== collect <3,3,4> states (60 s, baseline engine) 18:21:02
+    exit 0 c DONE: min rank 29; distinct landings by rank: [(29, 355), (30, 1031)]
+=== collect <4,4,4> states (45 s, baseline engine) 18:22:02
+    exit 0 c DONE: min rank 49; distinct landings by rank: [(49, 278), (50, 687), (51, 569), (52, 436), (53, 333), (54, 227), (55, 211), (56, 187)]
+=== probe <3,3,4> 18:22:47
+    exit 0
+c group_probe <3,3,4>: 1386 schemes from /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/move1/states334 by rank {29: 355, 30: 1031}; tries 3 shuffles 200 seek 100000 threads 12
+c census over 1386 schemes: same-factor groups by k {3: 421, 4: 21} | lines by k {3: 43790, 4: 6264, 5: 384, 6: 162} | schemes with a line of k >= 4: 1324
+c 1386 schemes in 17.2s
+c lowered by: base 668 (3 tries x seek 100000) | group alone 290 | 200 shuffles+group 461 | guided+moves 671
+c cross-tab base vs any group move: both 461 | base only 207 | GROUP ONLY 0 | neither 718 (group any 461)
+c guided+moves vs base: lowered by guided+moves but not base 5 | by base but not guided+moves 2
+c mean ms per scheme: base 48.58 | group 0.230 | shuffles+group 34.28 | guided+moves 64.46
+=== probe <4,4,4> 18:23:05
+    exit 0
+c group_probe <4,4,4>: 2928 schemes from /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/move1/states444 by rank {49: 278, 50: 687, 51: 569, 52: 436, 53: 333, 54: 227, 55: 211, 56: 187}; tries 3 shuffles 200 seek 100000 threads 12
+c census over 2928 schemes: same-factor groups by k {3: 1348, 4: 119, 5: 6} | lines by k {3: 202394, 4: 29084, 5: 3901, 6: 658, 7: 57, 8: 6} | schemes with a line of k >= 4: 2650
+c 2928 schemes in 26.1s
+c lowered by: base 2385 (3 tries x seek 100000) | group alone 1790 | 200 shuffles+group 1986 | guided+moves 2380
+c cross-tab base vs any group move: both 1986 | base only 399 | GROUP ONLY 0 | neither 543 (group any 1986)
+c guided+moves vs base: lowered by guided+moves but not base 26 | by base but not guided+moves 31
+c mean ms per scheme: base 19.19 | group 0.388 | shuffles+group 49.06 | guided+moves 37.70
+=== probe chain done 18:23:51

@@ -69,17 +69,28 @@ admit 43); its output side is proved ≥ 41 (heuristic 49), so the scheme
 itself costs between 160 and 168.
 
 **Projection-descent class (`seeds/proj47_5`): every orbit point costs
-at least 162** (2026-11-07, `lbclass.sh proj47_5 152 167`; the cheap stage
+at least 163** (2026-11-07, `lbclass.sh proj47_5 152 167`; the cheap stage
 alone gave 151 the day before, depth 2 on 363,591 sets, 13 min on 3
 efficiency-core threads, `out/lbproj47_5/preraise_cheap_3threads.log`; the
-climb proved 152-162 in 6.5 h and the 163 step stopped at its 12,600 s
-budget with 6 coset triples open on one side, `out/lbproj47_5/t167/
-climb_t*.log` and `lbscan_open_sides.txt`).  With its best known point
-at 171 the class's window is 162-171, against 160-168 for the published
-class, 162-168 for AlphaTensor's and 163-167 for Kauers-Moosbauer's.
+climb proved 152-162 in 6.5 h with the 161 and 162 steps an hour each;
+the 163 step took 7.3 h over two runs: the first, with a 12,600 s budget,
+did levels 3-4 in five minutes and eleven level-5 refutations of 17-27
+min each and stopped at 13,389 s with 6 coset triples open on one side
+(`out/lbproj47_5/t167/climb_t163_budget12600.log`); the second, resumed
+from the shared checkpoint with a 21,600 s budget and a 5400 s cap per
+level test, proved it in 12,787 s with five more level-5 refutations, one
+level-6 timeout at the cap and a level-7 refutation that closed the last
+triples (`climb_t163.log`).  A 164 step is estimated at 30-60 h and is
+not attempted).  With its best known point at 171 the class's window is
+163-171, against 160-168 for the published class, 162-168 for
+AlphaTensor's and 163-167 for Kauers-Moosbauer's.
 How the 171 was found and settled: the BP orbit scan (`out/scan_proj47_5`, all 840^3 coset
 triples, 63 min) puts the orbit minimum under BP at 171 with 411 triples
-within +2, the exact refine of those triples (`out/scanref_proj47_5.log`)
+within +2 as collected (the scan's per-X candidate list was cleared on
+every new per-X best, dropping triples still within the window: 646 lie
+within +2, 7698 within +4, found 2026-11-07 from the saved tables and
+fixed; the minimum and the 52 triples at 171 are unaffected), the exact
+refine of those 411 triples (`out/scanref_proj47_5.log`)
 gives 171 = 44 + 45 + 82, and `settle --depth 5 --cap 300`
 (`out/settle5_proj47_5.log`, 57 min) proves eight triples exactly 171 and
 leaves 78 of the 411 open below it; `settle --depth 6 --cap 1200`
@@ -91,8 +102,9 @@ through the one side that times out at every cap (43 targets, BP 50,
 bound 47); settle's new bottom-up pass (after the top level's timeout it
 climbs from level 0; `out/settle8b_proj47_5.log`) refutes that side's
 levels 0-5 in two seconds, so it costs 49 or 50 and the point is at least
-172: all 411 candidates settled, 171 exact over the whole +2 window of
-the BP orbit scan, eight triples at 171 (2026-11-07).
+172: all 411 collected candidates settled, eight triples at 171
+(2026-11-07); the 235 missed +2 triples and the +3/+4 ones (7698 in all)
+are being refined and settled from the saved tables (Q6, 2026-11-07).
 
 **Kauers–Moosbauer class (`seeds/km47`): every orbit point costs at
 least 163** (2026-10-19; the class contains the 167).  Cheap bounds

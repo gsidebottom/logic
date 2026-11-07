@@ -1512,7 +1512,8 @@ the two source papers for this track):
 - **4×4 RANK-49 ALL-RINGS SCREEN (2026-10-18): no point below 156**
   (matmul/x49/README.md).  Target: PLinOpt's 156 (5+8/11), valid over
   every ring; F₂ costs bound signed programs from below.  Strassen²
-  class: orbit-scan minimum 156; all 1291 coset triples within +2
+  class: orbit-scan minimum 156; the 1291 coset triples collected within +2 (1332 in fact: the scan's
+  collection bug found 2026-11-07, recounted from the saved tables; the 36 at the minimum are unaffected)
   refined exactly (36 at 156, rest 158, BP optimal on every side; the
   whole orbit is proved in the next bullet).  July F₂ corpus: 5 sampled schemes not
   ±1-liftable; screen stopped at 36/2012 (best 156, r49-20127, lift
@@ -2673,16 +2674,22 @@ the two source papers for this track):
   b, rank c), sorted inside the triple; a different value is a different class) three are AlphaTensor-like, one
   Kauers-Moosbauer-like, one (r47-00005 = matmul/x47/seeds/proj47_5) matches none of the three published 47s: a
   fourth class.  Its XOR count under matmul/x47: given 180, 24 annealed chains 171 (22) / 172 / 173, exhaustive BP
-  orbit scan over all 840^3 coset triples 171 (411 triples within +2; the published classes' best points are 168,
+  orbit scan over all 840^3 coset triples 171 (411 triples within +2 as collected -- the scan cleared its per-X
+  candidate list on every new per-X best and dropped triples still within the window, 646 lie within +2 and 7698
+  within +4, found 2026-11-07 from the saved tables and fixed, the minimum unaffected; the published classes' best points are 168,
   168 and 167), exact refine of the 411 gives 171 = 44 + 45 + 82, settle at depth 5 proves eight triples exactly
   171 and leaves 78 open below it, depth 6 (20 min) 57, depth 8 (48 min) one (total 173, bound 170, through a 43-target side that
   times out at every cap), and settle's new bottom-up pass (climb from level 0 after a top-level timeout) refutes
-  that side's levels 0-5 in two seconds: all 411 settled, 171 exact over the whole +2 window, eight triples at 171;
-  whole-orbit lower bound >= 162 (the cheap stage
+  that side's levels 0-5 in two seconds: all 411 collected candidates settled, eight triples at 171, the +4 window's
+  7698 triples being refined and settled from the saved tables (Q6b, all four classes from their saved tables,
+  km47 first, from 2026-11-07 18:00); whole-orbit lower bound >= 163 PROVED (the cheap stage
   151 where the published class gave 148; the climb, matmul/x47 lbclass.sh, proved 152-162 in 6.5 h with the 161
-  and 162 steps an hour each, and the 163 step stopped at its 12,600 s budget with 6 coset triples open on one
-  side), so the class's window is 162-171 against 160-168 (published), 162-168 (AlphaTensor) and 163-167
-  (Kauers-Moosbauer).  Overnight 2026-11-07: a 30-min seeded <3,4,4> run aiming at 37 found no 37 (23,175 distinct
+  and 162 steps an hour each; the 163 step took 7.3 h over two runs: a 12,600 s budget run, 13,389 s, levels 3-4
+  in five minutes and eleven level-5 refutations of 17-27 min each, stopped with 6 coset triples open on one
+  side, then a run resumed from the shared checkpoint with a 21,600 s budget and a 5400 s cap, 12,787 s: five more
+  level-5 refutations, one level-6 timeout at the cap, a level-7 refutation closing the last triples), so the
+  class's window is 163-171 against 160-168 (published), 162-168 (AlphaTensor) and 163-167
+  (Kauers-Moosbauer); 164 would cost an estimated 30-60 h and is not attempted (record searches first).  Overnight 2026-11-07: a 30-min seeded <3,4,4> run aiming at 37 found no 37 (23,175 distinct
   38s, 35,112 39s, 41 k trajectories) and neither did its trivial-start control (25,372 38s, 39,473 39s, 50.5 k
   trajectories); the full 2928-state 4x4 plane probe at background priority beside the climb timed out after 4 h at
   1200 states, and its rerun at normal priority the next morning (102 min, planes/probe444_planes5.log, the result

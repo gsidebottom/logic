@@ -454,6 +454,7 @@ struct Opts {
     transpose: bool,
     budget: f64,
     chunk: usize,
+    tables: Option<String>, // scan: reuse saved side-cost tables instead of recomputing them
 }
 
 fn parse_opts(args: &[String]) -> Opts {
@@ -470,6 +471,7 @@ fn parse_opts(args: &[String]) -> Opts {
         transpose: false,
         budget: 0.0,
         chunk: 2000,
+        tables: None,
     };
     let mut i = 0;
     while i < args.len() {
@@ -493,6 +495,7 @@ fn parse_opts(args: &[String]) -> Opts {
             "--maxsub" => o.maxsub = val().parse().unwrap(),
             "--budget" => o.budget = val().parse().unwrap(),
             "--chunk" => o.chunk = val().parse().unwrap(),
+            "--tables" => o.tables = Some(val()),
             _ => panic!("unknown option {a}"),
         }
         i += 1;
@@ -1636,12 +1639,23 @@ fn scan(pre: &str, o: &Opts) {
             .collect();
         rows.concat()
     };
-    let tu = table(&s0.u, 0); // [x][y]
-    println!("  U table done ({:.0}s)", t0.elapsed().as_secs_f64());
-    let tv = table(&s0.v, 1); // [y][z]
-    println!("  V table done ({:.0}s)", t0.elapsed().as_secs_f64());
-    let tw = table(&s0.w, 2); // [z][x]
-    println!("  W table done ({:.0}s)", t0.elapsed().as_secs_f64());
+    let (tu, tv, tw) = if let Some(path) = &o.tables {
+        // the tables a previous scan of the same scheme saved (scan_tables.u8:
+        // U, V, W rows concatenated; the coset representatives are canonical,
+        // so they match), to re-emit the candidates of a wider window
+        let raw = std::fs::read(path).expect("tables file");
+        assert_eq!(raw.len(), 3 * n * n, "tables file has the wrong size");
+        println!("  tables loaded from {path}");
+        (raw[..n * n].to_vec(), raw[n * n..2 * n * n].to_vec(), raw[2 * n * n..].to_vec())
+    } else {
+        let tu = table(&s0.u, 0); // [x][y]
+        println!("  U table done ({:.0}s)", t0.elapsed().as_secs_f64());
+        let tv = table(&s0.v, 1); // [y][z]
+        println!("  V table done ({:.0}s)", t0.elapsed().as_secs_f64());
+        let tw = table(&s0.w, 2); // [z][x]
+        println!("  W table done ({:.0}s)", t0.elapsed().as_secs_f64());
+        (tu, tv, tw)
+    };
     let r = s0.u.len();
     // min-plus over all triples, parallel over x
     let res: Vec<(u32, Vec<(usize, usize, usize)>)> = (0..n)
@@ -1655,9 +1669,12 @@ fn scan(pre: &str, o: &Opts) {
                     let s = a + tv[y * n + z] as u32 + tw[z * n + x] as u32;
                     if s < best {
                         best = s;
-                        keep.clear();
+                        // keep what is still within the window of the new best (clearing
+                        // dropped it: the first scan wrote 411 of the 646 triples within +2)
+                        let lim = best + o.depth as u32;
+                        keep.retain(|&(kx, ky, kz)| tu[kx * n + ky] as u32 + tv[ky * n + kz] as u32 + tw[kz * n + kx] as u32 <= lim);
                     }
-                    if s <= best + o.depth as u32 && keep.len() < 2000 {
+                    if s <= best + o.depth as u32 && keep.len() < 50000 {
                         keep.push((x, y, z));
                     }
                 }
@@ -2616,7 +2633,7 @@ fn main() {
         return;
     }
     if args[1] == "scan" {
-        // xor47 scan PREFIX [--runs BP_PER_ENTRY] [--depth SLACK] [--threads T] [--out DIR]
+        // xor47 scan PREFIX [--runs BP_PER_ENTRY] [--depth SLACK] [--threads T] [--out DIR] [--tables scan_tables.u8]
         let o = parse_opts(&args[3..]);
         rayon::ThreadPoolBuilder::new().num_threads(o.threads).build_global().unwrap();
         let t0 = std::time::Instant::now();

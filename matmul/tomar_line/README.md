@@ -324,7 +324,8 @@ starts), so the comparison is by type.
   152).  The exhaustive BP orbit scan (all 840^3 coset triples, 63 min
   on 12 threads shared with the probe) confirms the plateau: orbit
   minimum 171 under BP against 168 in each published class, 411 triples
-  within +2 (52 at 171).  The exact refine of the 411 triples gives
+  within +2 as collected (52 at 171; the collection missed 235 of the
+  646 within +2, see below).  The exact refine of the 411 triples gives
   171 (44 + 45 + 82 at the best triple; both input sides exact, the
   product side 51 against a bound of 50 through its transpose), and
   settling at depth 5 (57 min) proves eight triples exactly 171 and
@@ -337,16 +338,27 @@ starts), so the comparison is by type.
   47).  The bottom-up pass added to settle for that side (after the
   top level's 2400 s timeout it climbs from level 0; out/settle8b)
   refutes levels 0 to 5 in two seconds, so the side costs 49 or 50 and
-  the point is at least 172: all 411 scan candidates are settled, 171
-  is the exact minimum over every coset triple within +2 of the BP
-  orbit minimum, and eight triples reach it.  The climb of
-  the whole-orbit lower bound (matmul/x47 lbclass.sh, 6.5 h) proves every
-  orbit point costs at least 162; the 163 step stopped at its budget with
-  6 coset triples open on one side.  Windows, bound to best known point:
-  this class 162-171, the published class 160-168, AlphaTensor's 162-168,
-  Kauers-Moosbauer's 163-167.  A point below 167 would need four
-  XORs of exact gains over the BP counts across three sides, where the
-  KM class gave one.
+  the point is at least 172: all 411 collected candidates are settled
+  and eight triples reach 171.  Caveat found the same afternoon: the
+  scan kept a per-X candidate list that it cleared whenever a lower
+  per-X best appeared, dropping triples still within the window, so the
+  411 are 411 of the 646 triples within +2 (the minimum itself and the
+  52 triples at 171 are unaffected).  Fixed (scan keeps what is still
+  within the window; `--tables` re-emits candidates from the saved side
+  tables); the +4 window, 7698 triples including all 646, is being
+  refined and settled from the saved tables (2026-11-07 evening, Q6b, all
+  four classes, km47 first).  The climb of the whole-orbit lower bound
+  (matmul/x47 lbclass.sh) proves every orbit point costs at least 163:
+  152-162 in 6.5 h, then the 163 step in 7.3 h over two runs (a 12,600 s
+  budget run, 13,389 s, levels 3-4 in five minutes and eleven level-5
+  refutations of 17-27 min each, stopped with 6 coset triples open on
+  one side; resumed from the shared checkpoint with a 21,600 s budget and
+  a 5400 s cap per level test, 12,787 s: five more level-5 refutations,
+  one level-6 timeout at the cap, and a level-7 refutation closing the
+  last triples).  Windows, bound to best known point: this class 163-171,
+  the published class 160-168, AlphaTensor's 162-168, Kauers-Moosbauer's
+  163-167.  A point below 167 would need four XORs of exact gains over
+  the BP counts across three sides, where the KM class gave one.
 
 Verdict: projection is a good seed generator exactly where the funnel
 is deep.  At the small formats it changes which records are found,

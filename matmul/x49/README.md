@@ -24,7 +24,10 @@ principle, rank 49), all computed with `../../src/bin/xor47.rs`.
   closure term lifts all but 36 of them past 123, and those 36 are
   exactly the 156 points found by the orbit scan and exact refinement
   (`scan49.log`, `refine49.log`: 36 at 156 among the 1291 triples
-  within 2 of the scan minimum).  `lbcheck.py` is written separately
+  collected within 2 of the scan minimum; the scan's candidate list
+  dropped triples on every new per-X best, a bug fixed 2026-11-07, and
+  the saved tables `out/scan49/scan_tables.u8` give 1332 within +2,
+  3636 within +3 and 16,812 within +4, the 36 at the minimum unaffected).  `lbcheck.py` is written separately
   (its own group enumeration, coset representatives and closure, plus
   self-checks of the action and of the coset tables) and agrees.  Both
   tools fail, as they must, at target 157 (`lb49_*.log`, `lbcheck_*.log`).

@@ -334,9 +334,12 @@ starts), so the comparison is by type.
   (48 min, cap 2400 s) settles 40 more sides exactly (eight of them one
   below BP) and leaves one point open: total 173, bound 170, through
   the one side that times out at every cap (43 targets, BP 50, bound
-  47).  So 410 of the 411 scan candidates are settled and none is
-  below 171; a bottom-up refutation of that side's lower helper levels
-  is running (2026-11-07).  The climb of
+  47).  The bottom-up pass added to settle for that side (after the
+  top level's 2400 s timeout it climbs from level 0; out/settle8b)
+  refutes levels 0 to 5 in two seconds, so the side costs 49 or 50 and
+  the point is at least 172: all 411 scan candidates are settled, 171
+  is the exact minimum over every coset triple within +2 of the BP
+  orbit minimum, and eight triples reach it.  The climb of
   the whole-orbit lower bound (matmul/x47 lbclass.sh, 6.5 h) proves every
   orbit point costs at least 162; the 163 step stopped at its budget with
   6 coset triples open on one side.  Windows, bound to best known point:

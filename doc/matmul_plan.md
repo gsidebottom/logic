@@ -2676,7 +2676,9 @@ the two source papers for this track):
   orbit scan over all 840^3 coset triples 171 (411 triples within +2; the published classes' best points are 168,
   168 and 167), exact refine of the 411 gives 171 = 44 + 45 + 82, settle at depth 5 proves eight triples exactly
   171 and leaves 78 open below it, depth 6 (20 min) 57, depth 8 (48 min) one (total 173, bound 170, through a 43-target side that
-  times out at every cap; a bottom-up refutation of its lower levels is running); whole-orbit lower bound >= 162 (the cheap stage
+  times out at every cap), and settle's new bottom-up pass (climb from level 0 after a top-level timeout) refutes
+  that side's levels 0-5 in two seconds: all 411 settled, 171 exact over the whole +2 window, eight triples at 171;
+  whole-orbit lower bound >= 162 (the cheap stage
   151 where the published class gave 148; the climb, matmul/x47 lbclass.sh, proved 152-162 in 6.5 h with the 161
   and 162 steps an hour each, and the 163 step stopped at its 12,600 s budget with 6 coset triples open on one
   side), so the class's window is 162-171 against 160-168 (published), 162-168 (AlphaTensor) and 163-167

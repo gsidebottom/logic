@@ -66,48 +66,66 @@ without the moves (3 tries x 100,000 flips), the G1/G2 arms as before,
 to a copy and Brent-checked.  Logs planes/probe334_planes2.log,
 planes/probe444_planes2.log (stopped at 1600 states, statistics only),
 planes/probe444_planes3.log (a seeded 1000-state sample with the
-cross-tab).
+cross-tab), planes/probe444_planes4.log (a full run at background priority
+beside the climb, timed out at 1200 states, statistics only),
+planes/probe444_planes5.log (the full run at normal priority, all
+2928 states, with the cross-tab: the result of record).
 
 | format | plane groups (k = 4 / 5 / 6 / 7 / 8) | closed by the bound | open | reduced by the greedy | SAT calls: reduced / unsat / unknown |
 |---|---|---|---|---|---|
 | <3,3,4>, 1386 states, 227 s | 2,447,655 (2,005,373 / 383,289 / 53,083 / 4,293 / 1,617) | 2,359,591 (96.4 %) | 88,064 | 88,063 | 1: 1 / 0 / 0 |
 | <4,4,4>, first 1600 states, 1749 s | 11,220,341 | 10,355,081 (92.3 %) | 865,260 | 863,855 | 1,276: 184 / 1,056 / 36 |
 | <4,4,4>, 1000-state sample, 3556 s | 9,550,875 (7,996,028 / 1,310,838 / 204,868 / 33,067 / 6,074; 918 with k > 8) | 8,589,699 (89.9 %) | 961,176 | 960,406 | 680: 124 / 506 / 50 |
+| <4,4,4>, all 2928 states, 6141 s | 28,524,132 (23,888,746 / 3,909,544 / 613,466 / 96,868 / 15,508; 2,138 with k > 8) | 25,567,277 (89.6 %) | 2,956,855 | 2,954,526 | 2,030: 411 / 1,470 / 149 |
 
 At <3,3,4> the bound is exact on every plane group of every state:
 closed means irreducible, open means the greedy (once SAT) rewrites it.
-At 4x4 it is not: 1,056 open groups are UNSAT at k - 1, and the greedy
-misses 184 reducible groups that SAT finds (in the 1000-state sample 506
-UNSAT, 124 found by SAT, 50 undecided at the 10 s cap; no state reached
-the 24-call cap).  The groups are not rare
-(every state carries them; 3.6 % to 7.7 % are reducible), and the
-question is whether any opens a state the baseline cannot open:
+At 4x4 it is not: over all 2928 states 1,470 open groups are UNSAT at
+k - 1, the greedy misses 411 reducible groups that SAT finds, and 149
+SAT calls are undecided at the 10 s cap (the 1000-state sample: 506 /
+124 / 50; no state reached the 24-call cap in any run).  The groups are
+not rare (every state carries them; 3.6 % are reducible at <3,3,4> and
+10.4 % at 4x4), and the question is whether any opens a state the
+baseline cannot open:
 
 | states | lowered by base | group alone | shuffles+group | plane greedy | plane SAT | base vs any group move (G1/G2, shuffles, planes): both / base only / GROUP ONLY / neither | plane greedy only | plane SAT only |
 |---|---|---|---|---|---|---|---|---|
 | <3,3,4>, all 1386 | 671 | 290 | 466 | 441 | 1 | 502 / 169 / **0** / 715 | 0 | 0 |
 | <4,4,4>, 1000-state sample | 802 | 587 | 649 | 704 | 124 | 723 / 79 / **0** / 198 | 0 | 0 |
+| <4,4,4>, all 2928 | 2379 | 1790 | 1975 | 2126 | 411 | 2168 / 211 / **1** / 548 | 1 | 0 |
 
 Mean time per <3,3,4> state: base 49 ms, one group scan 0.2 ms, 200
-shuffles 31 ms, planes (bound, greedy, SAT) 1763 ms; per 4x4 state
-(the sample): base 39 ms, group 0.6 ms, shuffles 73 ms, planes 40.7 s
-(961 k open groups through the greedy and 680 SAT calls at 1.5 s
-each).  That is the other reason the move is not wired into a timed
-arm: a plane scan costs 35 base scans at <3,3,4> and 1000 at 4x4.
+shuffles 31 ms, planes (bound, greedy, SAT) 1763 ms; per 4x4 state in
+the full run at normal priority: base 19 ms, group 0.3 ms, shuffles 40
+ms, planes 24.5 s (2.96 M open groups through the greedy and 2030 SAT
+calls at 1.2 s each; the sample on the efficiency cores: 39 ms, 0.6 ms,
+73 ms, 40.7 s).  That is the other reason the move is not wired into a
+timed arm: a plane scan costs 35 base scans at <3,3,4> and 1000-1300 at
+4x4.
 
 Verdict: NEGATIVE at both formats.  At <3,3,4> the plane move lowers
 441 of 1386 states (one of them through SAT) and every one of them is
-lowered by the base engine too; at 4x4 the plane greedy lowers 704 of
-1000 sampled states and SAT 124 more, again all of them states the
-base engine lowers (GROUP ONLY 0, plane-only 0, SAT-only 0), while the
-base alone lowers 169 (<3,3,4>) and 79 (4x4) states no group move
-touches.  The reducible plane groups are real and common (960 k of
-the 961 k groups the bound leaves open rewrite in k - 1 terms, a tenth
-of all plane groups at 4x4), but every rewrite that lowers the rank
-sits in a state flips and merges lower anyway; the 50 SAT calls (of
-680) that timed out are the only undecided groups in the sample.  The
-full 2928-state 4x4 run (planes/probe444_planes4.log) runs overnight
-at background priority and is expected to agree.
+lowered by the base engine too.  At 4x4, over all 2928 states
+(planes/probe444_planes5.log, 102 min at normal priority), the plane
+greedy lowers 2126 states and SAT 411 more, the base engine lowers
+2379, and the cross-tab is both 2168 / base only 211 / GROUP ONLY 1 /
+neither 548 (plane-only 1, SAT-only 0): one state in 2928 was lowered
+by the plane greedy and by none of base's three tries, the group scan
+or the shuffles.  That one is inside the arms' own noise: the base arm
+and the guided+moves arm are the same descent with different random
+streams, and they disagree on 61 states (35 lowered by guided+moves
+and not by base, 26 the other way).  The run does not name the state;
+a rerun that names its GROUP ONLY states is queued (2026-11-07) so
+that base can be given more tries on it.  The reducible plane groups
+are real and common (2.95 M of the 2.96 M groups the bound leaves
+open rewrite in k - 1 terms, a tenth of all plane groups at 4x4), but
+every rewrite that lowers the rank sits in a state flips and merges
+lower anyway, up to that one state; the 149 SAT calls (of 2030) that
+timed out are the only undecided groups.  The seeded 1000-state sample
+at background priority (planes/probe444_planes3.log: 723 / 79 / 0 /
+198) and an earlier full run at background priority beside the climb
+that timed out after 4 h at 1200 states (planes/probe444_planes4.log,
+statistics only) agree with the full run.
 
 ## 2. Move 2: capacities as constraints in SAT completion
 
@@ -201,6 +219,7 @@ Pools (proj/make_pools.sh; 40 bases per direction for the ref47 pool,
 |---|---|---|
 | <3,3,4> | <3,3,5>:36 (col, 36-3), <3,4,4>:38 (inner-a 38-3, inner-b 38-4) | 533 at 33, 901 at 35, 1500 at 34 (2934 in all) |
 | <4,4,4> | <4,4,5>:63 (col, 63-4) | 1500 at 59 |
+| <4,4,4>, overnight run | <4,4,5>:63 (col) and its two other orientations <4,5,4>:63 (inner-a, inner-b) and <5,4,4>:63 (row), by matmul/rotate_f2.py | 4 x 1500 at 59 (6000) |
 | <3,4,4> | <3,4,5>:47 (col, 47-4), the three published 4x4 47s (row, 47-4) | 1500 + 600 + 600 + 593 at 43 (3293) |
 
 The recipe regenerates six pools exactly; the two capped pools
@@ -230,6 +249,15 @@ starts), so the comparison is by type.
   record level: at <3,4,4>, 1459 types against 185 with 3 in common;
   at <3,3,4>, 324 against 385 with 269 in common.  The trivial start
   funnels into few types at <3,4,4>; the projections do not.
+  A 30-minute seeded <3,4,4> run aiming at 37 (seed 11, 12 threads,
+  proj/logs/m3_344_proj30.log): no 37; 23,175 distinct 38s and 35,112
+  distinct 39s from 41,044 trajectories.  Its trivial-start control
+  (same budget and seed, proj/logs/m3_344_triv30.log, run the next
+  morning with the 4x4 descent's last 13 minutes still on the
+  efficiency cores): no 37 either; 25,372 distinct 38s and 39,473 39s
+  from 50,552 trajectories.  At <3,4,4> the seeds buy nothing toward
+  37: both starts sit on the 38 level within seconds and the half hour
+  is spent enumerating it.
 - <4,4,4>: from the trivial scheme the engine stalls at 54 (128 k
   trajectories, none at 49 or below), from the projections of
   AlphaTensor's <4,4,5>:63 every worker is at 47 within the first
@@ -243,7 +271,17 @@ starts), so the comparison is by type.
   nothing at or below 49 in 51 k trajectories; projected 47 at 0 s,
   then 2 distinct 47s, 2050 48s and 1749 49s in 2 minutes.  One of the
   two 47s is r47-00001 again, term for term; the other carries
-  Kauers-Moosbauer's type like r47-00004.
+  Kauers-Moosbauer's type like r47-00004.  Overnight (seed 13, 3 h at
+  background priority on the efficiency cores beside the climb, all four
+  projection pools = 6000 seeds at 59 including the two other
+  orientations of <4,4,5>:63 made by matmul/rotate_f2.py; proj/run_d180.sh,
+  log proj/logs/m3_444_proj180.log): 65,162 landings from 28,498
+  trajectories, 22 distinct 47s (proj/found47_d180), 13,757 48s, 18,198
+  49s, no 46.  By type 9 are AlphaTensor-like, 8 Kauers-Moosbauer-like
+  and 5 carry the new class's type; four of the 22 are r47-00001..4
+  again, term for term, none is r47-00005, so whether the five new-type
+  schemes are in the same de Groote class as proj47_5 is open (the type
+  does not decide it).
 - The five 47s (proj/found47, each re-checked against the tensor and
   all 256 basis-matrix products, proj/logs): three carry AlphaTensor's
   type profile, one Kauers-Moosbauer's, one matches none of the three
@@ -268,8 +306,16 @@ starts), so the comparison is by type.
   171 (44 + 45 + 82 at the best triple; both input sides exact, the
   product side 51 against a bound of 50 through its transpose), and
   settling at depth 5 (57 min) proves eight triples exactly 171 and
-  leaves 78 of the 411 open below 171; depth 6 and the climb of the
-  whole-orbit bound from 152 are queued.  A point below 167 would need four
+  leaves 78 of the 411 open below 171; depth 6 (20 min, a 1200 s cap
+  per helper level) settles 28 more sides exactly, one side (43
+  targets, BP 50, bound 47) times out, and 57 points stay open below
+  171 (17 at 172, 40 at 173) through six distinct open sides at 6 to 8
+  helpers; depth 8 at a 2400 s cap is running (2026-11-07).  The climb of
+  the whole-orbit lower bound (matmul/x47 lbclass.sh, 6.5 h) proves every
+  orbit point costs at least 162; the 163 step stopped at its budget with
+  6 coset triples open on one side.  Windows, bound to best known point:
+  this class 162-171, the published class 160-168, AlphaTensor's 162-168,
+  Kauers-Moosbauer's 163-167.  A point below 167 would need four
   XORs of exact gains over the BP counts across three sides, where the
   KM class gave one.
 

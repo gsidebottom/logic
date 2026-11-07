@@ -223,6 +223,7 @@ fn main() {
         names.sort();
     }
     let mut schemes: Vec<Vec<Summand>> = Vec::new();
+    let mut loaded: Vec<String> = Vec::new(); // file name per loaded scheme
     let mut by_rank: BTreeMap<usize, usize> = Default::default();
     let mut anfs: BTreeMap<usize, Anf> = Default::default();
     for path in &names {
@@ -239,6 +240,7 @@ fn main() {
         assert_eq!(verify(anf, &bits), 0, "{} fails Brent", path.display());
         *by_rank.entry(s.len()).or_insert(0) += 1;
         schemes.push(s);
+        loaded.push(path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default());
     }
     println!(
         "c group_probe <{},{},{}>: {} schemes from {} by rank {:?}; tries {} shuffles {} seek {} threads {} sat {}",
@@ -545,6 +547,19 @@ fn main() {
         "c cross-tab base vs any group move (G1/G2, shuffles, planes): both {} | base only {} | GROUP ONLY {} | neither {}",
         both, base_only, g_only, neither
     );
+    // name the states no base try lowered but a group move did, and which
+    // move did it (the first full 4x4 run had one such state and no names)
+    for (i, &x) in o.iter().enumerate() {
+        if x & 1 == 0 && x & gm != 0 {
+            let mut by = Vec::new();
+            for (bit, name) in [(2, "group"), (4, "shuffles+group"), (8, "guided+moves"), (16, "plane greedy"), (32, "plane SAT")] {
+                if x & bit != 0 {
+                    by.push(name);
+                }
+            }
+            println!("c GROUP ONLY state: {} (rank {}) lowered by {}", loaded[i], schemes[i].len(), by.join(", "));
+        }
+    }
     let p_only_g = o.iter().filter(|&&x| x & 16 != 0 && x & (1 | 2 | 4) == 0).count();
     let p_only_s = o.iter().filter(|&&x| x & 32 != 0 && x & (1 | 2 | 4 | 16) == 0).count();
     println!(

@@ -69,15 +69,24 @@ admit 43); its output side is proved ≥ 41 (heuristic 49), so the scheme
 itself costs between 160 and 168.
 
 **Projection-descent class (`seeds/proj47_5`): every orbit point costs
-at least 151** by the cheap stage alone (2026-11-06, depth 2 on 363,591
-sets, 13 min on 3 efficiency-core threads, `out/lbproj47_5/preraise_cheap_3threads.log`);
-the climb from 152 is queued (`lbclass.sh proj47_5 152`).  Best known
-point 171, exact: the BP orbit scan (`out/scan_proj47_5`, all 840^3 coset
+at least 162** (2026-11-07, `lbclass.sh proj47_5 152 167`; the cheap stage
+alone gave 151 the day before, depth 2 on 363,591 sets, 13 min on 3
+efficiency-core threads, `out/lbproj47_5/preraise_cheap_3threads.log`; the
+climb proved 152-162 in 6.5 h and the 163 step stopped at its 12,600 s
+budget with 6 coset triples open on one side, `out/lbproj47_5/t167/
+climb_t*.log` and `lbscan_open_sides.txt`).  With its best known point
+at 171 the class's window is 162-171, against 160-168 for the published
+class, 162-168 for AlphaTensor's and 163-167 for Kauers-Moosbauer's.
+How the 171 was found and settled: the BP orbit scan (`out/scan_proj47_5`, all 840^3 coset
 triples, 63 min) puts the orbit minimum under BP at 171 with 411 triples
 within +2, the exact refine of those triples (`out/scanref_proj47_5.log`)
 gives 171 = 44 + 45 + 82, and `settle --depth 5 --cap 300`
 (`out/settle5_proj47_5.log`, 57 min) proves eight triples exactly 171 and
-leaves 78 of the 411 open below it (depth 6 queued).
+leaves 78 of the 411 open below it; `settle --depth 6 --cap 1200`
+(`out/settle6_proj47_5.log`, 20 min) settles 28 more sides exactly, one
+side (43 targets, BP 50, bound 47) times out at the cap, and 57 points
+stay open below 171 (17 at total 172, 40 at 173; six distinct open sides
+at 6-8 helpers); `--depth 8 --cap 2400` is running (2026-11-07).
 
 **Kauers–Moosbauer class (`seeds/km47`): every orbit point costs at
 least 163** (2026-10-19; the class contains the 167).  Cheap bounds
@@ -97,7 +106,7 @@ exact sets (`lbkm/lbcheck1_*.log`).
 | PLinOpt reference (`seeds/ref47`) | 168 | 168 | 44 + 44 + 80 |
 | AlphaTensor 47 (`seeds/at47`) | 179 | 168 | 44 + 48 + 76 |
 | Kauers–Moosbauer 47 (`seeds/km47`) | 186 | **167** | 44 + 49 + 74 |
-| projection-descent 47 (`seeds/proj47_5`, 2026-11-06: matmul/tomar_line/proj/found47/r47-00005, a fourth class by the rank-triple invariant) | 180 | 171, exact at 8 triples (anneal 22/24 chains; exhaustive BP scan 171, 411 triples within +2; exact refine 171; settle depth 5 leaves 78 triples open below 171, depth 6 queued) | 44 + 45 + 82 (also 45 + 45 + 81) |
+| projection-descent 47 (`seeds/proj47_5`, 2026-11-06: matmul/tomar_line/proj/found47/r47-00005, a fourth class by the rank-triple invariant) | 180 | 171, exact at 8 triples (anneal 22/24 chains; exhaustive BP scan 171, 411 triples within +2; exact refine 171; settle depth 5 leaves 78 triples open below 171, depth 6 57, depth 8 running) | 44 + 45 + 82 (also 45 + 45 + 81) |
 
 (Annealing: all 24 chains per class end at 168 under Boyar–Peralta
 scoring; the 167 needs the exact search on one side.)

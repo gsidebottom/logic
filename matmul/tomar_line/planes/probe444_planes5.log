@@ -1,0 +1,25 @@
+c group_probe <4,4,4>: 2928 schemes from /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/move1/states444 by rank {49: 278, 50: 687, 51: 569, 52: 436, 53: 333, 54: 227, 55: 211, 56: 187}; tries 3 shuffles 200 seek 100000 threads 12 sat on (timeout 10 s)
+c census over 2928 schemes: same-factor groups by k {3: 1348, 4: 119, 5: 6} | lines by k {3: 202394, 4: 29084, 5: 3901, 6: 658, 7: 57, 8: 6} | schemes with a line of k >= 4: 2650
+c plane groups (3 present factors spanning, >= 4 terms) by k {4: 23888746, 5: 3909544, 6: 613466, 7: 96868, 8: 15508, 9: 1954, 10: 172, 11: 11, 12: 1} | schemes with one: 2928
+c [7s] 200 states | plane groups 735681 open 0 greedy-reduced 0 | SAT calls 0 reduced 0 unsat 0 unknown 0 skipped 0
+c [61s] 400 states | plane groups 1927480 open 19643 greedy-reduced 19439 | SAT calls 195 reduced 12 unsat 183 unknown 0 skipped 0
+c [208s] 600 states | plane groups 3237293 open 103251 greedy-reduced 102841 | SAT calls 389 reduced 34 unsat 355 unknown 0 skipped 0
+c [365s] 800 states | plane groups 4532515 open 185727 greedy-reduced 185144 | SAT calls 553 reduced 57 unsat 496 unknown 0 skipped 0
+c [524s] 1000 states | plane groups 5945364 open 272142 greedy-reduced 271350 | SAT calls 747 reduced 82 unsat 664 unknown 1 skipped 0
+c [922s] 1200 states | plane groups 7667261 open 464356 greedy-reduced 463334 | SAT calls 945 reduced 117 unsat 809 unknown 19 skipped 0
+c [1381s] 1400 states | plane groups 9366451 open 674235 greedy-reduced 672995 | SAT calls 1136 reduced 155 unsat 957 unknown 24 skipped 0
+c [1748s] 1600 states | plane groups 11217816 open 864910 greedy-reduced 863506 | SAT calls 1276 reduced 184 unsat 1056 unknown 36 skipped 0
+c [2443s] 1800 states | plane groups 13242492 open 1212060 greedy-reduced 1210446 | SAT calls 1445 reduced 237 unsat 1151 unknown 57 skipped 0
+c [3029s] 2000 states | plane groups 15345942 open 1492213 greedy-reduced 1490421 | SAT calls 1589 reduced 276 unsat 1243 unknown 70 skipped 0
+c [3828s] 2200 states | plane groups 17767004 open 1867314 greedy-reduced 1865332 | SAT calls 1740 reduced 326 unsat 1319 unknown 95 skipped 0
+c [4373s] 2400 states | plane groups 20365282 open 2136186 greedy-reduced 2134089 | SAT calls 1839 reduced 356 unsat 1378 unknown 105 skipped 0
+c [5035s] 2600 states | plane groups 23353267 open 2461529 greedy-reduced 2459301 | SAT calls 1943 reduced 387 unsat 1437 unknown 119 skipped 0
+c [5577s] 2800 states | plane groups 26530533 open 2742333 greedy-reduced 2740028 | SAT calls 2009 reduced 403 unsat 1465 unknown 141 skipped 0
+c [6141s] 2928 states | plane groups 28524132 open 2956855 greedy-reduced 2954526 | SAT calls 2030 reduced 411 unsat 1470 unknown 149 skipped 0
+c 2928 schemes in 6141.4s
+c lowered by: base 2379 (3 tries x seek 100000) | group alone 1790 | 200 shuffles+group 1975 | guided+moves 2388 | plane greedy 2126 | plane SAT 411
+c cross-tab base vs any group move (G1/G2, shuffles, planes): both 2168 | base only 211 | GROUP ONLY 1 | neither 548
+c planes beyond the rest: lowered by the plane greedy but by neither base nor G1/G2 1 | by plane SAT only 0
+c guided+moves vs base: lowered by guided+moves but not base 35 | by base but not guided+moves 26
+c plane groups examined 28524132 (by k 4: 23888746, 5: 3909544, 6: 613466, 7: 96868, 8: 15508; above k = 8: 2138) | closed by the profile bound 25567277 | left open 2956855 | reduced by the greedy 2954526 | SAT calls 2030 (reduced 411, unsat 1470, unknown 149; skipped by the per-state cap 0; mean 1210.2 ms)
+c mean ms per scheme: base 19.32 | group 0.336 | shuffles+group 40.11 | guided+moves 34.88 | planes (greedy + SAT) 24538.31

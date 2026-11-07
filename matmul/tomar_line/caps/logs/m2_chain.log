@@ -1,0 +1,32 @@
+i2_333r23_all                seed 1  SATISFIABLE       12.46 s
+i2_333r23_entries            seed 2  SATISFIABLE       13.47 s
+i2_333r23_none               seed 2  SATISFIABLE       21.23 s
+i2_333r23_entries            seed 1  SATISFIABLE       34.56 s
+i2_333r23_caps               seed 1  SATISFIABLE       36.98 s
+i2_333r23_caps               seed 2  SATISFIABLE       42.95 s
+i2_333r23_all                seed 2  SATISFIABLE       46.11 s
+i2_333r23_none               seed 1  SATISFIABLE       47.91 s
+i1_334r29_none               seed 1  UNKNOWN          600.01 s
+i1_334r29_none               seed 2  UNKNOWN          600.01 s
+i1_334r29_entries            seed 1  UNKNOWN          600.02 s
+i1_334r29_entries            seed 2  UNKNOWN          600.01 s
+i1_334r29_caps               seed 1  UNKNOWN          600.01 s
+i1_334r29_caps               seed 2  UNKNOWN          600.01 s
+i1_334r29_all                seed 1  UNKNOWN          600.02 s
+i1_334r29_all                seed 2  UNKNOWN          600.02 s
+i3_334r28drop0_none          seed 1  UNKNOWN          600.01 s
+i3_334r28drop0_none          seed 2  UNKNOWN          600.01 s
+i3_334r28drop0_entries       seed 1  UNKNOWN          600.01 s
+i3_334r28drop0_entries       seed 2  UNKNOWN          600.02 s
+i3_334r28drop0_caps          seed 1  UNKNOWN          600.01 s
+i3_334r28drop0_caps          seed 2  UNKNOWN          600.01 s
+i3_334r28drop0_all           seed 1  UNKNOWN          600.01 s
+i3_334r28drop0_all           seed 2  UNKNOWN          600.01 s
+i3_334r28drop7_none          seed 1  UNKNOWN          600.01 s
+i3_334r28drop7_none          seed 2  UNKNOWN          600.02 s
+i3_334r28drop7_all           seed 1  UNKNOWN          600.02 s
+i3_334r28drop7_all           seed 2  UNKNOWN          600.02 s
+i4_444r47_none               seed 1  UNKNOWN          600.01 s
+i4_444r47_all                seed 1  UNKNOWN          600.03 s
+=== move2 done 22:25:21
+exit 0

@@ -17,7 +17,7 @@
 //! shells out to matmul/lift.py for the ±1-liftability lottery.
 
 use crate::anf::{brent, verify, Anf, Dims, Rng};
-use crate::flip_group::{group_reduce, group_shuffle, GroupStats};
+use crate::flip_group::{group_reduce_m, group_shuffle, GroupStats};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -41,7 +41,8 @@ pub struct FlipCfg {
     /// subspace re-decomposition moves (flip_group.rs): bit 0 = group
     /// reductions (G1 same factor, G2 lines) wherever a merge is tried,
     /// bit 1 = `shuffles` plateau line re-decompositions per stalled
-    /// round.  0 = the engine as it was before 2026-11-06.
+    /// round, bit 2 = G3 plane reductions (dimension 3) wherever a merge
+    /// is tried.  0 = the engine as it was before 2026-11-06.
     pub group_moves: u8,
     pub shuffles: usize,
 }
@@ -424,7 +425,7 @@ pub fn guided_descend(
 ) -> bool {
     // 0) exact group re-decompositions (same-factor groups and lines):
     //    one scan, microseconds, catches what merges and flips miss.
-    if moves & 1 != 0 && group_reduce(s, sizes, gst) {
+    if group_reduce_m(s, sizes, gst, moves) {
         return true;
     }
     // 1) deep random seek — the workhorse (do NOT shrink this budget).
@@ -439,11 +440,11 @@ pub fn guided_descend(
     //    one more certified pass — bounded so it never dominates time.
     for _ in 0..48 {
         guided_flip(s, rng, k);
-        if merge_if_available(s) || (moves & 1 != 0 && group_reduce(s, sizes, gst)) {
+        if merge_if_available(s) || group_reduce_m(s, sizes, gst, moves) {
             return true;
         }
     }
-    try_equalize_merge(s, rng) || (moves & 1 != 0 && group_reduce(s, sizes, gst))
+    try_equalize_merge(s, rng) || group_reduce_m(s, sizes, gst, moves)
 }
 
 pub struct Stats {
@@ -462,12 +463,30 @@ pub struct Stats {
 pub fn descend_campaign<F>(
     seed_summands: Vec<Summand>,
     cfg: FlipCfg,
+    on_new: F,
+) -> (HashMap<usize, usize>, usize)
+where
+    F: FnMut(usize, &[u8], usize),
+{
+    descend_campaign_seeds(vec![seed_summands], cfg, on_new)
+}
+
+/// the descend campaign from a POOL of seeds (2026-11-07, for projected
+/// seeds): every trajectory start and every restart that does not draw
+/// from the frontier takes a random seed of the pool.  Seeds may have
+/// different ranks.
+pub fn descend_campaign_seeds<F>(
+    seeds: Vec<Vec<Summand>>,
+    cfg: FlipCfg,
     mut on_new: F,
 ) -> (HashMap<usize, usize>, usize)
 where
     F: FnMut(usize, &[u8], usize),
     // (rank, bits, seq-within-rank); called after verification + dedupe
 {
+    assert!(!seeds.is_empty(), "no seeds");
+    let rank_max = seeds.iter().map(|s| s.len()).max().unwrap();
+    let rank_min = seeds.iter().map(|s| s.len()).min().unwrap();
     let stop = AtomicBool::new(false);
     let stats = Stats {
         flips: AtomicU64::new(0),
@@ -475,7 +494,7 @@ where
         trajectories: AtomicU64::new(0),
         landings: AtomicU64::new(0),
         group: GroupStats::default(),
-        min_rank: AtomicU64::new(seed_summands.len() as u64),
+        min_rank: AtomicU64::new(rank_max as u64),
     };
     let sizes = slot_sizes(&cfg);
     let moves = cfg.group_moves;
@@ -485,12 +504,12 @@ where
     // here so effort concentrates at the bottom of the funnel instead of
     // re-paying the easy high-rank descent per trajectory.
     let frontier: Mutex<Vec<Vec<Summand>>> = Mutex::new(Vec::new());
-    let frontier_rank = seed_summands.len().min(cfg.save_at + 4);
+    let frontier_rank = rank_min.min(cfg.save_at + 4);
 
     std::thread::scope(|scope| {
         
         for w in 0..cfg.threads {
-            let seed = seed_summands.clone();
+            let seeds = &seeds;
             let tx = tx.clone();
             let stop = &stop;
             let stats = &stats;
@@ -500,7 +519,7 @@ where
                     Rng::new(cfg.seed.wrapping_add(w as u64).wrapping_mul(
                         0x9e3779b97f4a7c15,
                     ));
-                let mut cur = seed.clone();
+                let mut cur = seeds[rng.below(seeds.len())].clone();
                 let mut stall = 0usize;
                 let mut deposited = usize::MAX;
                 loop {
@@ -529,13 +548,11 @@ where
                     } else if rk <= cfg.save_at + 6 {
                         seek_reduction(&mut cur, &mut rng,
                                        cfg.seek_attempts * 4)
-                            || (moves & 1 != 0
-                                && group_reduce(&mut cur, sizes, &stats.group))
+                            || group_reduce_m(&mut cur, sizes, &stats.group, moves)
                     } else {
                         seek_reduction(&mut cur, &mut rng,
                                        cfg.seek_attempts)
-                            || (moves & 1 != 0
-                                && group_reduce(&mut cur, sizes, &stats.group))
+                            || group_reduce_m(&mut cur, sizes, &stats.group, moves)
                     };
                     if !reduced && moves & 2 != 0 {
                         // plateau re-decompositions of random line groups;
@@ -598,7 +615,7 @@ where
                                         );
                                     }
                                 }
-                                _ => cur = seed.clone(),
+                                _ => cur = seeds[rng.below(seeds.len())].clone(),
                             }
                             deposited = usize::MAX;
                             stall = 0;
@@ -613,8 +630,8 @@ where
         let mut anfs: HashMap<usize, Anf> = HashMap::new();
         let mut pool: HashSet<Vec<Summand>> = HashSet::new();
         let mut counts: HashMap<usize, usize> = HashMap::new();
-        let mut min_rank = seed_summands.len();
-        let mut worker_min = seed_summands.len() as u64;
+        let mut min_rank = rank_max;
+        let mut worker_min = rank_max as u64;
         let mut last_report = Instant::now();
         loop {
             let el = t0.elapsed().as_secs_f64();
@@ -670,14 +687,14 @@ where
                 ranks.sort();
                 let g = stats.group.snapshot();
                 println!(
-                    "c [{:7.0}s] reductions {} | landings {} | distinct {:?} | trajectories {} | diffuse-flips {:.1}M | group g1 {} g2sep {} g2shared {} shuffles {} saved {}",
+                    "c [{:7.0}s] reductions {} | landings {} | distinct {:?} | trajectories {} | diffuse-flips {:.1}M | group g1 {} g2sep {} g2shared {} shuffles {} saved {} g3 {}",
                     t0.elapsed().as_secs_f64(),
                     stats.reductions.load(Ordering::Relaxed),
                     stats.landings.load(Ordering::Relaxed),
                     ranks,
                     stats.trajectories.load(Ordering::Relaxed),
                     stats.flips.load(Ordering::Relaxed) as f64 / 1e6,
-                    g.0, g.1, g.2, g.3, g.4,
+                    g.0, g.1, g.2, g.3, g.4, g.5,
                 );
                 let _ = std::io::stdout().flush();
             }
@@ -685,14 +702,14 @@ where
         stop.store(true, Ordering::Relaxed);
         let g = stats.group.snapshot();
         println!(
-            "c final [{:7.0}s]: reductions {} | landings {} | trajectories {} | diffuse-flips {:.1}M | worker min rank {} | group g1 {} g2sep {} g2shared {} shuffles {} saved {}",
+            "c final [{:7.0}s]: reductions {} | landings {} | trajectories {} | diffuse-flips {:.1}M | worker min rank {} | group g1 {} g2sep {} g2shared {} shuffles {} saved {} g3 {}",
             t0.elapsed().as_secs_f64(),
             stats.reductions.load(Ordering::Relaxed),
             stats.landings.load(Ordering::Relaxed),
             stats.trajectories.load(Ordering::Relaxed),
             stats.flips.load(Ordering::Relaxed) as f64 / 1e6,
             stats.min_rank.load(Ordering::Relaxed),
-            g.0, g.1, g.2, g.3, g.4,
+            g.0, g.1, g.2, g.3, g.4, g.5,
         );
         let result: (HashMap<usize, usize>, usize) = (counts, min_rank);
         result
@@ -789,7 +806,7 @@ where
                     let mut stalled = false;
                     while cur.len() > r {
                         if seek_reduction(&mut cur, &mut rng, 400)
-                            || (moves & 1 != 0 && group_reduce(&mut cur, sizes, gst))
+                            || group_reduce_m(&mut cur, sizes, gst, moves)
                         {
                             let n = 10 + rng.below(70);
                             for _ in 0..n {
@@ -889,13 +906,13 @@ where
                 last_report = Instant::now();
                 let g = gst.snapshot();
                 println!(
-                    "c [{:7.0}s] landings {} | new distinct {} | pool {} (+{}) | group g1 {} g2sep {} g2shared {} shuffles {} saved {}",
+                    "c [{:7.0}s] landings {} | new distinct {} | pool {} (+{}) | group g1 {} g2sep {} g2shared {} shuffles {} saved {} g3 {}",
                     t0.elapsed().as_secs_f64(),
                     nland.load(Ordering::Relaxed),
                     seq,
                     pool.len(),
                     pool.len() - known0,
-                    g.0, g.1, g.2, g.3, g.4,
+                    g.0, g.1, g.2, g.3, g.4, g.5,
                 );
                 let _ = std::io::stdout().flush();
             }
@@ -903,11 +920,11 @@ where
         stop.store(true, Ordering::Relaxed);
         let g = gst.snapshot();
         println!(
-            "c final [{:7.0}s]: landings {} | new distinct {} | group g1 {} g2sep {} g2shared {} shuffles {} saved {}",
+            "c final [{:7.0}s]: landings {} | new distinct {} | group g1 {} g2sep {} g2shared {} shuffles {} saved {} g3 {}",
             t0.elapsed().as_secs_f64(),
             nland.load(Ordering::Relaxed),
             seq,
-            g.0, g.1, g.2, g.3, g.4,
+            g.0, g.1, g.2, g.3, g.4, g.5,
         );
         seq
     })

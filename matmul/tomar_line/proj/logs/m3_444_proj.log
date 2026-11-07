@@ -1,0 +1,9 @@
+c flip descend: <4,4,4> from 1500 seeds of ranks 59..59 (pool /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/move3/seeds444_from445), save<=49, write<=48, lift<=0, 12 threads, 5 min, group-moves 0 shuffles 2
+c [    0.0s] worker min rank 47
+c [      0s] new min rank 47 (landing #1)
+c [     60s] reductions 5168 | landings 3222 | distinct [(47, 2), (48, 1083), (49, 874)] | trajectories 1367 | diffuse-flips 16.4M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    120s] reductions 10145 | landings 6414 | distinct [(47, 2), (48, 2082), (49, 1742)] | trajectories 2730 | diffuse-flips 32.8M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    180s] reductions 15207 | landings 9617 | distinct [(47, 2), (48, 3044), (49, 2617)] | trajectories 4090 | diffuse-flips 49.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    240s] reductions 20220 | landings 12799 | distinct [(47, 4), (48, 3911), (49, 3481)] | trajectories 5461 | diffuse-flips 65.5M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c final [    300s]: reductions 25270 | landings 15985 | trajectories 6819 | diffuse-flips 81.7M | worker min rank 47 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c DONE: min rank 47; distinct landings by rank: [(47, 5), (48, 4721), (49, 4356)]

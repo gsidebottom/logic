@@ -1,0 +1,15 @@
+c group_probe <4,4,4>: 1000 schemes from /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/move1/states444 by rank {49: 109, 50: 239, 51: 192, 52: 138, 53: 109, 54: 72, 55: 69, 56: 72}; tries 3 shuffles 200 seek 100000 threads 12 sat on (timeout 10 s)
+c census over 1000 schemes: same-factor groups by k {3: 461, 4: 38, 5: 3} | lines by k {3: 69386, 4: 9817, 5: 1288, 6: 240, 7: 26, 8: 3} | schemes with a line of k >= 4: 891
+c plane groups (3 present factors spanning, >= 4 terms) by k {4: 7996028, 5: 1310838, 6: 204868, 7: 33067, 8: 6074, 9: 837, 10: 72, 11: 8, 12: 1} | schemes with one: 1000
+c [95s] 200 states | plane groups 1038874 open 24099 greedy-reduced 23973 | SAT calls 124 reduced 7 unsat 117 unknown 0 skipped 0
+c [422s] 400 states | plane groups 2485997 open 124901 greedy-reduced 124588 | SAT calls 300 reduced 35 unsat 260 unknown 5 skipped 0
+c [1298s] 600 states | plane groups 4342934 open 362538 greedy-reduced 362001 | SAT calls 496 reduced 67 unsat 410 unknown 19 skipped 0
+c [2422s] 800 states | plane groups 6606121 open 672441 greedy-reduced 671764 | SAT calls 618 reduced 100 unsat 482 unknown 36 skipped 0
+c [3556s] 1000 states | plane groups 9550875 open 961176 greedy-reduced 960406 | SAT calls 680 reduced 124 unsat 506 unknown 50 skipped 0
+c 1000 schemes in 3556.4s
+c lowered by: base 802 (3 tries x seek 100000) | group alone 587 | 200 shuffles+group 649 | guided+moves 809 | plane greedy 704 | plane SAT 124
+c cross-tab base vs any group move (G1/G2, shuffles, planes): both 723 | base only 79 | GROUP ONLY 0 | neither 198
+c planes beyond the rest: lowered by the plane greedy but by neither base nor G1/G2 0 | by plane SAT only 0
+c guided+moves vs base: lowered by guided+moves but not base 13 | by base but not guided+moves 6
+c plane groups examined 9550875 (by k 4: 7996028, 5: 1310838, 6: 204868, 7: 33067, 8: 6074; above k = 8: 918) | closed by the profile bound 8589699 | left open 961176 | reduced by the greedy 960406 | SAT calls 680 (reduced 124, unsat 506, unknown 50; skipped by the per-state cap 0; mean 1549.7 ms)
+c mean ms per scheme: base 38.61 | group 0.551 | shuffles+group 73.27 | guided+moves 66.70 | planes (greedy + SAT) 40737.65

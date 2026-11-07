@@ -1,0 +1,11 @@
+c flip descend: <3,3,4> from 2934 seeds of ranks 33..35 (pool /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/move3/seeds334_all), save<=30, write<=29, lift<=0, 12 threads, 5 min, group-moves 0 shuffles 2
+c [    0.0s] worker min rank 30
+c [      0s] new min rank 30 (landing #1)
+c [      0s] new min rank 29 (landing #1)
+c [    0.0s] worker min rank 29
+c [     60s] reductions 4881 | landings 2342 | distinct [(29, 513), (30, 1273)] | trajectories 1304 | diffuse-flips 15.7M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    120s] reductions 9618 | landings 4758 | distinct [(29, 869), (30, 2567)] | trajectories 2616 | diffuse-flips 31.5M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    180s] reductions 14369 | landings 7153 | distinct [(29, 1112), (30, 3851)] | trajectories 3929 | diffuse-flips 47.3M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    240s] reductions 19184 | landings 9573 | distinct [(29, 1332), (30, 5144)] | trajectories 5245 | diffuse-flips 63.1M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c final [    300s]: reductions 23973 | landings 11962 | trajectories 6558 | diffuse-flips 78.9M | worker min rank 29 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c DONE: min rank 29; distinct landings by rank: [(29, 1483), (30, 6425)]

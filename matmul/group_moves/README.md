@@ -110,3 +110,9 @@ throughput.  The structures are not rare (tens of thousands of k >= 4
 lines), they are just not where the obstruction is.  The next step on
 this line, if ever, is planes (dimension 3: a 3-slice tensor rank, tiny
 instances), and the probe is the cheap test to run before wiring it in.
+
+Follow-up (2026-11-07, ../tomar_line/README.md): planes (dimension 3)
+measured by the same probe with a SAT oracle, NEGATIVE at both formats;
+Tomar's capacities as SAT constraints, NEGATIVE; projection as a seed
+generator, POSITIVE at 4x4 (47 at 0 s against 54 from the trivial
+start, a fourth rank-47 class at XOR count 171).

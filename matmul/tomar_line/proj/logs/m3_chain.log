@@ -1,0 +1,14 @@
+=== 334_triv start 20:45:09
+    exit 0 c DONE: min rank 29; distinct landings by rank: [(29, 1507), (30, 5222)]
+=== 334_proj start 20:50:09
+    exit 0 c DONE: min rank 29; distinct landings by rank: [(29, 1483), (30, 6425)]
+=== 444_triv start 20:55:10
+    exit 0 c DONE: min rank 64; distinct landings by rank: []
+=== 444_proj start 21:00:10
+    exit 0 c DONE: min rank 47; distinct landings by rank: [(47, 5), (48, 4721), (49, 4356)]
+=== 344_triv start 21:05:10
+    exit 0 c DONE: min rank 38; distinct landings by rank: [(38, 3046), (39, 5728)]
+=== 344_proj start 21:10:11
+    exit 0 c DONE: min rank 38; distinct landings by rank: [(38, 5033), (39, 5786)]
+=== move3 done 21:15:11
+chain exit 0

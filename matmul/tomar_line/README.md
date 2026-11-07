@@ -1,0 +1,281 @@
+# Tomar's lemma line, part 2: planes, capacities, projected seeds (2026-11-06)
+
+Three follow-ons to the group re-decomposition moves of ../group_moves
+(move 1, negative at equal budget), all from Alexandre Sedoglavic's
+pointer to Tomar's arXiv:2610.11823 (Lemma 2.1, the quotient/capacity
+lemma) and his projection page (the substitution method,
+<n,m,p+1:r> -> <n,m,p:r-m> and its transposes):
+
+- **planes** (G3): the subspace re-decomposition move at dimension 3,
+  a plane group's partial sum is a 3-slice tensor; probed before wiring
+  it into the engine (section 1);
+- **move 2**: the lemma's capacities as constraints in the SAT
+  completion of a partial scheme (section 2, matmul/capacity.py);
+- **move 3**: projection as a seed generator, descending with flips
+  from the projections of a larger scheme instead of the trivial
+  scheme (section 3, matmul/project_f2.py).
+
+Protocol as in ../group_moves: 12 threads, one 5-minute run per arm,
+seed 7, the same binary for every arm, arms back to back on an idle
+machine.  The flip engine is unchanged except for the seed-pool start
+(`--seeds-dir`, src/bin/flip.rs) and the plane move behind
+`--group-moves 4` (off in every arm here).
+
+## 1. Planes (G3): the subspace move at dimension 3
+
+A plane group: the terms of a scheme whose factors in one slot lie in a
+3-dimensional subspace spanned by three present factors (7 nonzero
+points), 4 to 8 terms.  Its partial sum is a 3-slice tensor; the group
+can be rewritten in rho terms iff that tensor has rank <= rho over F2.
+src/flip_group.rs:
+
+- lower bound: Tomar's profile argument.  A decomposition with n_y terms
+  on point y must give every form f at least rank(S_f) terms with
+  f(y) = 1 (S_f the flattening along f, 7 forms) and every point x at
+  most r - rank(T mod x) terms on x (T mod x the quotient pencil, 7
+  points); the least feasible profile sum is the bound.  Staged from
+  cheap to exact: the seven form ranks; then the Kronecker bound on the
+  seven quotient pencils (sound, test kronecker_pencil_bound_is_sound_
+  at_small_sizes: never above the exact pencil rank on 400 random
+  pencils); then the exact brute-force pencil rank where du * dv <= 16.
+  The unstaged bound (brute force on every group) cost 200 ms per
+  group and 576 s for one <3,3,4> state (planes/timing1.log); staged,
+  18 ms per state (planes/timing2.log), because the form ranks alone
+  close almost every group.
+- witness: a greedy decomposition in each of the 28 dual bases of the
+  plane (pure slices plus shared rank-ones lowering two or three slices
+  at once, exact rank-one tests), cost = sum of the seven part ranks.
+  On 300 random groups the bound equals the greedy (total gap 0,
+  plane_bound_below_greedy_and_parts_reproduce); planted shared
+  rank-ones are found (planted_shared_rank_one_is_found).
+- exact decision: for a group the bound leaves open and the greedy does
+  not reduce, the probe writes "rho = k - 1 terms" as CNF (Tseitin
+  products and XOR chains per tensor entry) and asks CaDiCaL 3.0.0
+  (10 s cap); a witness is checked against the tensor and the
+  rewritten scheme against Brent before it counts.
+- engine move `--group-moves 4` (plane_reduce, validity test
+  plane_rewrites_preserve_validity: 6 rewrites + 2 reductions on
+  flipped 3x3 schemes, all Brent-checked).  Not run in any A/B: the
+  probe below says why.
+
+Probe (src/bin/group_probe.rs, the move-1 states: <3,3,4> 1386 at
+29-30, <4,4,4> 2928 at 49-56): per state, `base` = guided_descend
+without the moves (3 tries x 100,000 flips), the G1/G2 arms as before,
+`plane` = greedy on every open group, `planesat` = SAT on the rest
+(24 calls per state at most), the first lowering of each kind applied
+to a copy and Brent-checked.  Logs planes/probe334_planes2.log,
+planes/probe444_planes2.log (stopped at 1600 states, statistics only),
+planes/probe444_planes3.log (a seeded 1000-state sample with the
+cross-tab).
+
+| format | plane groups (k = 4 / 5 / 6 / 7 / 8) | closed by the bound | open | reduced by the greedy | SAT calls: reduced / unsat / unknown |
+|---|---|---|---|---|---|
+| <3,3,4>, 1386 states, 227 s | 2,447,655 (2,005,373 / 383,289 / 53,083 / 4,293 / 1,617) | 2,359,591 (96.4 %) | 88,064 | 88,063 | 1: 1 / 0 / 0 |
+| <4,4,4>, first 1600 states, 1749 s | 11,220,341 | 10,355,081 (92.3 %) | 865,260 | 863,855 | 1,276: 184 / 1,056 / 36 |
+| <4,4,4>, 1000-state sample, 3556 s | 9,550,875 (7,996,028 / 1,310,838 / 204,868 / 33,067 / 6,074; 918 with k > 8) | 8,589,699 (89.9 %) | 961,176 | 960,406 | 680: 124 / 506 / 50 |
+
+At <3,3,4> the bound is exact on every plane group of every state:
+closed means irreducible, open means the greedy (once SAT) rewrites it.
+At 4x4 it is not: 1,056 open groups are UNSAT at k - 1, and the greedy
+misses 184 reducible groups that SAT finds (in the 1000-state sample 506
+UNSAT, 124 found by SAT, 50 undecided at the 10 s cap; no state reached
+the 24-call cap).  The groups are not rare
+(every state carries them; 3.6 % to 7.7 % are reducible), and the
+question is whether any opens a state the baseline cannot open:
+
+| states | lowered by base | group alone | shuffles+group | plane greedy | plane SAT | base vs any group move (G1/G2, shuffles, planes): both / base only / GROUP ONLY / neither | plane greedy only | plane SAT only |
+|---|---|---|---|---|---|---|---|---|
+| <3,3,4>, all 1386 | 671 | 290 | 466 | 441 | 1 | 502 / 169 / **0** / 715 | 0 | 0 |
+| <4,4,4>, 1000-state sample | 802 | 587 | 649 | 704 | 124 | 723 / 79 / **0** / 198 | 0 | 0 |
+
+Mean time per <3,3,4> state: base 49 ms, one group scan 0.2 ms, 200
+shuffles 31 ms, planes (bound, greedy, SAT) 1763 ms; per 4x4 state
+(the sample): base 39 ms, group 0.6 ms, shuffles 73 ms, planes 40.7 s
+(961 k open groups through the greedy and 680 SAT calls at 1.5 s
+each).  That is the other reason the move is not wired into a timed
+arm: a plane scan costs 35 base scans at <3,3,4> and 1000 at 4x4.
+
+Verdict: NEGATIVE at both formats.  At <3,3,4> the plane move lowers
+441 of 1386 states (one of them through SAT) and every one of them is
+lowered by the base engine too; at 4x4 the plane greedy lowers 704 of
+1000 sampled states and SAT 124 more, again all of them states the
+base engine lowers (GROUP ONLY 0, plane-only 0, SAT-only 0), while the
+base alone lowers 169 (<3,3,4>) and 79 (4x4) states no group move
+touches.  The reducible plane groups are real and common (960 k of
+the 961 k groups the bound leaves open rewrite in k - 1 terms, a tenth
+of all plane groups at 4x4), but every rewrite that lowers the rank
+sits in a state flips and merges lower anyway; the 50 SAT calls (of
+680) that timed out are the only undecided groups in the sample.  The
+full 2928-state 4x4 run (planes/probe444_planes4.log) runs overnight
+at background priority and is expected to agree.
+
+## 2. Move 2: capacities as constraints in SAT completion
+
+Tomar's Lemma 2.1 in our terms (matmul/capacity.py): for a rank-r
+scheme of <n1,n2,n3> and a nonzero linear form f on one slot's space,
+the terms with f(factor) = 1 number at least m_X * rank f, where m_X is
+the dimension the slot's matrices are multiplied against (n3 for a, n1
+for b, n2 for c); this is unconditional (the image of the tensor modulo
+ker f is f^T (x) I).  And at most r - R(T_S) factors lie in a subspace S
+of row or column type, R(T_S) the rank of the smaller format the quotient
+leaves; these capacities rest on lower bounds for the smaller formats,
+taken from a table with provenance (Hopcroft-Kerr 1971 <2,2,n> = ceil(7n/2)
+and <2,3,3> = 15 over F2; <2,3,4> >= 19, Hopcroft-Kerr's sketch completed
+by Wang 2026, arXiv:2603.07280; <3,3,3> >= 20, Wang 2026, verified;
+<1,m,p> = mp; closure R(<n,m,p+1>) >= R(<n,m,p>) + m and the transposes).
+`capacity.py report` finds 0 violations on AlphaTensor's <3,3,4>:29 and
+3x3:23 and tight constraints on both, so the constraints have teeth on
+real schemes.
+
+Instances: `capacity.py cnf` writes the Brent equations of a completion
+(one slot frozen to a known scheme's factors, the other two free; or a
+few terms dropped from a known scheme) with optional cardinality
+constraints by Sinz's sequential counters: `entries` (the form counts
+on the free slots), `caps` (the subspace capacities, a selector z per
+term and at_most(z, r - LB)), `all` (both).  SAT instances i1 (<3,3,4>
+r = 29, a frozen to AlphaTensor's 29) and i2 (3x3 r = 23, a frozen);
+i3 (<3,3,4> r = 28: term 0, or term 7, dropped from the 29 and the a
+slot frozen to the remaining 28 factors; a solution would be a rank-28
+scheme, below the record, so UNSAT is expected and the instance
+measures refutation time); i4 (4x4 r = 47, a frozen to AlphaTensor's
+47: SAT in principle, it measures the scale).  i1 `none` has 13,512
+variables and 48,384 clauses, i1 `all` 199,448 / 460,822; i4 `all`
+1,083,338 / 2,423,250.  CaDiCaL 3.0.0, 600 s cap, two seeds, 8 in
+parallel on an otherwise idle machine (caps/run_move2.sh, table by
+caps/summarize_move2.py).
+
+Round 1 (caps/logs/m2_chain.log; 8 jobs in parallel, so each
+instance's variants ran together under equal load; seconds for seeds 1 / 2):
+
+| instance | none | entries | caps | all |
+|---|---|---|---|---|
+| i2: 3x3 r = 23, a frozen (SAT) | SAT 48 / 21 | SAT 35 / 13 | SAT 37 / 43 | SAT 12 / 46 |
+| i1: <3,3,4> r = 29, a frozen (SAT) | > 600 / > 600 | > 600 / > 600 | > 600 / > 600 | > 600 / > 600 |
+| i3: <3,3,4> r = 28, term 0 dropped (UNSAT expected) | > 600 / > 600 | > 600 / > 600 | > 600 / > 600 | > 600 / > 600 |
+| i3: <3,3,4> r = 28, term 7 dropped (UNSAT expected) | > 600 / > 600 | - | - | > 600 / > 600 |
+| i4: 4x4 r = 47, a frozen (SAT) | > 600 | - | - | > 600 |
+
+The one instance CaDiCaL solves it solves in 12 to 48 s under every
+variant, the spread between seeds (21 against 48 s for `none`) as wide
+as the spread between variants; every harder instance is censored at
+600 s with and without the constraints.  Round 2 (caps/run_move2b.sh,
+instances between those two sizes: 3x3 r = 22 with a term dropped,
+<2,3,4> r = 20 a frozen, <2,3,4> r = 19 with a term dropped, where 19 is
+Wang's lower bound and 20 the record, so a model would be a discovery):
+
+| instance (round 2, caps/logs/m2b_chain.log; background priority beside the orbit scan, so absolute times are inflated, the variants of one instance ran together) | none, seeds 1 / 2 | all, seeds 1 / 2 |
+|---|---|---|
+| i5: 3x3 r = 22, term 0 dropped (UNSAT) | UNSAT 29 / 28 s | UNSAT 102 / 101 s |
+| i5: 3x3 r = 22, term 11 dropped (UNSAT) | UNSAT 62 / 50 s | > 600 / UNSAT 84 s |
+| i6: <2,3,4> r = 20, a frozen (SAT) | > 600 / > 600 | > 600 / > 600 |
+| i7: <2,3,4> r = 19, term 0 dropped (open) | > 600 / > 600 | > 600 / > 600 |
+
+The refutations are the informative case: with the capacities and
+form counts added (6,147 -> 19,381 variables, 21,951 -> 50,871 clauses)
+CaDiCaL takes 2 to 3.5 times longer to refute, and one of four
+constrained jobs is censored where every plain job finishes.  The
+constraints are implied facts the solver would have to rediscover, and
+encoding them as sequential counters costs more propagation than the
+pruning returns, at least at this scale and in this encoding.
+
+Verdict: NEGATIVE.  The capacities are true and tight on real schemes
+(0 violations, several at equality on AlphaTensor's <3,3,4> and 3x3),
+but as cardinality constraints in the completion CNF they do not solve
+anything CaDiCaL cannot solve without them (i1, i3, i4, i6, i7 censored
+on both sides) and they slow the one refutation it can do (i5).  Not
+tried: the caps as a symmetry-breaking or branching order rather than
+as clauses, or a native pseudo-Boolean solver.
+
+## 3. Move 3: projected seed pools against the trivial start
+
+Seeds: AlphaTensor's F2 schemes of the next format up
+(matmul/external/alphatensor_f2, tensor-checked on conversion),
+projected by matmul/project_f2.py: a basis change puts the killed
+direction last, the killed variables are substituted so that q products
+vanish with independent restricted forms, the killed outputs dropped;
+every projection is checked against the smaller tensor (0 failures).
+Pools (proj/make_pools.sh; 40 bases per direction for the ref47 pool,
+20 otherwise):
+
+| target | source (mode) | seeds at rank |
+|---|---|---|
+| <3,3,4> | <3,3,5>:36 (col, 36-3), <3,4,4>:38 (inner-a 38-3, inner-b 38-4) | 533 at 33, 901 at 35, 1500 at 34 (2934 in all) |
+| <4,4,4> | <4,4,5>:63 (col, 63-4) | 1500 at 59 |
+| <3,4,4> | <3,4,5>:47 (col, 47-4), the three published 4x4 47s (row, 47-4) | 1500 + 600 + 600 + 593 at 43 (3293) |
+
+The recipe regenerates six pools exactly; the two capped pools
+(<4,4,5> -> 4x4, at47 -> <3,4,4>) come back with 1416/1500 and 580/600
+of the A/B's files (the cap truncates in hash order; PYTHONHASHSEED is
+pinned now).  Each `--seeds-dir` run Brent-verifies every seed at its
+rank, starts each trajectory from a random seed of the pool, and the
+collector Brent-verifies every landing before writing it.
+
+| arm | record | first at record | distinct landings at record / record+1 | landings | trajectories | diffusion flips | distinct types at record |
+|---|---|---|---|---|---|---|---|
+| <3,3,4> trivial (36) | 29 | 29 at 2 s | 1507 / 5222 | 9402 | 6227 | 81.5 M | 385 |
+| <3,3,4> projected (2934 at 33..35) | 29 | 29 at 0 s | 1483 / 6425 | 11962 | 6558 | 78.9 M | 324 (269 shared, 55 new, 116 only trivial) |
+| <3,4,4> trivial (48) | 38 | 38 at 17 s | 3046 / 5728 | 11130 | 7659 | 99.8 M | 185 |
+| <3,4,4> projected (3293 at 43) | 38 | 38 at 0 s | 5033 / 5786 | 11137 | 6830 | 82.5 M | 1459 (3 shared) |
+| <4,4,4> trivial (64) | 47 | never: 54 at 64 s, nothing below in 5 min | 0 / 0 (nothing at or below 49) | 0 | 128187 | 2056 M | - |
+| <4,4,4> projected (1500 at 59) | 47 | **47 at 0 s** | **5 / 4721** (and 4356 at 49) | 15985 | 6819 | 81.7 M | 3 |
+
+"Type" = the multiset over terms of (rank a, rank b, rank c), sorted
+inside the triple on the square format (an invariant of the de Groote
+class under sandwiching and the S3 symmetries; proj/scheme_types.py).
+No landing is shared between the two arms of any pair (different
+starts), so the comparison is by type.
+
+- <3,3,4> and <3,4,4>: both starts reach the record within seconds, no
+  28 and no 37.  The projected pools land in a different part of the
+  record level: at <3,4,4>, 1459 types against 185 with 3 in common;
+  at <3,3,4>, 324 against 385 with 269 in common.  The trivial start
+  funnels into few types at <3,4,4>; the projections do not.
+- <4,4,4>: from the trivial scheme the engine stalls at 54 (128 k
+  trajectories, none at 49 or below), from the projections of
+  AlphaTensor's <4,4,5>:63 every worker is at 47 within the first
+  second and 15985 landings at 47..49 follow in 5 minutes (2.3 per
+  trajectory).  No 46.  The earlier baseline run from the trivial
+  scheme (../group_moves, same seed, the binary before the seed-pool
+  change) reached 49 once at 211 s in 92 k trajectories, so the
+  trivial start's reach in 5 minutes is itself a lottery; the
+  projected start is not.  Replicate (seed 8, 2 min per arm,
+  proj/run_m3_rep.sh, logs proj/logs/m3rep_*): trivial 54 at 64 s and
+  nothing at or below 49 in 51 k trajectories; projected 47 at 0 s,
+  then 2 distinct 47s, 2050 48s and 1749 49s in 2 minutes.  One of the
+  two 47s is r47-00001 again, term for term; the other carries
+  Kauers-Moosbauer's type like r47-00004.
+- The five 47s (proj/found47, each re-checked against the tensor and
+  all 256 basis-matrix products, proj/logs): three carry AlphaTensor's
+  type profile, one Kauers-Moosbauer's, one matches none of the three
+  published 47s (matmul/x47/walkseeds), so it is a fourth class
+  relative to our seeds (the invariant is preserved by GL(4,2)^3 and
+  the slot symmetries, so a different value proves inequivalence; the
+  same value would not prove equivalence, and Kauers-Moosbauer's
+  flip-graph paper reports over 100,000 rank-47 schemes over F2
+  without a class count).  All five, like the three published ones,
+  are flip-isolated: no two products share a factor, so plain flips
+  cannot leave them, which is why descents from different seeds end
+  in different classes.  XOR count of the new class (matmul/x47,
+  `seeds/proj47_5`): as given 46 + 46 + 88 = 180 under Boyar-Peralta;
+  24 annealed orbit chains end at 171 (22 chains), 172 and 173, best
+  45 + 45 + 81, where the three published classes' chains all end at
+  168; the cheap stage of the whole-orbit lower bound gives >= 151
+  (the published class gave 148 there and climbed to 160, AlphaTensor's
+  152).  The exhaustive BP orbit scan (all 840^3 coset triples, 63 min
+  on 12 threads shared with the probe) confirms the plateau: orbit
+  minimum 171 under BP against 168 in each published class, 411 triples
+  within +2 (52 at 171).  The exact refine of the 411 triples gives
+  171 (44 + 45 + 82 at the best triple; both input sides exact, the
+  product side 51 against a bound of 50 through its transpose), and
+  settling at depth 5 (57 min) proves eight triples exactly 171 and
+  leaves 78 of the 411 open below 171; depth 6 and the climb of the
+  whole-orbit bound from 152 are queued.  A point below 167 would need four
+  XORs of exact gains over the BP counts across three sides, where the
+  KM class gave one.
+
+Verdict: projection is a good seed generator exactly where the funnel
+is deep.  At the small formats it changes which records are found,
+not whether; at 4x4 it turns a 5-minute lottery into a sure landing
+at the record level, and it is the only one of the three moves here
+that pays.  Logs proj/logs/m3_*.log (per-minute reports, final
+counters), driver proj/run_move3.sh.

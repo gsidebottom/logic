@@ -1,0 +1,17 @@
+c group_probe <3,3,4>: 1386 schemes from /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/move1/states334 by rank {29: 355, 30: 1031}; tries 3 shuffles 200 seek 100000 threads 12 sat on (timeout 10 s)
+c census over 1386 schemes: same-factor groups by k {3: 421, 4: 21} | lines by k {3: 43790, 4: 6264, 5: 384, 6: 162} | schemes with a line of k >= 4: 1324
+c plane groups (3 present factors spanning, >= 4 terms) by k {4: 2005373, 5: 383289, 6: 53083, 7: 4293, 8: 1617} | schemes with one: 1386
+c [4s] 200 states | plane groups 270270 open 0 greedy-reduced 0 | SAT calls 0 reduced 0 unsat 0 unknown 0 skipped 0
+c [9s] 400 states | plane groups 567311 open 6 greedy-reduced 6 | SAT calls 0 reduced 0 unsat 0 unknown 0 skipped 0
+c [16s] 600 states | plane groups 945065 open 1613 greedy-reduced 1613 | SAT calls 0 reduced 0 unsat 0 unknown 0 skipped 0
+c [56s] 800 states | plane groups 1329551 open 18292 greedy-reduced 18292 | SAT calls 0 reduced 0 unsat 0 unknown 0 skipped 0
+c [106s] 1000 states | plane groups 1713026 open 41228 greedy-reduced 41228 | SAT calls 0 reduced 0 unsat 0 unknown 0 skipped 0
+c [161s] 1200 states | plane groups 2091107 open 64413 greedy-reduced 64412 | SAT calls 1 reduced 1 unsat 0 unknown 0 skipped 0
+c [227s] 1386 states | plane groups 2447655 open 88064 greedy-reduced 88063 | SAT calls 1 reduced 1 unsat 0 unknown 0 skipped 0
+c 1386 schemes in 226.7s
+c lowered by: base 671 (3 tries x seek 100000) | group alone 290 | 200 shuffles+group 466 | guided+moves 671 | plane greedy 441 | plane SAT 1
+c cross-tab base vs any group move (G1/G2, shuffles, planes): both 502 | base only 169 | GROUP ONLY 0 | neither 715
+c planes beyond the rest: lowered by the plane greedy but by neither base nor G1/G2 0 | by plane SAT only 0
+c guided+moves vs base: lowered by guided+moves but not base 1 | by base but not guided+moves 1
+c plane groups examined 2447655 (by k 4: 2005373, 5: 383289, 6: 53083, 7: 4293, 8: 1617; above k = 8: 0) | closed by the profile bound 2359591 | left open 88064 | reduced by the greedy 88063 | SAT calls 1 (reduced 1, unsat 0, unknown 0; skipped by the per-state cap 0; mean 56.4 ms)
+c mean ms per scheme: base 48.92 | group 0.213 | shuffles+group 30.92 | guided+moves 64.20 | planes (greedy + SAT) 1763.20

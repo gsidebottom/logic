@@ -1,0 +1,18 @@
+i5_333r22drop0_none          seed 2  UNSATISFIABLE     28.40 s
+i5_333r22drop0_none          seed 1  UNSATISFIABLE     28.64 s
+i5_333r22drop11_none         seed 2  UNSATISFIABLE     50.37 s
+i5_333r22drop11_none         seed 1  UNSATISFIABLE     61.60 s
+i5_333r22drop11_all          seed 2  UNSATISFIABLE     84.37 s
+i5_333r22drop0_all           seed 2  UNSATISFIABLE    101.34 s
+i5_333r22drop0_all           seed 1  UNSATISFIABLE    102.40 s
+i5_333r22drop11_all          seed 1  UNKNOWN          624.24 s
+i6_234r20_none               seed 1  UNKNOWN          601.25 s
+i6_234r20_none               seed 2  UNKNOWN          602.78 s
+i6_234r20_all                seed 2  UNKNOWN          601.34 s
+i6_234r20_all                seed 1  UNKNOWN          612.79 s
+i7_234r19drop0_none          seed 1  UNKNOWN          601.48 s
+i7_234r19drop0_none          seed 2  UNKNOWN          600.79 s
+i7_234r19drop0_all           seed 1  UNKNOWN          601.59 s
+i7_234r19drop0_all           seed 2  UNKNOWN          650.31 s
+=== move2b done 22:48:04
+exit 0

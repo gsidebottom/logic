@@ -503,6 +503,17 @@ pub fn pencil_rank_lb(a: &[u16], b: &[u16], m: usize, n: usize) -> usize {
     s + e
 }
 
+/// the Kronecker-form bound sum_i s_i + max_i e_i by itself, sound at
+/// every size (the brute force that pencil_rank_lb runs at m * n <=
+/// BRUTE_WHOLE_BITS is skipped); a cheap first stage before it
+pub fn pencil_rank_kron(a: &[u16], b: &[u16], m: usize, n: usize) -> usize {
+    let kr = kronecker(a, b, m, n);
+    let prof = block_profile(&kr);
+    let s: usize = prof.iter().map(|x| x.0).sum();
+    let e = prof.iter().map(|x| x.1).max().unwrap_or(0);
+    s + e
+}
+
 /// OPTIMISTIC block-additive sum (NOT sound over F_2 in general; for
 /// measuring the ceiling of the pencil leaf only).
 pub fn pencil_rank_additive(a: &[u16], b: &[u16], m: usize, n: usize) -> usize {

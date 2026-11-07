@@ -1,0 +1,50 @@
+=== selftest at47 13:23:25
+matmul/x47/walkseeds/at47.bits: rank 47, convention 0 (c = C), 3 symmetry variants
+  random sandwich 0: EQUIVALENT via variant perm (0, 1, 2) transposes 000, 47 nodes; slot0: P 0001/0100/1000/0110 Q 0110/1001/1000/1011 slot1: P 0010/1101/0101/0110 Q 0011/1001/0110/0111 slot2: P 0001/0110/1000/0010 Q 0110/1000/1011/1111
+  random sandwich 1: EQUIVALENT via variant perm (0, 1, 2) transposes 000, 47 nodes; slot0: P 1110/0010/1111/1011 Q 1001/0010/0100/0001 slot1: P 1001/0010/0100/0001 Q 1010/1111/1011/0011 slot2: P 1001/1010/1101/1100 Q 0011/0100/1111/1010
+  random sandwich 2: EQUIVALENT via variant perm (0, 1, 2) transposes 000, 47 nodes; slot0: P 1010/0100/0101/0010 Q 0110/0111/1001/0010 slot1: P 1110/1001/0001/1100 Q 1101/1110/1011/1010 slot2: P 1000/0101/0001/1010 Q 1010/1110/1011/0111
+  variant ((0, 2, 1), 1): EQUIVALENT via variant perm (0, 2, 1) transposes 001, 47 nodes; slot0: P 1000/0100/0010/0001 Q 1000/0100/0010/0001 slot1: P 1000/0100/0010/0001 Q 1000/0100/0010/0001 slot2: P 1000/0100/0010/0001 Q 1000/0100/0010/0001
+  variant ((2, 0, 1), 5): EQUIVALENT via variant perm (1, 2, 0) transposes 110, 47 nodes; slot0: P 1000/0100/0010/0001 Q 1000/0100/0010/0001 slot1: P 1000/0100/0010/0001 Q 1000/0100/0010/0001 slot2: P 1000/0100/0010/0001 Q 1000/0100/0010/0001
+exit 0
+=== negative controls 13:23:26
+matmul/x47/walkseeds/at47.bits vs matmul/x47/walkseeds/km47.bits: NOT EQUIVALENT
+matmul/x47/walkseeds/at47.bits vs matmul/x47/walkseeds/ref47.bits: NOT EQUIVALENT
+exit 0
+=== classes of all 30 rank-47 schemes 13:23:26
+  matmul/x47/walkseeds/at47.bits: new class representative
+  matmul/tomar_line/proj/found47/r47-00001.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47/r47-00002.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47/r47-00003.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00001.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00002.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00004.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00007.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00008.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00009.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00013.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00017.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00018.bits: same class as matmul/x47/walkseeds/at47.bits (47 nodes)
+  matmul/x47/walkseeds/km47.bits: new class representative
+  matmul/tomar_line/proj/found47/r47-00004.bits: same class as matmul/x47/walkseeds/km47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00003.bits: same class as matmul/x47/walkseeds/km47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00006.bits: same class as matmul/x47/walkseeds/km47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00011.bits: same class as matmul/x47/walkseeds/km47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00012.bits: same class as matmul/x47/walkseeds/km47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00014.bits: same class as matmul/x47/walkseeds/km47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00015.bits: same class as matmul/x47/walkseeds/km47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00016.bits: same class as matmul/x47/walkseeds/km47.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00021.bits: same class as matmul/x47/walkseeds/km47.bits (47 nodes)
+  matmul/x47/walkseeds/ref47.bits: new class representative
+  matmul/tomar_line/proj/found47/r47-00005.bits: new class representative
+  matmul/tomar_line/proj/found47_d180/r47-00005.bits: same class as matmul/tomar_line/proj/found47/r47-00005.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00010.bits: same class as matmul/tomar_line/proj/found47/r47-00005.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00019.bits: same class as matmul/tomar_line/proj/found47/r47-00005.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00020.bits: same class as matmul/tomar_line/proj/found47/r47-00005.bits (47 nodes)
+  matmul/tomar_line/proj/found47_d180/r47-00022.bits: same class as matmul/tomar_line/proj/found47/r47-00005.bits (47 nodes)
+
+30 schemes, 4 rank-triple types, 4 de Groote classes:
+  matmul/x47/walkseeds/at47.bits: 13 scheme(s): at47.bits r47-00001.bits r47-00002.bits r47-00003.bits r47-00001.bits r47-00002.bits r47-00004.bits r47-00007.bits r47-00008.bits r47-00009.bits r47-00013.bits r47-00017.bits r47-00018.bits
+  matmul/x47/walkseeds/km47.bits: 10 scheme(s): km47.bits r47-00004.bits r47-00003.bits r47-00006.bits r47-00011.bits r47-00012.bits r47-00014.bits r47-00015.bits r47-00016.bits r47-00021.bits
+  matmul/x47/walkseeds/ref47.bits: 1 scheme(s): ref47.bits
+  matmul/tomar_line/proj/found47/r47-00005.bits: 6 scheme(s): r47-00005.bits r47-00005.bits r47-00010.bits r47-00019.bits r47-00020.bits r47-00022.bits
+exit 0 13:23:28

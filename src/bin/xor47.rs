@@ -2433,6 +2433,7 @@ fn settle(pre: &str, logf: &str, o: &Opts) {
         closure(&mut inc, &mut cl, &mut rem);
         let mut cur_ub = ub;
         let mut proved_lb = None;
+        let mut floor = sides[key].2; // proved lower bound so far (the refine log's, then raised below)
         let mut hh = *h;
         loop {
             GLOBAL_TIMED_OUT.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -2450,14 +2451,49 @@ fn settle(pre: &str, logf: &str, o: &Opts) {
                     }
                     hh = hs.len() - 1;
                 }
-                None if to => break,
+                None if to => {
+                    // the level just below the best known program timed out: climb
+                    // from level 0 instead, refuting one helper level at a time within
+                    // the same cap, so the proved bound still rises when the top level
+                    // is out of reach (one 43-target side at BP 50, bound 47, timed out
+                    // at 1200 s and 2400 s and kept a point at 173 open below 171; a
+                    // refutation of 4 helpers closes it).  Levels below the first few
+                    // are cheap; every refuted level is a proof on its own.
+                    let mut h2 = 0usize;
+                    while h2 < hh {
+                        GLOBAL_TIMED_OUT.store(false, std::sync::atomic::Ordering::Relaxed);
+                        GLOBAL_DEADLINE_MS.store(epoch_ms() + (o.cap * 1000.0) as u64, std::sync::atomic::Ordering::Relaxed);
+                        let nodes = std::sync::atomic::AtomicU64::new(0);
+                        let found = exact_level(&inc, &cl, &rem, h2, true, &nodes);
+                        GLOBAL_DEADLINE_MS.store(0, std::sync::atomic::Ordering::Relaxed);
+                        let to2 = GLOBAL_TIMED_OUT.load(std::sync::atomic::Ordering::Relaxed);
+                        match found {
+                            Some(hs) => {
+                                // every lower level is refuted, so this program is optimal
+                                cur_ub = key.len() + hs.len();
+                                proved_lb = Some(cur_ub);
+                                break;
+                            }
+                            None if to2 => {
+                                println!("    level {h2} ({} XORs) timed out at the cap  ({:.0}s)", key.len() + h2, t0.elapsed().as_secs_f64());
+                                break;
+                            }
+                            None => {
+                                floor = floor.max(key.len() + h2 + 1);
+                                println!("    level {h2} refuted: >= {floor}  ({:.0}s)", t0.elapsed().as_secs_f64());
+                                h2 += 1;
+                            }
+                        }
+                    }
+                    break;
+                }
                 None => {
                     proved_lb = Some(key.len() + hh + 1);
                     break;
                 }
             }
         }
-        let lb = proved_lb.unwrap_or(sides[key].2);
+        let lb = proved_lb.unwrap_or(floor);
         res.insert(key.clone(), (cur_ub, lb));
         {
             use std::io::Write;

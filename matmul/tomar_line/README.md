@@ -69,7 +69,10 @@ planes/probe444_planes3.log (a seeded 1000-state sample with the
 cross-tab), planes/probe444_planes4.log (a full run at background priority
 beside the climb, timed out at 1200 states, statistics only),
 planes/probe444_planes5.log (the full run at normal priority, all
-2928 states, with the cross-tab: the result of record).
+2928 states, with the cross-tab: the result of record),
+planes/probe444_planes6.log (a second full run, seed 8, naming its
+GROUP ONLY states), planes/probe444_gonly50.log (base with 50 tries on
+the two named states).
 
 | format | plane groups (k = 4 / 5 / 6 / 7 / 8) | closed by the bound | open | reduced by the greedy | SAT calls: reduced / unsat / unknown |
 |---|---|---|---|---|---|
@@ -93,6 +96,7 @@ baseline cannot open:
 | <3,3,4>, all 1386 | 671 | 290 | 466 | 441 | 1 | 502 / 169 / **0** / 715 | 0 | 0 |
 | <4,4,4>, 1000-state sample | 802 | 587 | 649 | 704 | 124 | 723 / 79 / **0** / 198 | 0 | 0 |
 | <4,4,4>, all 2928 | 2379 | 1790 | 1975 | 2126 | 411 | 2168 / 211 / **1** / 548 | 1 | 0 |
+| <4,4,4>, all 2928, second run (seed 8) | 2384 | 1790 | 1978 | 2126 | 411 | 2170 / 214 / **2** / 542 | 2 | 0 |
 
 Mean time per <3,3,4> state: base 49 ms, one group scan 0.2 ms, 200
 shuffles 31 ms, planes (bound, greedy, SAT) 1763 ms; per 4x4 state in
@@ -114,14 +118,20 @@ by the plane greedy and by none of base's three tries, the group scan
 or the shuffles.  That one is inside the arms' own noise: the base arm
 and the guided+moves arm are the same descent with different random
 streams, and they disagree on 61 states (35 lowered by guided+moves
-and not by base, 26 the other way).  The run does not name the state;
-a rerun that names its GROUP ONLY states is queued (2026-11-07) so
-that base can be given more tries on it.  The reducible plane groups
-are real and common (2.95 M of the 2.96 M groups the bound leaves
-open rewrite in k - 1 terms, a tenth of all plane groups at 4x4), but
-every rewrite that lowers the rank sits in a state flips and merges
-lower anyway, up to that one state; the 149 SAT calls (of 2030) that
-timed out are the only undecided groups.  The seeded 1000-state sample
+and not by base, 26 the other way).  A second full run (seed 8,
+planes/probe444_planes6.log, 97 min) repeats the deterministic arms
+exactly (group 1790, plane greedy 2126, plane SAT 411, the same 28.5 M
+groups), draws base 2384 and the cross-tab 2170 / 214 / GROUP ONLY 2 /
+542, and names its two GROUP ONLY states: r55-00014 (plane greedy
+only) and r55-00113 (plane greedy and guided+moves).  Given 50 tries
+instead of 3, base lowers both (planes/probe444_gonly50.log): the
+GROUP ONLY states are base's sampling noise at 3 tries, not states the
+plane move alone can open.  The reducible plane groups are real and
+common (2.95 M of the 2.96 M groups the bound leaves open rewrite in
+k - 1 terms, a tenth of all plane groups at 4x4), but every rewrite
+that lowers the rank sits in a state flips and merges lower anyway;
+the 149 SAT calls (of 2030) that timed out are the only undecided
+groups.  The seeded 1000-state sample
 at background priority (planes/probe444_planes3.log: 723 / 79 / 0 /
 198) and an earlier full run at background priority beside the climb
 that timed out after 4 h at 1200 states (planes/probe444_planes4.log,
@@ -279,18 +289,30 @@ starts), so the comparison is by type.
   trajectories, 22 distinct 47s (proj/found47_d180), 13,757 48s, 18,198
   49s, no 46.  By type 9 are AlphaTensor-like, 8 Kauers-Moosbauer-like
   and 5 carry the new class's type; four of the 22 are r47-00001..4
-  again, term for term, none is r47-00005, so whether the five new-type
-  schemes are in the same de Groote class as proj47_5 is open (the type
-  does not decide it).
+  again, term for term, none is r47-00005.  The exact equivalence test
+  (proj/scheme_iso.py: a term bijection consistent with the factor-rank
+  signatures, the pair ranks and F2-linearity, then the slot maps
+  M -> P M Q read off and re-verified, over every slot-symmetry variant
+  of the second scheme; exact both ways, self-tested on random
+  sandwiches) puts all five in proj47_5's class.  Over all 30 rank-47
+  schemes we hold (the three published, the five from the 5-minute
+  runs, the 22 from the descent) there are exactly four de Groote
+  classes: AlphaTensor's (13 schemes, 12 of them ours),
+  Kauers-Moosbauer's (10, 9 ours), the projection-descent class (6, all
+  ours) and AlphaEvolve's (walkseeds/ref47 alone; no descent reached
+  it); proj/logs/iso47_classes.log, 2 s for the 30.
+  The pairwise and triple factor-sum rank invariants
+  (proj/class_invariants.py, proj/logs/class_invariants.log) split the
+  30 into the same four groups as the type does.
 - The five 47s (proj/found47, each re-checked against the tensor and
   all 256 basis-matrix products, proj/logs): three carry AlphaTensor's
   type profile, one Kauers-Moosbauer's, one matches none of the three
   published 47s (matmul/x47/walkseeds), so it is a fourth class
   relative to our seeds (the invariant is preserved by GL(4,2)^3 and
   the slot symmetries, so a different value proves inequivalence; the
-  same value would not prove equivalence, and Kauers-Moosbauer's
-  flip-graph paper reports over 100,000 rank-47 schemes over F2
-  without a class count).  All five, like the three published ones,
+  same value would not prove equivalence, which proj/scheme_iso.py now
+  decides exactly; and Kauers-Moosbauer's flip-graph paper reports over
+  100,000 rank-47 schemes over F2 without a class count).  All five, like the three published ones,
   are flip-isolated: no two products share a factor, so plain flips
   cannot leave them, which is why descents from different seeds end
   in different classes.  XOR count of the new class (matmul/x47,
@@ -307,10 +329,14 @@ starts), so the comparison is by type.
   product side 51 against a bound of 50 through its transpose), and
   settling at depth 5 (57 min) proves eight triples exactly 171 and
   leaves 78 of the 411 open below 171; depth 6 (20 min, a 1200 s cap
-  per helper level) settles 28 more sides exactly, one side (43
-  targets, BP 50, bound 47) times out, and 57 points stay open below
-  171 (17 at 172, 40 at 173) through six distinct open sides at 6 to 8
-  helpers; depth 8 at a 2400 s cap is running (2026-11-07).  The climb of
+  per helper level) settles 28 more sides exactly and leaves 57 points
+  open below 171 through six distinct sides at 6 to 8 helpers; depth 8
+  (48 min, cap 2400 s) settles 40 more sides exactly (eight of them one
+  below BP) and leaves one point open: total 173, bound 170, through
+  the one side that times out at every cap (43 targets, BP 50, bound
+  47).  So 410 of the 411 scan candidates are settled and none is
+  below 171; a bottom-up refutation of that side's lower helper levels
+  is running (2026-11-07).  The climb of
   the whole-orbit lower bound (matmul/x47 lbclass.sh, 6.5 h) proves every
   orbit point costs at least 162; the 163 step stopped at its budget with
   6 coset triples open on one side.  Windows, bound to best known point:

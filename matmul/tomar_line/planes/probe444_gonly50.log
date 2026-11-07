@@ -1,0 +1,11 @@
+c group_probe <4,4,4>: 2 schemes from /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/move1/states_gonly by rank {55: 2}; tries 50 shuffles 200 seek 100000 threads 2 sat off
+c census over 2 schemes: same-factor groups by k {3: 4} | lines by k {3: 92, 4: 38, 5: 7, 6: 4} | schemes with a line of k >= 4: 2
+c plane groups (3 present factors spanning, >= 4 terms) by k {4: 24315, 5: 6983, 6: 1403, 7: 277, 8: 30, 9: 3} | schemes with one: 2
+c [1s] 2 states | plane groups 33008 open 3 greedy-reduced 3 | SAT calls 0 reduced 0 unsat 0 unknown 0 skipped 0
+c 2 schemes in 0.8s
+c lowered by: base 2 (50 tries x seek 100000) | group alone 0 | 200 shuffles+group 1 | guided+moves 2 | plane greedy 2 | plane SAT 0
+c cross-tab base vs any group move (G1/G2, shuffles, planes): both 2 | base only 0 | GROUP ONLY 0 | neither 0
+c planes beyond the rest: lowered by the plane greedy but by neither base nor G1/G2 0 | by plane SAT only 0
+c guided+moves vs base: lowered by guided+moves but not base 0 | by base but not guided+moves 0
+c plane groups examined 33008 (by k 4: 24315, 5: 6983, 6: 1403, 7: 277, 8: 30; above k = 8: 3) | closed by the profile bound 33005 | left open 3 | reduced by the greedy 3 | SAT calls 0 (reduced 0, unsat 0, unknown 0; skipped by the per-state cap 0; mean 0.0 ms)
+c mean ms per scheme: base 144.94 | group 0.473 | shuffles+group 48.77 | guided+moves 223.38 | planes (greedy + SAT) 69.91

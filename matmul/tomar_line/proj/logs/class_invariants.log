@@ -1,0 +1,36 @@
+matmul/x47/walkseeds/at47.bits  rank 47  type 1  pairs 1  triples 1
+matmul/x47/walkseeds/km47.bits  rank 47  type 2  pairs 2  triples 2
+matmul/x47/walkseeds/ref47.bits  rank 47  type 3  pairs 3  triples 3
+matmul/tomar_line/proj/found47/r47-00001.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47/r47-00002.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47/r47-00003.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47/r47-00004.bits  rank 47  type 2  pairs 2  triples 2
+matmul/tomar_line/proj/found47/r47-00005.bits  rank 47  type 4  pairs 4  triples 4
+matmul/tomar_line/proj/found47_d180/r47-00001.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47_d180/r47-00002.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47_d180/r47-00003.bits  rank 47  type 2  pairs 2  triples 2
+matmul/tomar_line/proj/found47_d180/r47-00004.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47_d180/r47-00005.bits  rank 47  type 4  pairs 4  triples 4
+matmul/tomar_line/proj/found47_d180/r47-00006.bits  rank 47  type 2  pairs 2  triples 2
+matmul/tomar_line/proj/found47_d180/r47-00007.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47_d180/r47-00008.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47_d180/r47-00009.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47_d180/r47-00010.bits  rank 47  type 4  pairs 4  triples 4
+matmul/tomar_line/proj/found47_d180/r47-00011.bits  rank 47  type 2  pairs 2  triples 2
+matmul/tomar_line/proj/found47_d180/r47-00012.bits  rank 47  type 2  pairs 2  triples 2
+matmul/tomar_line/proj/found47_d180/r47-00013.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47_d180/r47-00014.bits  rank 47  type 2  pairs 2  triples 2
+matmul/tomar_line/proj/found47_d180/r47-00015.bits  rank 47  type 2  pairs 2  triples 2
+matmul/tomar_line/proj/found47_d180/r47-00016.bits  rank 47  type 2  pairs 2  triples 2
+matmul/tomar_line/proj/found47_d180/r47-00017.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47_d180/r47-00018.bits  rank 47  type 1  pairs 1  triples 1
+matmul/tomar_line/proj/found47_d180/r47-00019.bits  rank 47  type 4  pairs 4  triples 4
+matmul/tomar_line/proj/found47_d180/r47-00020.bits  rank 47  type 4  pairs 4  triples 4
+matmul/tomar_line/proj/found47_d180/r47-00021.bits  rank 47  type 2  pairs 2  triples 2
+matmul/tomar_line/proj/found47_d180/r47-00022.bits  rank 47  type 4  pairs 4  triples 4
+
+30 schemes: 4 distinct types, 4 distinct pair invariants, 4 distinct triple invariants
+  (type 1, pairs 1, triples 1): 13: matmul/x47/walkseeds/at47.bits matmul/tomar_line/proj/found47/r47-00001.bits matmul/tomar_line/proj/found47/r47-00002.bits matmul/tomar_line/proj/found47/r47-00003.bits matmul/tomar_line/proj/found47_d180/r47-00001.bits matmul/tomar_line/proj/found47_d180/r47-00002.bits matmul/tomar_line/proj/found47_d180/r47-00004.bits matmul/tomar_line/proj/found47_d180/r47-00007.bits matmul/tomar_line/proj/found47_d180/r47-00008.bits matmul/tomar_line/proj/found47_d180/r47-00009.bits matmul/tomar_line/proj/found47_d180/r47-00013.bits matmul/tomar_line/proj/found47_d180/r47-00017.bits matmul/tomar_line/proj/found47_d180/r47-00018.bits
+  (type 2, pairs 2, triples 2): 10: matmul/x47/walkseeds/km47.bits matmul/tomar_line/proj/found47/r47-00004.bits matmul/tomar_line/proj/found47_d180/r47-00003.bits matmul/tomar_line/proj/found47_d180/r47-00006.bits matmul/tomar_line/proj/found47_d180/r47-00011.bits matmul/tomar_line/proj/found47_d180/r47-00012.bits matmul/tomar_line/proj/found47_d180/r47-00014.bits matmul/tomar_line/proj/found47_d180/r47-00015.bits matmul/tomar_line/proj/found47_d180/r47-00016.bits matmul/tomar_line/proj/found47_d180/r47-00021.bits
+  (type 3, pairs 3, triples 3): 1: matmul/x47/walkseeds/ref47.bits
+  (type 4, pairs 4, triples 4): 6: matmul/tomar_line/proj/found47/r47-00005.bits matmul/tomar_line/proj/found47_d180/r47-00005.bits matmul/tomar_line/proj/found47_d180/r47-00010.bits matmul/tomar_line/proj/found47_d180/r47-00019.bits matmul/tomar_line/proj/found47_d180/r47-00020.bits matmul/tomar_line/proj/found47_d180/r47-00022.bits

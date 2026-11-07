@@ -2675,8 +2675,8 @@ the two source papers for this track):
   fourth class.  Its XOR count under matmul/x47: given 180, 24 annealed chains 171 (22) / 172 / 173, exhaustive BP
   orbit scan over all 840^3 coset triples 171 (411 triples within +2; the published classes' best points are 168,
   168 and 167), exact refine of the 411 gives 171 = 44 + 45 + 82, settle at depth 5 proves eight triples exactly
-  171 and leaves 78 open below it, depth 6 (20 min) 57 (totals 172-173, six distinct open sides at 6-8 helpers;
-  depth 8 running); whole-orbit lower bound >= 162 (the cheap stage
+  171 and leaves 78 open below it, depth 6 (20 min) 57, depth 8 (48 min) one (total 173, bound 170, through a 43-target side that
+  times out at every cap; a bottom-up refutation of its lower levels is running); whole-orbit lower bound >= 162 (the cheap stage
   151 where the published class gave 148; the climb, matmul/x47 lbclass.sh, proved 152-162 in 6.5 h with the 161
   and 162 steps an hour each, and the 163 step stopped at its 12,600 s budget with 6 coset triples open on one
   side), so the class's window is 162-171 against 160-168 (published), 162-168 (AlphaTensor) and 163-167
@@ -2686,10 +2686,17 @@ the two source papers for this track):
   1200 states, and its rerun at normal priority the next morning (102 min, planes/probe444_planes5.log, the result
   of record) gives base 2379 / plane greedy 2126 / plane SAT 411 and the cross-tab 2168 / 211 / GROUP ONLY 1 / 548:
   the one state is inside the 61-state disagreement between the base and guided+moves arms (the same descent with
-  different random streams), the run does not name it, and a naming rerun with more base tries is queued; the 3-h
+  different random streams); a second full run (seed 8, 97 min) that names them gives 2170 / 214 / GROUP ONLY 2 /
+  542 with the deterministic arms identical, and base with 50 tries lowers both named states (r55-00014,
+  r55-00113): base's sampling noise at 3 tries, nothing the plane move alone opens; the 3-h
   4x4 descent at 46 from all four projection pools (6000 seeds at 59, the other
   orientations by rotate_f2.py; seed 13, background priority): 65 k landings, 22 distinct 47s (9 AlphaTensor-like,
-  8 KM-like, 5 of the new class's type; four of them r47-00001..4 again), no 46 (tomar_line/proj/found47_d180).  Verdict: of the three things Tomar's paper offers the flip engine only projection pays, as a
+  8 KM-like, 5 of the new class's type; four of them r47-00001..4 again), no 46 (tomar_line/proj/found47_d180).
+  The exact de Groote test (tomar_line/proj/scheme_iso.py: signature-pruned term bijection, F2-linear consistency,
+  Kronecker slot maps M -> P M Q read off and re-verified, over the slot-symmetry variants; exact both ways) sorts
+  all 30 rank-47 schemes we hold into exactly four classes: AlphaTensor's 13 (12 ours), Kauers-Moosbauer's 10
+  (9 ours), the projection-descent class 6 (the five new-type 47s are in it, all ours) and AlphaEvolve's alone
+  (never reached); 2 s for the 30.  Verdict: of the three things Tomar's paper offers the flip engine only projection pays, as a
   seed generator and only where the funnel is deep (4x4); the lemma's constraints and exact group
   re-decomposition at dimension <= 3 never open a state flips and merges cannot.
 

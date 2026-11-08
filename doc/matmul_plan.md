@@ -2735,8 +2735,9 @@ the two source papers for this track):
   re-emitted by `refine --cap 1800` on each triple alone (36 s each), checked by x47check.py (matrices, counts, all 256
   basis-pair Brent checks) and PLinOpt's SLPchecker -q 2 (three rounds per program); both schemes exactly equivalent to
   the class representative (scheme_iso.py).  Previous best 167 (Kauers-Moosbauer class, 2026-10-17; PLinOpt's published
-  170).  Open: the window's 169-171 remainder at target 166 (Q8c: settle --target 166 over the merged side caches, depth 8
-  then 12); no whole-orbit lower bound for the class yet.  Side effects of the night: the at47 +4 settle (Q6b) was starved
+  170).  The window's 169-171 remainder then settled at target 166 (Q8c, merged side caches: depth 8 cap 600 s, 1491 sides,
+  2 h 22 min, 108 points open below 166; depth 12 cap 60 s, 2 min, none): 166 EXACT over all 4493 triples within +4 of
+  the scan minimum, reached by exactly the two triples above; no whole-orbit lower bound for the class yet.  Side effects of the night: the at47 +4 settle (Q6b) was starved
   by the runaway scan and died at its 5 h timeout with 434 of 1044 sides done (cached; Q7's deep stage resumes it); Q6b's
   shell was paused (SIGSTOP) 07:45-08:28 so the proj47_5 settle would not compete with the targeted settle, then resumed.
   The flip line's verdict sharpens: projection from the <4,4,5> parent found the class that holds the record.

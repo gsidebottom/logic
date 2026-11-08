@@ -36,6 +36,12 @@ Checks (all from scratch, nothing shared with xor47):
 - Class: both `.bits` are exactly de Groote-equivalent to r47-00007
   (matmul/tomar_line/proj/scheme_iso.py, certificates in the sandwich maps).
 
-Open: the window's remaining 4210 triples (heuristic 169-171) are being
-settled at target 166 (Queue 8c); no whole-orbit lower bound for this class
-has been climbed yet.
+The rest of the window (4210 triples at heuristic 169-171) was then settled
+at target 166 (`settle4_window.log`: depth 8, cap 600 s, 1491 sides, 2 h
+22 min, 108 points left open below 166; `settle4b_window.log`: depth 12, cap
+60 s, 2 min, none left): 166 is exact over all 4493 triples within +4 of the
+scan minimum, and exactly the two triples above reach it.
+
+Open: no whole-orbit lower bound for this class has been climbed yet (the
+window is relative to the heuristic minimum; a coset triple outside it could
+in principle cost less).

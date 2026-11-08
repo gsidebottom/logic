@@ -160,14 +160,33 @@ counts across the three sides of a triple whose BP total is 172 or more
 (the largest single-side gain seen in the window is 2).  The whole-orbit
 bound stays 163.
 
+**The other classes' +4 windows (Queues 6b and 7, 2026-11-07 18:00 to
+2026-11-08 13:31).**  Same pipeline as km47's: scan +4 from the saved side
+tables, refine (BP 1000 runs + bottom-up exact per side, cap 30 s), settle
+depth 8 cap 600 s, deep settle depth 12 cap 60 then 600 on what stays open.
+AlphaTensor's class: 3844 triples, best 168, exact over the window (the depth-8
+settle was starved by a runaway scan and died at its 5 h timeout with 434 of
+1044 sides done; the depth-12 pass finished the rest from the cache in 4 min,
+none open).  Projection-descent class: 7698 triples, best 171, exact over the
+window (depth 8: 4.9 h, 79 points open; depth 12: none).  AlphaEvolve's class
+(`seeds/ref47`): 2882 triples, best 168, 30 points still open below 168 after
+depth 12 at cap 600, every one of them only through the published scheme's own
+output side (34 targets, BP 49, proved floor 39, 14 helpers to decide; the
+`lbref47` climb could not decide its level 7 within an hour) or a 37-target
+cousin (BP 52, floor 42, 14 helpers); their floors leave totals of 158-162
+nominally possible, which is a statement about the depth of that side, not
+evidence of a program.  Windows, whole-orbit bound to best program: fifth
+class none-166, Kauers–Moosbauer 163-167, AlphaTensor 162-168, AlphaEvolve
+160-168, projection-descent 163-171.
+
 ## Classes tried (best orbit point found)
 
 | class | given | best | sides L + R + P |
 |---|---|---|---|
-| PLinOpt reference (`seeds/ref47`) | 168 | 168 | 44 + 44 + 80 |
-| AlphaTensor 47 (`seeds/at47`) | 179 | 168 | 44 + 48 + 76 |
+| PLinOpt reference (`seeds/ref47`) | 168 | 168; 30 of its 2882 window triples stay open below 168, all through the published scheme's output side (34 targets, BP 49, floor 39) and a 37-target cousin (2026-11-08) | 44 + 44 + 80 |
+| AlphaTensor 47 (`seeds/at47`) | 179 | 168, exact over its +4 window (3844 triples, 2026-11-08) | 44 + 48 + 76 |
 | Kauers–Moosbauer 47 (`seeds/km47`) | 186 | 167 | 44 + 49 + 74 |
-| projection-descent 47 (`seeds/proj47_5`, 2026-11-06: matmul/tomar_line/proj/found47/r47-00005, a fourth class by the rank-triple invariant and the exact test tomar_line/proj/scheme_iso.py, which puts 6 of our 27 descent 47s in it) | 180 | 171, exact at 8 triples (anneal 22/24 chains; exhaustive BP scan 171, 411 triples within +2; exact refine 171; settle depth 5 leaves 78 triples open below 171, depth 6 57, depth 8 one, the bottom-up pass none: 171 exact over all 411) | 44 + 45 + 82 (also 45 + 45 + 81) |
+| projection-descent 47 (`seeds/proj47_5`, 2026-11-06: matmul/tomar_line/proj/found47/r47-00005, a fourth class by the rank-triple invariant and the exact test tomar_line/proj/scheme_iso.py, which puts 6 of our 27 descent 47s in it) | 180 | 171, exact at 8 triples (anneal 22/24 chains; exhaustive BP scan 171, 411 triples within +2; exact refine 171; settle depth 5 leaves 78 triples open below 171, depth 6 57, depth 8 one, the bottom-up pass none: 171 exact over all 411; the full +4 window, 7698 triples, settled 2026-11-08: 171 exact over all of it) | 44 + 45 + 82 (also 45 + 45 + 81) |
 | KM-parent projection-descent 47 (`seeds/projkm47_7`, 2026-11-08: matmul/tomar_line/proj/found47_km56/d180/r47-00007, a fifth class by the rank-triple type alone (a 20/11/16, b 11/27/9, c 20/11/16 factors of rank 1/2/3, no rank 4) and by the exact test; 3 of the 14 47s of the 3 h descent from the Kauers–Moosbauer <4,4,5>:60 projection pool, the other 11 in the KM (5) and projection-descent (6) classes) | 179 | **166**, exact at 2 triples (2026-11-08: scan minimum 167 at 3 of 840 X-cosets, 4493 triples within +4; refine 167 at 32 triples, 168 at 251; settle of those 283: 166 at two, none below; the full window at target 166: nothing below, 166 exact over all 4493 triples and reached by exactly those two) | 44 + 48 + 74 (also 43 + 48 + 75) |
 
 (Annealing: all 24 chains per class end at 168 under Boyar–Peralta

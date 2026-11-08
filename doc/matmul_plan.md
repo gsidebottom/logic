@@ -2737,7 +2737,13 @@ the two source papers for this track):
   the class representative (scheme_iso.py).  Previous best 167 (Kauers-Moosbauer class, 2026-10-17; PLinOpt's published
   170).  The window's 169-171 remainder then settled at target 166 (Q8c, merged side caches: depth 8 cap 600 s, 1491 sides,
   2 h 22 min, 108 points open below 166; depth 12 cap 60 s, 2 min, none): 166 EXACT over all 4493 triples within +4 of
-  the scan minimum, reached by exactly the two triples above; no whole-orbit lower bound for the class yet.  Side effects of the night: the at47 +4 settle (Q6b) was starved
+  the scan minimum, reached by exactly the two triples above; no whole-orbit lower bound for the class yet.  Q6b and Q7 finished 13:31 with the
+  other three +4 windows: at47 168 EXACT over 3844 triples (the depth-8 settle, starved by the runaway scan, died at its
+  5 h timeout with 434 of 1044 sides; depth 12 finished the rest from the cache in 4 min), proj47_5 171 EXACT over 7698
+  (depth 8: 4.9 h, 79 open; depth 12: none), ref47 168 with 30 of 2882 triples open below 168 only through the published
+  scheme's own output side (34 targets, BP 49, floor 39, 14 helpers; the lbref47 climb could not decide its level 7 in an
+  hour) or a 37-target cousin (BP 52, floor 42) -- left open, bounds work on a 168 class.  Windows now: fifth class
+  ?-166, KM 163-167, AT 162-168, AlphaEvolve 160-168, projection-descent 163-171.  Side effects of the night: the at47 +4 settle (Q6b) was starved
   by the runaway scan and died at its 5 h timeout with 434 of 1044 sides done (cached; Q7's deep stage resumes it); Q6b's
   shell was paused (SIGSTOP) 07:45-08:28 so the proj47_5 settle would not compete with the targeted settle, then resumed.
   The flip line's verdict sharpens: projection from the <4,4,5> parent found the class that holds the record.

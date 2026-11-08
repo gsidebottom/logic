@@ -348,10 +348,13 @@ starts), so the comparison is by type.
   411 are 411 of the 646 triples within +2 (the minimum itself and the
   52 triples at 171 are unaffected).  Fixed (scan keeps what is still
   within the window; `--tables` re-emits candidates from the saved side
-  tables); the +4 window, 7698 triples including all 646, is being
-  refined and settled from the saved tables (2026-11-07 evening, Q6b, all
-  four classes, km47 first; km47's 1824 triples done at 20:13: no point
-  below 167, the record exact over its +4 window, matmul/x47/README.md).  The climb of the whole-orbit lower bound
+  tables); the +4 window, 7698 triples including all 646, was
+  refined and settled from the saved tables (2026-11-07 18:00 to 2026-11-08
+  13:31, Q6b and Q7, all four classes): km47 167 exact over its 1824
+  triples, at47 168 exact over 3844, this class 171 exact over 7698, and
+  ref47 168 with 30 of 2882 triples open only through the published
+  scheme's own output side (34 targets, BP 49, floor 39, 14 helpers to
+  decide); matmul/x47/README.md.  The climb of the whole-orbit lower bound
   (matmul/x47 lbclass.sh) proves every orbit point costs at least 163:
   152-162 in 6.5 h, then the 163 step in 7.3 h over two runs (a 12,600 s
   budget run, 13,389 s, levels 3-4 in five minutes and eleven level-5

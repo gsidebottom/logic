@@ -10,8 +10,26 @@ side) with Vect(C) = P·((L·Vect(A)) ⊙ (R·Vect(B))), row-major vectors.
 Cost = XOR(L) + XOR(R) + XOR(P), and by the transposition principle
 XOR(P) = XOR(Pᵀ) + 31.
 
-## Current best: 167 = 44 + 49 + 74 (`best/x167/`)
+## Current best: 166 = 44 + 48 + 74 (`best/x166/`, 2026-11-08)
 
+Two points in the symmetry orbit of the fifth rank-47 class
+(`seeds/projkm47_7`, reached the night before by the flip descent from
+Kauers–Moosbauer's <4,4,5>:60 projection pool, matmul/tomar_line): coset
+triples (34f1, 1e25, 163d) with L 44 + R 48 + P 74 (`x166a_*`) and (135c,
+7831, 79a8) with L 43 + R 48 + P 75 (`x166b_*`).  The fresh +4 orbit scan
+put the class's heuristic minimum at 167 (3 of the 840 X-cosets; 4493
+triples within +4); the refine confirmed 167 at 32 triples and 168 at 251;
+a settle of those 283 triples (174 distinct open sides, depth 12, cap
+600 s, 26 min) took the R side of both points from Boyar–Peralta's 49 to
+the exact 48, and at both points all three sides are exact, so 166 is exact
+there and nothing among the 283 can go below it; the rest of the window
+(heuristic 169–171) is being settled at target 166.  Checked by
+`x47check.py` (each program computes its matrix; both schemes pass all 256
+basis-pair Brent checks) and by PLinOpt's `SLPchecker -q 2`, three rounds
+per program; both schemes are exactly equivalent to the class representative
+(tomar_line/proj/scheme_iso.py).  Details in `best/x166/README.md`.
+
+Earlier: 167 = 44 + 49 + 74 (`best/x167/`, 2026-10-17).
 A point in the Kauers–Moosbauer class's symmetry orbit found by
 simulated annealing (`xor47 orbit --anneal`), with the R side from the
 exact helper search (Boyar–Peralta gives 50 there; the exact minimum
@@ -145,9 +163,9 @@ bound stays 163.
 |---|---|---|---|
 | PLinOpt reference (`seeds/ref47`) | 168 | 168 | 44 + 44 + 80 |
 | AlphaTensor 47 (`seeds/at47`) | 179 | 168 | 44 + 48 + 76 |
-| Kauers–Moosbauer 47 (`seeds/km47`) | 186 | **167** | 44 + 49 + 74 |
+| Kauers–Moosbauer 47 (`seeds/km47`) | 186 | 167 | 44 + 49 + 74 |
 | projection-descent 47 (`seeds/proj47_5`, 2026-11-06: matmul/tomar_line/proj/found47/r47-00005, a fourth class by the rank-triple invariant and the exact test tomar_line/proj/scheme_iso.py, which puts 6 of our 27 descent 47s in it) | 180 | 171, exact at 8 triples (anneal 22/24 chains; exhaustive BP scan 171, 411 triples within +2; exact refine 171; settle depth 5 leaves 78 triples open below 171, depth 6 57, depth 8 one, the bottom-up pass none: 171 exact over all 411) | 44 + 45 + 82 (also 45 + 45 + 81) |
-| KM-parent projection-descent 47 (`seeds/projkm47_7`, 2026-11-08: matmul/tomar_line/proj/found47_km56/d180/r47-00007, a fifth class by the rank-triple type alone (a 20/11/16, b 11/27/9, c 20/11/16 factors of rank 1/2/3, no rank 4) and by the exact test; 3 of the 14 47s of the 3 h descent from the Kauers–Moosbauer <4,4,5>:60 projection pool, the other 11 in the KM (5) and projection-descent (6) classes) | 179 | +4 window scan running since 2026-11-08 00:16 (Queue 8: fresh tables, refine, settle depth 8, deep settle 12) | 46 + 56 + 77 as given |
+| KM-parent projection-descent 47 (`seeds/projkm47_7`, 2026-11-08: matmul/tomar_line/proj/found47_km56/d180/r47-00007, a fifth class by the rank-triple type alone (a 20/11/16, b 11/27/9, c 20/11/16 factors of rank 1/2/3, no rank 4) and by the exact test; 3 of the 14 47s of the 3 h descent from the Kauers–Moosbauer <4,4,5>:60 projection pool, the other 11 in the KM (5) and projection-descent (6) classes) | 179 | **166**, exact at 2 triples (2026-11-08: scan minimum 167 at 3 of 840 X-cosets, 4493 triples within +4; refine 167 at 32 triples, 168 at 251; settle of those 283: 166 at two, none below; the 169–171 remainder settling at target 166) | 44 + 48 + 74 (also 43 + 48 + 75) |
 
 (Annealing: all 24 chains per class end at 168 under Boyar–Peralta
 scoring; the 167 needs the exact search on one side.)

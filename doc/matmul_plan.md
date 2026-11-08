@@ -2723,6 +2723,24 @@ the two source papers for this track):
   seeds/projkm47_7, as given 46 + 56 + 77 = 179; its +4 orbit-window scan (fresh tables, refine, settle depth 8, deep
   settle 12) started 2026-11-08 00:16 beside the queue (Q8) -- the only open item that can hold a point below 167.
 
+- **4x4 rank-47 F2 XOR count: NEW BEST 166 = 44 + 48 + 74 (2026-11-08), in the fifth class from the Kauers-Moosbauer
+  projection pool; matmul/x47/best/x166 (README there).**  The fifth class's representative (matmul/x47 seeds/projkm47_7 =
+  tomar_line/proj/found47_km56/d180/r47-00007) went through the orbit-window pipeline the night after it was found.  Fresh
+  BP x1 side tables (934 s under load; the first attempt, without --runs, built them at the default 2000 BP runs per entry
+  and died at its 4 h timeout with an empty log -- `xor47 scan` needs --runs 1), heuristic orbit minimum 167 at 3 of the
+  840 X-cosets, 4493 triples within +4; refine (BP 1000 runs + bottom-up exact per side, cap 30 s; 2 h under load): 167
+  at 32 triples, 168 at 251.  A targeted settle of those 283 triples (174 distinct open sides, all within 12 helpers, cap
+  600 s, 26 min) took the R side of two triples from BP's 49 to the exact 48: (34f1, 1e25, 163d) = 44 + 48 + 74 and
+  (135c, 7831, 79a8) = 43 + 48 + 75, all three sides exact at both, and no other of the 283 can go below 166.  Programs
+  re-emitted by `refine --cap 1800` on each triple alone (36 s each), checked by x47check.py (matrices, counts, all 256
+  basis-pair Brent checks) and PLinOpt's SLPchecker -q 2 (three rounds per program); both schemes exactly equivalent to
+  the class representative (scheme_iso.py).  Previous best 167 (Kauers-Moosbauer class, 2026-10-17; PLinOpt's published
+  170).  Open: the window's 169-171 remainder at target 166 (Q8c: settle --target 166 over the merged side caches, depth 8
+  then 12); no whole-orbit lower bound for the class yet.  Side effects of the night: the at47 +4 settle (Q6b) was starved
+  by the runaway scan and died at its 5 h timeout with 434 of 1044 sides done (cached; Q7's deep stage resumes it); Q6b's
+  shell was paused (SIGSTOP) 07:45-08:28 so the proj47_5 settle would not compete with the targeted settle, then resumed.
+  The flip line's verdict sharpens: projection from the <4,4,5> parent found the class that holds the record.
+
 ## 1. The thesis — why native representation should win
 
 The CNF costs local search a 43× variable blowup (26,541 vs 621) — flips

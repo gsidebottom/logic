@@ -393,9 +393,12 @@ starts), so the comparison is by type.
   factor; proj/class_invariants.py), so the verdict does not rest on the
   exhaustive search.  All 14 are in proj/found47_km56/d180; the fifth
   class's representative is matmul/x47 `seeds/projkm47_7` (as given 46 +
-  56 + 77 = 179 under Boyar-Peralta), whose +4 orbit-window scan (fresh
-  tables, refine, settle depth 8, deep settle 12) started 2026-11-08 00:16
-  beside the running queue (Queue 8).
+  56 + 77 = 179 under Boyar-Peralta), whose +4 orbit-window scan the next
+  morning gave the NEW XOR RECORD 166 (two orbit points, 44 + 48 + 74 and
+  43 + 48 + 75, all sides exact, x47check.py and PLinOpt's SLPchecker;
+  matmul/x47/best/x166 and its README), one below the Kauers-Moosbauer
+  class's 167 of October.  The projection pool from the <4,4,5> parent is
+  what found the class that holds the record.
 
 Verdict: projection is a good seed generator exactly where the funnel
 is deep.  At the small formats it changes which records are found,

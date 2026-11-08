@@ -2632,7 +2632,7 @@ the two source papers for this track):
   announced instead of discarded.
 
 - **Tomar's lemma line, moves 2-4 (2026-11-07): planes NEGATIVE, capacities NEGATIVE, projection seeds POSITIVE at 4x4,
-  a fourth rank-47 class at XOR count 171.**  Follow-up to the 2026-11-06 entry; matmul/tomar_line/README.md has
+  a fourth rank-47 class at XOR count 171; a FIFTH class from the Kauers-Moosbauer parent (2026-11-08).**  Follow-up to the 2026-11-06 entry; matmul/tomar_line/README.md has
   the tables, the drivers and the logs.  (1) Planes, the subspace move at dimension 3 (src/flip_group.rs,
   `--group-moves 4`): a plane group is the 4-8 terms whose factors in one slot lie in the span of three present
   factors, its partial sum a 3-slice tensor, rewritable in rho terms iff that tensor has F2 rank <= rho.  Lower
@@ -2714,8 +2714,14 @@ the two source papers for this track):
   over F2 (their flips repository, GPL-3.0; matmul/external/km_flips, converted and Brent-checked by matmul/exp_to_bits.py)
   as the parent pool, seeds at 56 instead of 59 (proj/make_km_pools.sh, 4 x 1500): at equal budget beside the queue it
   lands at 47 at 0 s like the 59 pool (2 distinct 47s / 2760 48s vs 3 / 2767), no 46, and both of its 47s are in
-  Kauers-Moosbauer's own class (the 59 pool's three: AlphaTensor's 2, projection-descent 1); a 3 h descent from all
-  6000 seeds runs 21:10-00:10 at background priority.
+  Kauers-Moosbauer's own class (the 59 pool's three: AlphaTensor's 2, projection-descent 1).  The 3 h descent from all
+  6000 seeds (21:10-00:10, background priority, seed 13; 91,931 reductions, 58,199 landings) wrote 14 distinct 47s, 15,126
+  48s and 17,768 49s, no 46; the 47s, re-checked against all 4096 Brent equations (tomar_line/proj/brent_bits.py), sort into
+  Kauers-Moosbauer's class (5), the projection-descent class (6) and a FIFTH class (3: r47-00007/13/14,
+  tomar_line/proj/found47_km56/d180), distinct from the four known ones by the rank-triple type alone (factors of rank
+  1/2/3 per slot a 20/11/16, b 11/27/9, c 20/11/16, none of rank 4) and by the exact test.  Representative matmul/x47
+  seeds/projkm47_7, as given 46 + 56 + 77 = 179; its +4 orbit-window scan (fresh tables, refine, settle depth 8, deep
+  settle 12) started 2026-11-08 00:16 beside the queue (Q8) -- the only open item that can hold a point below 167.
 
 ## 1. The thesis — why native representation should win
 

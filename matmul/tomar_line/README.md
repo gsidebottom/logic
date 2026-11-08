@@ -301,7 +301,9 @@ starts), so the comparison is by type.
   classes: AlphaTensor's (13 schemes, 12 of them ours),
   Kauers-Moosbauer's (10, 9 ours), the projection-descent class (6, all
   ours) and AlphaEvolve's (walkseeds/ref47 alone; no descent reached
-  it); proj/logs/iso47_classes.log, 2 s for the 30.
+  it); proj/logs/iso47_classes.log, 2 s for the 30.  (A fifth class
+  appeared the next night from the Kauers-Moosbauer parent pool; see the
+  2026-11-07 evening bullet below.)
   The pairwise and triple factor-sum rank invariants
   (proj/class_invariants.py, proj/logs/class_invariants.log) split the
   30 into the same four groups as the type does.
@@ -377,9 +379,23 @@ starts), so the comparison is by type.
   from the 56 pool are in Kauers-Moosbauer's class, the three from the 59
   pool in AlphaTensor's (2) and the projection-descent class (1); logs
   proj/logs/m3_444_km56_col.log and m3_444_at59_col_rerun.log, the two 47s
-  in proj/found47_km56.  A 3 h descent from all 6000 seeds at background
-  priority (seed 13, as the overnight run) started 21:10; its 47s are
-  class-sorted when it ends.
+  in proj/found47_km56.  The 3 h descent from all 6000 seeds at background
+  priority (seed 13, as the overnight run; 21:10-00:10, 91,931 reductions,
+  58,199 landings in 22,740 trajectories, proj/logs/d180_444_km56.log)
+  wrote 14 distinct 47s, 15,126 distinct 48s and 17,768 49s, no 46.  The
+  47s, each re-checked against all 4096 Brent equations (proj/brent_bits.py,
+  pure Python, both gamma conventions tried), sort into THREE classes
+  (proj/scheme_iso.py, proj/logs/iso_d180_km56.log): Kauers-Moosbauer's 5,
+  the projection-descent class 6, and a FIFTH class of 3 (r47-00007, -13,
+  -14, written at 21:15, 22:55 and 23:21) that matches none of the four
+  known ones.  The rank-triple type alone separates it (per-slot counts of
+  factors of rank 1/2/3: a 20/11/16, b 11/27/9, c 20/11/16, no rank-4
+  factor; proj/class_invariants.py), so the verdict does not rest on the
+  exhaustive search.  All 14 are in proj/found47_km56/d180; the fifth
+  class's representative is matmul/x47 `seeds/projkm47_7` (as given 46 +
+  56 + 77 = 179 under Boyar-Peralta), whose +4 orbit-window scan (fresh
+  tables, refine, settle depth 8, deep settle 12) started 2026-11-08 00:16
+  beside the running queue (Queue 8).
 
 Verdict: projection is a good seed generator exactly where the funnel
 is deep.  At the small formats it changes which records are found,

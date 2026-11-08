@@ -147,6 +147,7 @@ bound stays 163.
 | AlphaTensor 47 (`seeds/at47`) | 179 | 168 | 44 + 48 + 76 |
 | Kauers–Moosbauer 47 (`seeds/km47`) | 186 | **167** | 44 + 49 + 74 |
 | projection-descent 47 (`seeds/proj47_5`, 2026-11-06: matmul/tomar_line/proj/found47/r47-00005, a fourth class by the rank-triple invariant and the exact test tomar_line/proj/scheme_iso.py, which puts 6 of our 27 descent 47s in it) | 180 | 171, exact at 8 triples (anneal 22/24 chains; exhaustive BP scan 171, 411 triples within +2; exact refine 171; settle depth 5 leaves 78 triples open below 171, depth 6 57, depth 8 one, the bottom-up pass none: 171 exact over all 411) | 44 + 45 + 82 (also 45 + 45 + 81) |
+| KM-parent projection-descent 47 (`seeds/projkm47_7`, 2026-11-08: matmul/tomar_line/proj/found47_km56/d180/r47-00007, a fifth class by the rank-triple type alone (a 20/11/16, b 11/27/9, c 20/11/16 factors of rank 1/2/3, no rank 4) and by the exact test; 3 of the 14 47s of the 3 h descent from the Kauers–Moosbauer <4,4,5>:60 projection pool, the other 11 in the KM (5) and projection-descent (6) classes) | 179 | +4 window scan running since 2026-11-08 00:16 (Queue 8: fresh tables, refine, settle depth 8, deep settle 12) | 46 + 56 + 77 as given |
 
 (Annealing: all 24 chains per class end at 168 under Boyar–Peralta
 scoring; the 167 needs the exact search on one side.)

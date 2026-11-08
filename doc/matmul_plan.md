@@ -2710,7 +2710,12 @@ the two source papers for this track):
   (9 ours), the projection-descent class 6 (the five new-type 47s are in it, all ours) and AlphaEvolve's alone
   (never reached); 2 s for the 30.  Verdict: of the three things Tomar's paper offers the flip engine only projection pays, as a
   seed generator and only where the funnel is deep (4x4); the lemma's constraints and exact group
-  re-decomposition at dimension <= 3 never open a state flips and merges cannot.
+  re-decomposition at dimension <= 3 never open a state flips and merges cannot.  Evening: Kauers-Moosbauer's <4,4,5>:60
+  over F2 (their flips repository, GPL-3.0; matmul/external/km_flips, converted and Brent-checked by matmul/exp_to_bits.py)
+  as the parent pool, seeds at 56 instead of 59 (proj/make_km_pools.sh, 4 x 1500): at equal budget beside the queue it
+  lands at 47 at 0 s like the 59 pool (2 distinct 47s / 2760 48s vs 3 / 2767), no 46, and both of its 47s are in
+  Kauers-Moosbauer's own class (the 59 pool's three: AlphaTensor's 2, projection-descent 1); a 3 h descent from all
+  6000 seeds runs 21:10-00:10 at background priority.
 
 ## 1. The thesis — why native representation should win
 

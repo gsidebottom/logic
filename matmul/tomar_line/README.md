@@ -231,6 +231,7 @@ Pools (proj/make_pools.sh; 40 bases per direction for the ref47 pool,
 | <4,4,4> | <4,4,5>:63 (col, 63-4) | 1500 at 59 |
 | <4,4,4>, overnight run | <4,4,5>:63 (col) and its two other orientations <4,5,4>:63 (inner-a, inner-b) and <5,4,4>:63 (row), by matmul/rotate_f2.py | 4 x 1500 at 59 (6000) |
 | <3,4,4> | <3,4,5>:47 (col, 47-4), the three published 4x4 47s (row, 47-4) | 1500 + 600 + 600 + 593 at 43 (3293) |
+| <4,4,4>, Kauers-Moosbauer parent (2026-11-07 evening) | <4,4,5>:60 over F2 (their flips repository; ../external/km_flips) by col, and its rotations <4,5,4> by inner-a and inner-b and <5,4,4> by row (proj/make_km_pools.sh) | 4 x 1500 at 56 (6000) |
 
 The recipe regenerates six pools exactly; the two capped pools
 (<4,4,5> -> 4x4, at47 -> <3,4,4>) come back with 1416/1500 and 580/600
@@ -360,6 +361,25 @@ starts), so the comparison is by type.
   the published class 160-168, AlphaTensor's 162-168, Kauers-Moosbauer's
   163-167.  A point below 167 would need four XORs of exact gains over
   the BP counts across three sides, where the KM class gave one.
+
+- Parent pool from Kauers-Moosbauer's <4,4,5>:60 (2026-11-07 evening;
+  matmul/external/km_flips, the one <4,4,5> scheme their flips repository
+  publishes, converted and Brent-checked by matmul/exp_to_bits.py): one
+  projection drops 4, so the seeds sit at 56 against 59 from AlphaTensor's
+  63; four orientations by rotate_f2.py, 1500 seeds each
+  (proj/make_km_pools.sh, 0 failed checks).  Equal-budget arms beside the
+  running orbit-window queue (5 min, 12 threads, seed 7, the 2026-11-06 flip
+  binary, both arms under the same load): the 56 pool (col, 1500) lands at
+  47 at 0 s and gives 2 distinct 47s, 2760 48s and 2670 49s from 9319
+  landings in 3339 trajectories; the 59 pool rerun gives 3 / 2767 / 2382
+  from 8733 landings in 3735 trajectories (both at half of yesterday's
+  idle-machine throughput).  No 46.  Classes (proj/scheme_iso.py): both 47s
+  from the 56 pool are in Kauers-Moosbauer's class, the three from the 59
+  pool in AlphaTensor's (2) and the projection-descent class (1); logs
+  proj/logs/m3_444_km56_col.log and m3_444_at59_col_rerun.log, the two 47s
+  in proj/found47_km56.  A 3 h descent from all 6000 seeds at background
+  priority (seed 13, as the overnight run) started 21:10; its 47s are
+  class-sorted when it ends.
 
 Verdict: projection is a good seed generator exactly where the funnel
 is deep.  At the small formats it changes which records are found,

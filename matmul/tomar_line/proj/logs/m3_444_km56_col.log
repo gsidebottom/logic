@@ -1,0 +1,12 @@
+c flip descend: <4,4,4> from 1500 seeds of ranks 56..56 (pool /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/km445_pools/seeds444_km_col), save<=49, write<=48, lift<=0, 12 threads, 5 min, group-moves 0 shuffles 2
+c [    0.0s] worker min rank 50
+c [      0s] new min rank 49 (landing #1)
+c [    0.0s] worker min rank 47
+c [      0s] new min rank 48 (landing #1)
+c [      0s] new min rank 47 (landing #1)
+c [     60s] reductions 2710 | landings 1864 | distinct [(47, 2), (48, 633), (49, 537)] | trajectories 660 | diffuse-flips 7.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    120s] reductions 5384 | landings 3692 | distinct [(47, 2), (48, 1204), (49, 1074)] | trajectories 1318 | diffuse-flips 15.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    180s] reductions 8139 | landings 5602 | distinct [(47, 2), (48, 1768), (49, 1632)] | trajectories 2002 | diffuse-flips 24.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    241s] reductions 10840 | landings 7475 | distinct [(47, 2), (48, 2288), (49, 2156)] | trajectories 2676 | diffuse-flips 32.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c final [    300s]: reductions 13493 | landings 9319 | trajectories 3339 | diffuse-flips 40.0M | worker min rank 47 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c DONE: min rank 47; distinct landings by rank: [(47, 2), (48, 2760), (49, 2670)]

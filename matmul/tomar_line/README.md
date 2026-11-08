@@ -347,7 +347,8 @@ starts), so the comparison is by type.
   within the window; `--tables` re-emits candidates from the saved side
   tables); the +4 window, 7698 triples including all 646, is being
   refined and settled from the saved tables (2026-11-07 evening, Q6b, all
-  four classes, km47 first).  The climb of the whole-orbit lower bound
+  four classes, km47 first; km47's 1824 triples done at 20:13: no point
+  below 167, the record exact over its +4 window, matmul/x47/README.md).  The climb of the whole-orbit lower bound
   (matmul/x47 lbclass.sh) proves every orbit point costs at least 163:
   152-162 in 6.5 h, then the 163 step in 7.3 h over two runs (a 12,600 s
   budget run, 13,389 s, levels 3-4 in five minutes and eleven level-5

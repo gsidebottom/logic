@@ -2682,7 +2682,10 @@ the two source papers for this track):
   times out at every cap), and settle's new bottom-up pass (climb from level 0 after a top-level timeout) refutes
   that side's levels 0-5 in two seconds: all 411 collected candidates settled, eight triples at 171, the +4 window's
   7698 triples being refined and settled from the saved tables (Q6b, all four classes from their saved tables,
-  km47 first, from 2026-11-07 18:00); whole-orbit lower bound >= 163 PROVED (the cheap stage
+  km47 first, from 2026-11-07 18:00; km47 done 20:13: its 1824 triples within +4 refined in 55 min, nothing below the
+  record 167; settle depth 8 left 25 points open through 16 sides of helper depth 9-10, which the depth-10 settle
+  at cap 60 s closed in 92 s, so 167 is exact over the window; Queue 7 applies the depth-12 settle, matmul/x47/
+  deep_settle.zsh, to the other classes after Q6b); whole-orbit lower bound >= 163 PROVED (the cheap stage
   151 where the published class gave 148; the climb, matmul/x47 lbclass.sh, proved 152-162 in 6.5 h with the 161
   and 162 steps an hour each; the 163 step took 7.3 h over two runs: a 12,600 s budget run, 13,389 s, levels 3-4
   in five minutes and eleven level-5 refutations of 17-27 min each, stopped with 6 coset triples open on one

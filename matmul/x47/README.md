@@ -104,7 +104,8 @@ climbs from level 0; `out/settle8b_proj47_5.log`) refutes that side's
 levels 0-5 in two seconds, so it costs 49 or 50 and the point is at least
 172: all 411 collected candidates settled, eight triples at 171
 (2026-11-07); the 235 missed +2 triples and the +3/+4 ones (7698 in all)
-are being refined and settled from the saved tables (Q6, 2026-11-07).
+are being refined and settled from the saved tables (Queue 6b, from
+2026-11-07 18:00, then Queue 7's depth-12 settle, `deep_settle.zsh`).
 
 **Kauers–Moosbauer class (`seeds/km47`): every orbit point costs at
 least 163** (2026-10-19; the class contains the 167).  Cheap bounds
@@ -116,6 +117,27 @@ the last).  The
 older search (`xor47 lbcheck1`, `exact_dfs`) re-proved a seeded sample
 of the refutations: 200/200 at level 4, 8/8 at level 5, and 51/51
 exact sets (`lbkm/lbcheck1_*.log`).
+
+**Kauers–Moosbauer class, the +4 window of its orbit scan settled: no
+point below 167** (2026-11-07, Queue 6b).  The scan's saved side tables
+re-emit the 1824 coset triples within +4 of the BP minimum (the October
+scan collected 100 of the 131 within +2; `out/scan4_km47`); `refine`
+with BP 1000 runs and the bottom-up exact pass at cap 30 s (55 min,
+`out/scanref4_km47.log`) finds nothing below the record's count, 167,
+which two triples reach (one as 43 + 49 + 75); `settle --depth 8 --cap
+600` (71 min, `out/settle4_km47.log`) proves all but 25 points at least
+167, the 25 open only through 16 sides whose BP programs sit 9 or 10
+helpers above their target counts, beyond the depth (641 open sides, 625
+within it); `settle --depth 10 --cap 60` on the same side cache (92 s,
+`out/settle4b_km47.log`, the recipe is `deep_settle.zsh`) settles them:
+15 exactly within seconds, four of them one or two below BP inside
+points of 169 or more, and one at BP 53 with floor 52 after the
+bottom-up pass refuted levels 0-8, leaving no point open below 167.  So
+167 is exact over every coset triple within +4 of the scan minimum; a
+166 in this class would need exact gains of at least 6 over the BP
+counts across the three sides of a triple whose BP total is 172 or more
+(the largest single-side gain seen in the window is 2).  The whole-orbit
+bound stays 163.
 
 ## Classes tried (best orbit point found)
 

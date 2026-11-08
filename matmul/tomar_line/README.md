@@ -401,7 +401,15 @@ starts), so the comparison is by type.
   43 + 48 + 75, all sides exact, x47check.py and PLinOpt's SLPchecker;
   matmul/x47/best/x166 and its README), one below the Kauers-Moosbauer
   class's 167 of October.  The projection pool from the <4,4,5> parent is
-  what found the class that holds the record.
+  what found the class that holds the record.  A replicate of the 3 h
+  descent (seed 17, 2026-11-08 13:15-16:15, background priority beside the
+  settle queues; 71,619 reductions, 45,302 landings in 17,751 trajectories,
+  proj/logs/d180b_444_km56.log) wrote 16 distinct 47s (two of them files of
+  the first run), 13,102 48s and 13,765 49s, no 46; all 16 Brent-checked;
+  classes (proj/logs/iso_d180b_km56.log): Kauers-Moosbauer's 7, the
+  projection-descent class 7, the fifth class 1, and for the first time
+  from this parent AlphaTensor's 1.  No sixth class.  Files in
+  proj/found47_km56/d180b.
 
 Verdict: projection is a good seed generator exactly where the funnel
 is deep.  At the small formats it changes which records are found,

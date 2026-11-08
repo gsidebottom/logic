@@ -2746,7 +2746,9 @@ the two source papers for this track):
   ?-166, KM 163-167, AT 162-168, AlphaEvolve 160-168, projection-descent 163-171.  Side effects of the night: the at47 +4 settle (Q6b) was starved
   by the runaway scan and died at its 5 h timeout with 434 of 1044 sides done (cached; Q7's deep stage resumes it); Q6b's
   shell was paused (SIGSTOP) 07:45-08:28 so the proj47_5 settle would not compete with the targeted settle, then resumed.
-  The flip line's verdict sharpens: projection from the <4,4,5> parent found the class that holds the record.
+  The flip line's verdict sharpens: projection from the <4,4,5> parent found the class that holds the record.  Replicate descent (seed 17, 13:15-16:15,
+  background priority): 16 distinct 47s (two repeats of the first run), 13,102 48s, no 46; classes KM 7 / projection-descent
+  7 / fifth 1 / AlphaTensor 1 (first time from this parent); NO sixth class (tomar_line/proj/found47_km56/d180b).
 
 ## 1. The thesis — why native representation should win
 

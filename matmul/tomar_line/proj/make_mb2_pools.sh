@@ -16,11 +16,12 @@ proj() { # n1 n2 n3 in mode outdir max
   /usr/bin/python3 "$M/project_f2.py" "$1" "$2" "$3" "$4" --mode "$5" --out "$6" --max "$7" --quiet
 }
 collect() { # pool srcdir prefix
+  local f
   mkdir -p "$1"
   for f in "$2"/*.bits(N); do cp "$f" "$1/${3}_$(basename "$f")"; done
 }
 dedupe() { # pool: drop files whose content repeats an earlier file
-  local seen
+  local seen f h
   seen=$1/.seen; : > "$seen"
   for f in "$1"/*.bits(N); do h=$(md5 -q "$f"); if grep -q -x "$h" "$seen"; then rm "$f"; else echo "$h" >> "$seen"; fi; done
   rm -f "$seen"

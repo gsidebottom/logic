@@ -447,7 +447,31 @@ starts), so the comparison is by type.
   matmul/external/mb455 and mb446; proj/make_mb2_pools.sh builds the
   two-step pools, inner + col in both orders for <4,5,5>, col + col for
   <4,4,6>) and are probed at the Kauers-Moosbauer reference budget; see
-  the 2026-11-09 evening bullet.
+  the next bullet.
+
+- Parents two projections away (2026-11-09 evening; matmul/external/mb455
+  and mb446: Moosbauer's <4,5,5>:76 and <4,4,6>:74 over Z and the catalog's
+  meta_flip_graph <4,4,6>:73 with coefficients in thirds, all reduced mod 2
+  at full rank by matmul/m_to_bits.py and Brent-checked).  Pools by
+  proj/make_mb2_pools.sh (every projection tensor-checked, each pool
+  deduplicated by content; proj/logs/make_mb2_pools_2026-11-09.log): the
+  <4,5,5> by inner-a / inner-b then col and by col then inner-a / inner-b,
+  40 stage-1 projections per mode and 25 (or 12 per inner mode) per
+  stage-1 seed, 2960 seeds at 67 and 68 (the probe ran on the first
+  build's 2480 seeds, three of the four paths: a variable-scoping bug in
+  the collector, fixed since, had skipped the col-then-inner-b path); the
+  two <4,4,6> by col twice, 1000 seeds at 66 and 1000 at 65.  All three
+  NEGATIVE at a floor of 49: the 20-minute 12-thread probes (seed 1,
+  17:10-18:10; the Kauers-Moosbauer reference is 47 within 5 minutes at
+  this budget; proj/logs/d20_444_mb455_67.log, d20_444_mb446_66.log,
+  d20_444_meta446_65.log) reach 49 within a second and never 48: 24,363 /
+  24,056 / 23,983 landings, 6,358 / 6,770 / 7,649 distinct 49s, 131-133 k
+  reductions each, nothing written.  Seven catalog parents, three floors:
+  AlphaTensor's <4,4,5>:63 and Kauers-Moosbauer's <4,4,5>:60 give 47 at
+  once; Moosbauer's 445-62, 455-76 and 446-74 and the meta_flip_graph
+  446-73 give 49; AlphaEvolve's 445-61 gives 51.  The catalog holds no
+  other scheme one or two projections from <4,4,4>, so further parents have
+  to be made: see the walk-parent bullet.
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

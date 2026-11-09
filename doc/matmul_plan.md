@@ -2830,7 +2830,13 @@ the two source papers for this track):
   with coefficients in thirds (odd denominators are units mod 2), converted by the new matmul/m_to_bits.py (Mathematica
   lists; regression: the 445-62 .m gives the .exp conversion bit for bit), stored in matmul/external/mb455 and mb446;
   two-step pools (tomar_line/proj/make_mb2_pools.sh: inner + col in both orders for <4,5,5>, col + col for <4,4,6>) probed
-  at 20 min x 12 threads each from 17:10 (KM reference: 47 within 5 min).
+  at 20 min x 12 threads each from 17:10 (KM reference: 47 within 5 min).  18:10: ALL THREE bottom at 49 (6358 / 6770 /
+  7649 distinct 49s, no 48; tomar_line/proj/logs/d20_444_{mb455_67,mb446_66,meta446_65}.log).  Seven catalog parents, three
+  floors: AT 63 and KM 60 -> 47 at once; Moosbauer 445-62, 455-76, 446-74 and meta 446-73 -> 49; AE 61 -> 51.  The catalog is
+  exhausted one and two projections from <4,4,4>; parents must be made.  Next (18:15, launched): flip --walk in <4,4,5> at
+  rank 60 from KM's scheme and at 63 from AT's (new --max-new cap on the walk archive, since those levels are not
+  flip-isolated and would flood it; 300 new schemes or 20 min), each walked scheme projected by col (10 seeds), a 20-min
+  12-thread descent from the pool, the 47s class-sorted against the five known representatives (scratchpad wp/pipeline.zsh).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

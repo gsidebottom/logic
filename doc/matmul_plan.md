@@ -2771,7 +2771,9 @@ the two source papers for this track):
   VERDICT: third parent bottoms at 51; AE output side resists BP x 22,000 + lns to depth 6; six walk runs (1.1 G landings,
   excursions 2-5) give 136 new 47s and none outside the five classes; 193 distinct rank-47 F2 schemes held in five classes.
   The flip graph at 47 with short excursions is a union of closed basins, one per class; new classes came only from new
-  parents.  Machine idle from 07:55 pending Greg's direction.
+  parents.  Machine idle from 07:55 pending Greg's direction.  2026-11-09 morning: the two 166 schemes contributed to PLinOpt as
+  jgdumas/plinopt PR #39 (data/4x4x4_47_mod_2_166{,b}_{L,R,P}, branch data-4x4x4-47-166 on the fork, SLPchecker + 40 x
+  MMchecker each, PR text in the #22 style); the two letters to Alexandre now cite it.
 
 ## 1. The thesis — why native representation should win
 

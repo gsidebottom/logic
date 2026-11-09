@@ -45,3 +45,8 @@ scan minimum, and exactly the two triples above reach it.
 Open: no whole-orbit lower bound for this class has been climbed yet (the
 window is relative to the heuristic minimum; a coset triple outside it could
 in principle cost less).
+
+Contributed to PLinOpt as https://github.com/jgdumas/plinopt/pull/39 (2026-11-09; branch
+data-4x4x4-47-166 on gsidebottom/plinopt): data/4x4x4_47_mod_2_166_{L,R,P} = x166a and
+data/4x4x4_47_mod_2_166b_{L,R,P} = x166b, checked there with SLPchecker -q 2 and 40 runs of
+MMchecker -q 2 each; PR text in the style of #22 (the 167).

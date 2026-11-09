@@ -435,15 +435,21 @@ starts), so the comparison is by type.
   only 4 new distinct schemes, all four exactly in the fifth class
   (proj/scheme_iso.py against r47-00007) and all four flip-isolated
   (proj/found47_km56/walk5b).  The class is a closed basin at that
-  excursion depth: every landing is one of eight schemes.  A second run with
-  excursions up to 3 (hard 6, seed 23) and a broad run from every rank-47
-  scheme we hold (all five classes, seed 29) follow overnight.
+  excursion depth: every landing is one of eight schemes.  The second run,
+  excursions up to 3 (hard 6), seed 23, 180 min (proj/logs/walk47_fifth_seed23_x3.log):
+  165,047,448 landings, again 4 new distinct schemes, all four exactly in
+  the fifth class and distinct from the first run's four
+  (proj/found47_km56/walk5c).  Closed at depth 3 as well.  Broad runs from
+  every rank-47 scheme we hold (all five classes; excursions 3, seed 29,
+  and 4, seed 31) follow overnight.
   Beside it, follow-up 2: the AlphaEvolve class's output side
   (matmul/x47 seeds/ref47_P transposed, 34 targets, BP 49, floor 41) under
   20,000 plain BP runs (49: 19,369, 50: 631), 2,000 pilot-lookahead runs
   (all 49), and lns at depths 3, 4, 5 (caps 30, 60, 120 min; 3,995 distinct
-  BP helper sets, goal 48 = 14 helpers): no program below 49 within the caps;
-  depth 6 (cap 3 h) running.
+  BP helper sets, goal 48 = 14 helpers) and depth 6 (cap 3 h; 15,978,924
+  neighbourhoods of 8 kept helpers): no program below 49 within any cap
+  (proj/logs/aeside_lns_d{3,4,5,6}.log).  The ladder is exhausted; the side's
+  cost stays between 41 and 49.
 
 Verdict: projection is a good seed generator exactly where the funnel
 is deep.  At the small formats it changes which records are found,

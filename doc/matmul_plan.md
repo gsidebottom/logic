@@ -2757,7 +2757,10 @@ the two source papers for this track):
   (a second walk run, seed 11, started 19:28 in lane A's slot).  Walk seed 11 DONE 22:28: 239,288,720 landings at 47, 4 new
   distinct schemes, all exactly in the fifth class and flip-isolated (proj/found47_km56/walk5b) -- a closed basin at excursion
   depth 2; lns depth 5 also timed out (2 h), depth 6 running; next: walk with excursions to 3 (seed 23, lane A), then after
-  lane B's own walk a broad walk from every known 47 (Q10, seed 29).
+  lane B's own walk a broad walk from every known 47 (Q10, seed 29).  2026-11-09 01:30: the excursion-3 walk (seed 23) gave
+  165 M landings and again 4 new schemes, all exactly fifth class (found47_km56/walk5c) -- closed at depth 3 too; lns depth 6
+  (3 h, 16 M neighbourhoods of 8 kept helpers) also found nothing: the AlphaEvolve output side stays in [41, 49] and follow-up 2
+  is exhausted for now; a broad walk from every known 47 at excursions 4 (seed 31) took the idle slot.
 
 ## 1. The thesis — why native representation should win
 

@@ -439,7 +439,11 @@ starts), so the comparison is by type.
   excursions up to 3 (hard 6), seed 23, 180 min (proj/logs/walk47_fifth_seed23_x3.log):
   165,047,448 landings, again 4 new distinct schemes, all four exactly in
   the fifth class and distinct from the first run's four
-  (proj/found47_km56/walk5c).  Closed at depth 3 as well.  Broad runs from
+  (proj/found47_km56/walk5c).  Closed at depth 3 as well.  A third run at
+  depth 2 with seed 7 (lane B's own, 22:53-01:53, proj/logs/walk47_fifth_seed7.log):
+  241,934,175 landings, 4 new distinct schemes, two of them files of the
+  earlier runs, all in the fifth class (proj/logs/iso_walk5_seed7.log,
+  proj/found47_km56/walk5_seed7).  Broad runs from
   every rank-47 scheme we hold (all five classes; excursions 3, seed 29,
   and 4, seed 31) follow overnight.
   Beside it, follow-up 2: the AlphaEvolve class's output side

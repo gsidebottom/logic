@@ -2760,7 +2760,9 @@ the two source papers for this track):
   lane B's own walk a broad walk from every known 47 (Q10, seed 29).  2026-11-09 01:30: the excursion-3 walk (seed 23) gave
   165 M landings and again 4 new schemes, all exactly fifth class (found47_km56/walk5c) -- closed at depth 3 too; lns depth 6
   (3 h, 16 M neighbourhoods of 8 kept helpers) also found nothing: the AlphaEvolve output side stays in [41, 49] and follow-up 2
-  is exhausted for now; a broad walk from every known 47 at excursions 4 (seed 31) took the idle slot.
+  is exhausted for now; a broad walk from every known 47 at excursions 4 (seed 31) took the idle slot.  Lane B's own walk
+  (seed 7, excess 2, 22:53-01:53): 242 M landings, 4 new schemes, all fifth class, two repeats of earlier walks; Q10's broad
+  walk (62 seed files, excess 3, seed 29) started 01:53.
 
 ## 1. The thesis — why native representation should win
 

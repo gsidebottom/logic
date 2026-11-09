@@ -451,8 +451,15 @@ starts), so the comparison is by type.
   13, the projection-descent class 14, the fifth class 4, AlphaEvolve's 1
   (the first scheme of that class any search of ours produced, a neighbour
   of the published one).  No sixth class; the walks move inside classes,
-  never between them.  Files in proj/found47_walks/x4_seed31.  Two more
-  broad runs (excursions 3, seed 29; excursions 5, seed 37) run overnight.
+  never between them.  Files in proj/found47_walks/x4_seed31.  The same
+  from 62 files with excursions up to 3 (hard 6), seed 29, 180 min
+  (proj/logs/walk47_all_x3_seed29.log): 183,496,168 landings, 48 new
+  distinct schemes (3 already held), exact classes
+  (proj/logs/iso_walk47_all_x3_seed29.log) AlphaTensor's 11,
+  Kauers-Moosbauer's 17, the projection-descent class 14, the fifth class 5,
+  AlphaEvolve's 1; again no sixth class (proj/found47_walks/x3_seed29).  A
+  last run with excursions up to 5 (hard 10, seed 37) from every scheme
+  including these finds runs in the morning.
   Beside it, follow-up 2: the AlphaEvolve class's output side
   (matmul/x47 seeds/ref47_P transposed, 34 targets, BP 49, floor 41) under
   20,000 plain BP runs (49: 19,369, 50: 631), 2,000 pilot-lookahead runs

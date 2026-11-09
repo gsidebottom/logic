@@ -1,0 +1,18 @@
+c flip WALK: <4,4,4> rank 47, 62 seeds, 0 archived, 12 threads, 180 min
+c [     77s] landings 1176735 | new distinct 17 | pool 17 (+17) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    143s] landings 2190836 | new distinct 21 | pool 21 (+21) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    218s] landings 3355476 | new distinct 24 | pool 24 (+24) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    321s] landings 4945537 | new distinct 27 | pool 27 (+27) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    451s] landings 6952669 | new distinct 31 | pool 31 (+31) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    595s] landings 9165525 | new distinct 34 | pool 34 (+34) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    699s] landings 10779125 | new distinct 38 | pool 38 (+38) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    870s] landings 13410396 | new distinct 40 | pool 40 (+40) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1088s] landings 16776522 | new distinct 42 | pool 42 (+42) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1248s] landings 19258596 | new distinct 43 | pool 43 (+43) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1496s] landings 23092202 | new distinct 44 | pool 44 (+44) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1784s] landings 27525347 | new distinct 45 | pool 45 (+45) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   2831s] landings 43694522 | new distinct 46 | pool 46 (+46) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   3053s] landings 47118364 | new distinct 47 | pool 47 (+47) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   9711s] landings 153039381 | new distinct 48 | pool 48 (+48) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c final [  10800s]: landings 183496168 | new distinct 48 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c walk done: 48 new distinct schemes

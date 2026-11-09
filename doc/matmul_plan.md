@@ -2764,7 +2764,9 @@ the two source papers for this track):
   (seed 7, excess 2, 22:53-01:53): 242 M landings, 4 new schemes, all fifth class, two repeats of earlier walks; Q10's broad
   walk (62 seed files, excess 3, seed 29) started 01:53.  Broad walk, excursions 4 (seed 31, 66 seeds, 01:31-04:31): 123 M landings,
   43 new distinct schemes, exact classes AT 11 / KM 13 / projection-descent 14 / fifth 4 / AlphaEvolve 1; NO sixth class --
-  walks move inside classes (tomar_line/proj/found47_walks/x4_seed31).  Q11 (excursions 5, seed 37) queued after Q10.
+  walks move inside classes (tomar_line/proj/found47_walks/x4_seed31).  Q10, excursions 3 (seed 29, 62 seeds, 01:53-04:53):
+  183 M landings, 48 new schemes, exact classes AT 11 / KM 17 / projection-descent 14 / fifth 5 / AlphaEvolve 1, no sixth
+  class (found47_walks/x3_seed29).  Q11 (excursions 5, seed 37, every scheme incl. the walk finds) runs 04:55-07:55.
 
 ## 1. The thesis — why native representation should win
 

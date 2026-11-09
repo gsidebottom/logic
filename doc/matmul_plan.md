@@ -2821,7 +2821,16 @@ the two source papers for this track):
   (symmetric flip graphs, C3 and C3xZ2 over F2, Hensel lift; wins 5x5:93, 6x6:153): no 4x4 below 49.  Verdict: symmetric 4x4
   at 47 is dry by SAT (S3 Oct 18, d8 today) and by symmetric flips; don't build a symmetric flip mode.  Next parent for the
   projection line (the method that produced the fifth class): Moosbauer's <4,4,5>:62 over Z
-  (perminov_cache .../jakobmoosbauer_flips/445-62-mod0.exp), unused so far.
+  (perminov_cache .../jakobmoosbauer_flips/445-62-mod0.exp; matmul/external/mb445, exp_to_bits.py now reads integer
+  coefficients): 3335 seeds at 58 (make_mb_pools.sh), 200-min 4-thread descent 13:41-17:01 NEGATIVE at a floor of 49
+  (74,554 landings, 5,455 distinct 49s, no 48; tomar_line/proj/logs/d200_444_mb58.log).  17:05: the ten long-cap lex arms
+  ALL timed out at 12600 s (x47/symsat_2026-11-09/lex_long_lane.log) -- the symmetric-SAT line is closed.  Parent floors:
+  AlphaTensor 63 and Kauers-Moosbauer 60 reach 47 in a second, Moosbauer 62 stops at 49, AlphaEvolve 61 at 51.  Parents two
+  projections away, found in the catalog: Moosbauer's <4,5,5>:76 and <4,4,6>:74 over Z and meta_flip_graph's <4,4,6>:73
+  with coefficients in thirds (odd denominators are units mod 2), converted by the new matmul/m_to_bits.py (Mathematica
+  lists; regression: the 445-62 .m gives the .exp conversion bit for bit), stored in matmul/external/mb455 and mb446;
+  two-step pools (tomar_line/proj/make_mb2_pools.sh: inner + col in both orders for <4,5,5>, col + col for <4,4,6>) probed
+  at 20 min x 12 threads each from 17:10 (KM reference: 47 within 5 min).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

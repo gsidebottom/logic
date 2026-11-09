@@ -231,7 +231,7 @@ or fixed products).  Positive control: the standard scheme is eight free orbits;
 Result: nothing.  The plain pool (12 workers, cap 1200 s, cadical seed 100) ran
 09:18–13:33 over the 144 shapes with five or four full orbits: every one timed out,
 none decided (symsat_2026-11-09/hpool_d8_plain_pool.log).  Rank 48 with six free
-orbits, the 262's own shape, also times out at 1200 s (the 262 itself has no mod-2
+orbits, the 262's own shape, also times out at 1200 s and at 12600 s (the 262 itself has no mod-2
 reduction: every product's 2-adic valuation sum is negative).
 
 Would satsuma or hydra_satsuma be faster?  No.  `hsym_audit.py c0,...,c7` lists the
@@ -249,8 +249,11 @@ ladder XORs, GE-forces 512 variables, and its cadical reaches no verdict in 1200
 coset representatives (9 generators, +2% clauses; the rank-64 control stays SAT and
 decodes).  Equal-budget pilot, same solver, seed and cap as the pool's round: all eight
 lex arms time out, as do rank-48 0:6 plain and lex (lex_pilot_lane.log).  Ten long-cap
-arms (12600 s, lex, cadical and kissat; rank-48 0:6 and four rank-47 shapes) ran as the
-line's last test, started 13:35; their verdicts are appended below when they land.
+arms (12600 s, lex, cadical and kissat side by side; rank-48 0:6 and the four most
+constrained rank-47 shapes, 0:5 plus three small orbits) ran as the line's last test,
+13:35–17:05 (lex_long_arms.txt, lex_long_lane.log): all ten timed out, no verdict either
+way.  Closed: no shape of the d8 quotient is decided in 3.5 h by either solver, with or
+without the hidden symmetry broken, and the pool's 144 shapes are undecided at 20 min.
 
 Context: Moosbauer–Poole's symmetric flip graphs (arXiv:2502.04514; C₃ and C₃×Z₂ over
 F₂ with Hensel lifting; their wins are <5,5,5>:93 and <6,6,6>:153) found no 4x4 scheme

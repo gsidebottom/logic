@@ -233,6 +233,7 @@ Pools (proj/make_pools.sh; 40 bases per direction for the ref47 pool,
 | <3,4,4> | <3,4,5>:47 (col, 47-4), the three published 4x4 47s (row, 47-4) | 1500 + 600 + 600 + 593 at 43 (3293) |
 | <4,4,4>, Kauers-Moosbauer parent (2026-11-07 evening) | <4,4,5>:60 over F2 (their flips repository; ../external/km_flips) by col, and its rotations <4,5,4> by inner-a and inner-b and <5,4,4> by row (proj/make_km_pools.sh) | 4 x 1500 at 56 (6000) |
 | <4,4,4>, AlphaEvolve parent (2026-11-08 evening) | <4,4,5>:61 over Z reduced mod 2 (Perminov's collection, alpha_evolve/4x4x5_m61_mod0.json; ../external/ae445, matmul/json_to_bits.py) by col, and its rotations by inner-a, inner-b and row (proj/make_ae_pools.sh) | 4 x 1500 at 57 (6000) |
+| <4,4,4>, Moosbauer parent (2026-11-09 afternoon) | <4,4,5>:62 over Z reduced mod 2 (his flips repository via Perminov's collection, jakobmoosbauer_flips/445-62-mod0.exp; ../external/mb445, matmul/exp_to_bits.py reading integer coefficients) by col, and its rotations by inner-a, inner-b and row (proj/make_mb_pools.sh) | 617 + 617 + 1500 + 601 at 58 (3335) |
 
 The recipe regenerates six pools exactly; the two capped pools
 (<4,4,5> -> 4x4, at47 -> <3,4,4>) come back with 1416/1500 and 580/600
@@ -426,6 +427,27 @@ starts), so the comparison is by type.
   the AlphaEvolve projections sit in a basin whose floor is 51.  The seeds
   are not flip-isolated (5-7 shared-factor pairs per seed, against 15-27
   for the Kauers-Moosbauer pool); the engine was working the whole time.
+
+- Parent pool from Moosbauer's <4,4,5>:62 over Z (2026-11-09 afternoon;
+  matmul/external/mb445, the integer flip-graph scheme of Perminov's
+  collection reduced mod 2 by matmul/exp_to_bits.py, which now reads
+  integer coefficients and drops the products that vanish mod 2: none do,
+  rank 62, Brent-checked): seeds at 58, four orientations, 3335 seeds in
+  all (proj/make_mb_pools.sh, 0 failed checks).  NEGATIVE at a floor of
+  49: the 200-minute descent on 4 threads (seed 1, 13:41-17:01 beside the
+  ten long-cap SAT arms; proj/logs/d200_444_mb58.log) made 335,831
+  reductions in 93,113 trajectories and 1.15 G diffuse flips, was at 49
+  within 0.3 s and never below: 74,554 landings, 5,455 distinct 49s, no
+  48, nothing written.  The four <4,4,5> parents sit at three floors:
+  AlphaTensor's 63 and Kauers-Moosbauer's 60 reach 47 within a second,
+  Moosbauer's 62 stops at 49, AlphaEvolve's 61 at 51.  The remaining
+  parents are two projections away (Moosbauer's <4,5,5>:76 and <4,4,6>:74
+  over Z, the catalog's meta_flip_graph <4,4,6>:73 with coefficients in
+  thirds, all reduced mod 2 by matmul/m_to_bits.py into
+  matmul/external/mb455 and mb446; proj/make_mb2_pools.sh builds the
+  two-step pools, inner + col in both orders for <4,5,5>, col + col for
+  <4,4,6>) and are probed at the Kauers-Moosbauer reference budget; see
+  the 2026-11-09 evening bullet.
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

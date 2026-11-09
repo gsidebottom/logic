@@ -2762,7 +2762,9 @@ the two source papers for this track):
   (3 h, 16 M neighbourhoods of 8 kept helpers) also found nothing: the AlphaEvolve output side stays in [41, 49] and follow-up 2
   is exhausted for now; a broad walk from every known 47 at excursions 4 (seed 31) took the idle slot.  Lane B's own walk
   (seed 7, excess 2, 22:53-01:53): 242 M landings, 4 new schemes, all fifth class, two repeats of earlier walks; Q10's broad
-  walk (62 seed files, excess 3, seed 29) started 01:53.
+  walk (62 seed files, excess 3, seed 29) started 01:53.  Broad walk, excursions 4 (seed 31, 66 seeds, 01:31-04:31): 123 M landings,
+  43 new distinct schemes, exact classes AT 11 / KM 13 / projection-descent 14 / fifth 4 / AlphaEvolve 1; NO sixth class --
+  walks move inside classes (tomar_line/proj/found47_walks/x4_seed31).  Q11 (excursions 5, seed 37) queued after Q10.
 
 ## 1. The thesis — why native representation should win
 

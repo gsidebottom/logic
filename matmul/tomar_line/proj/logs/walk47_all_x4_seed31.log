@@ -1,0 +1,27 @@
+c flip WALK: <4,4,4> rank 47, 66 seeds, 0 archived, 12 threads, 180 min
+c [    221s] landings 2498261 | new distinct 16 | pool 16 (+16) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    398s] landings 4498141 | new distinct 17 | pool 17 (+17) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    979s] landings 11062968 | new distinct 18 | pool 18 (+18) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1058s] landings 11950872 | new distinct 19 | pool 19 (+19) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1327s] landings 15002806 | new distinct 20 | pool 20 (+20) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1834s] landings 20817162 | new distinct 23 | pool 23 (+23) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   2778s] landings 31554198 | new distinct 26 | pool 26 (+26) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   2993s] landings 33994388 | new distinct 27 | pool 27 (+27) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   3614s] landings 41060322 | new distinct 28 | pool 28 (+28) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   3729s] landings 42362552 | new distinct 29 | pool 29 (+29) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   4100s] landings 46576956 | new distinct 30 | pool 30 (+30) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   4692s] landings 53310417 | new distinct 31 | pool 31 (+31) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   4953s] landings 56273534 | new distinct 32 | pool 32 (+32) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   5112s] landings 58085950 | new distinct 33 | pool 33 (+33) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   5361s] landings 60923147 | new distinct 34 | pool 34 (+34) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   5511s] landings 62621326 | new distinct 35 | pool 35 (+35) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   5649s] landings 64189288 | new distinct 36 | pool 36 (+36) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   5716s] landings 64954080 | new distinct 37 | pool 37 (+37) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   6560s] landings 74554552 | new distinct 38 | pool 38 (+38) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   6893s] landings 78348747 | new distinct 39 | pool 39 (+39) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   7345s] landings 83477856 | new distinct 40 | pool 40 (+40) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   7743s] landings 88011467 | new distinct 41 | pool 41 (+41) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   8556s] landings 97254171 | new distinct 42 | pool 42 (+42) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   9792s] landings 111298517 | new distinct 43 | pool 43 (+43) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c final [  10800s]: landings 122774727 | new distinct 43 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c walk done: 43 new distinct schemes

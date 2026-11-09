@@ -443,9 +443,16 @@ starts), so the comparison is by type.
   depth 2 with seed 7 (lane B's own, 22:53-01:53, proj/logs/walk47_fifth_seed7.log):
   241,934,175 landings, 4 new distinct schemes, two of them files of the
   earlier runs, all in the fifth class (proj/logs/iso_walk5_seed7.log,
-  proj/found47_km56/walk5_seed7).  Broad runs from
-  every rank-47 scheme we hold (all five classes; excursions 3, seed 29,
-  and 4, seed 31) follow overnight.
+  proj/found47_km56/walk5_seed7).  The broad run from every rank-47 scheme
+  we hold (66 files, all five classes) with excursions up to 4 (hard 8),
+  seed 31, 180 min (proj/logs/walk47_all_x4_seed31.log): 122,774,727
+  landings, 43 new distinct schemes (3 of them files we held), exact classes
+  (proj/logs/iso_walk47_all_x4_seed31.log): AlphaTensor's 11, Kauers-Moosbauer's
+  13, the projection-descent class 14, the fifth class 4, AlphaEvolve's 1
+  (the first scheme of that class any search of ours produced, a neighbour
+  of the published one).  No sixth class; the walks move inside classes,
+  never between them.  Files in proj/found47_walks/x4_seed31.  Two more
+  broad runs (excursions 3, seed 29; excursions 5, seed 37) run overnight.
   Beside it, follow-up 2: the AlphaEvolve class's output side
   (matmul/x47 seeds/ref47_P transposed, 34 targets, BP 49, floor 41) under
   20,000 plain BP runs (49: 19,369, 50: 631), 2,000 pilot-lookahead runs

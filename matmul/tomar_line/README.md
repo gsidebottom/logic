@@ -457,9 +457,24 @@ starts), so the comparison is by type.
   distinct schemes (3 already held), exact classes
   (proj/logs/iso_walk47_all_x3_seed29.log) AlphaTensor's 11,
   Kauers-Moosbauer's 17, the projection-descent class 14, the fifth class 5,
-  AlphaEvolve's 1; again no sixth class (proj/found47_walks/x3_seed29).  A
-  last run with excursions up to 5 (hard 10, seed 37) from every scheme
-  including these finds runs in the morning.
+  AlphaEvolve's 1; again no sixth class (proj/found47_walks/x3_seed29).  The
+  last run, excursions up to 5 (hard 10), seed 37, from all 110 files held
+  including the walk finds, 180 min (proj/logs/walk47_all_x5_seed37.log):
+  185,332,690 landings, 33 new distinct schemes (3 already held), exact
+  classes (proj/logs/iso_walk47_all_x5_seed37.log) AlphaTensor's 11,
+  Kauers-Moosbauer's 10, the projection-descent class 10, the fifth class 2,
+  AlphaEvolve's 0; no sixth class (proj/found47_walks/x5_seed37).
+
+  Verdict of the night (2026-11-08 16:20 to 2026-11-09 07:55, cores at full
+  load throughout): the third parent bottoms at 51; the AlphaEvolve output
+  side resists 22,000 heuristic runs and the exact local search to depth 6;
+  six walk runs at rank 47 (three from the fifth class, three from every
+  class, excursions 2 to 5, 1.1 G landings) produce 136 new rank-47 schemes
+  and not one outside the five known classes.  We now hold 193 distinct
+  rank-47 schemes over F2 in five classes, every one flip-isolated where
+  checked; the flip graph at rank 47 with short excursions is a union of
+  closed basins, one per class, and new classes have come only from new
+  parents (AlphaTensor's and Kauers-Moosbauer's <4,4,5>).
   Beside it, follow-up 2: the AlphaEvolve class's output side
   (matmul/x47 seeds/ref47_P transposed, 34 targets, BP 49, floor 41) under
   20,000 plain BP runs (49: 19,369, 50: 631), 2,000 pilot-lookahead runs

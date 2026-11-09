@@ -2766,7 +2766,12 @@ the two source papers for this track):
   43 new distinct schemes, exact classes AT 11 / KM 13 / projection-descent 14 / fifth 4 / AlphaEvolve 1; NO sixth class --
   walks move inside classes (tomar_line/proj/found47_walks/x4_seed31).  Q10, excursions 3 (seed 29, 62 seeds, 01:53-04:53):
   183 M landings, 48 new schemes, exact classes AT 11 / KM 17 / projection-descent 14 / fifth 5 / AlphaEvolve 1, no sixth
-  class (found47_walks/x3_seed29).  Q11 (excursions 5, seed 37, every scheme incl. the walk finds) runs 04:55-07:55.
+  class (found47_walks/x3_seed29).  Q11, excursions 5 (seed 37, 110 seeds, 04:54-07:54): 185 M landings, 33 new schemes, exact
+  classes AT 11 / KM 10 / projection-descent 10 / fifth 2 / AlphaEvolve 0, no sixth class (found47_walks/x5_seed37).  NIGHT'S
+  VERDICT: third parent bottoms at 51; AE output side resists BP x 22,000 + lns to depth 6; six walk runs (1.1 G landings,
+  excursions 2-5) give 136 new 47s and none outside the five classes; 193 distinct rank-47 F2 schemes held in five classes.
+  The flip graph at 47 with short excursions is a union of closed basins, one per class; new classes came only from new
+  parents.  Machine idle from 07:55 pending Greg's direction.
 
 ## 1. The thesis — why native representation should win
 

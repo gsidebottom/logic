@@ -1,0 +1,22 @@
+c flip WALK: <4,4,4> rank 47, 110 seeds, 0 archived, 12 threads, 180 min
+c [    634s] landings 10882495 | new distinct 12 | pool 12 (+12) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    884s] landings 15162262 | new distinct 13 | pool 13 (+13) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1476s] landings 25337312 | new distinct 14 | pool 14 (+14) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1682s] landings 28875725 | new distinct 15 | pool 15 (+15) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   3213s] landings 55150480 | new distinct 16 | pool 16 (+16) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   3519s] landings 60415115 | new distinct 17 | pool 17 (+17) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   3635s] landings 62405428 | new distinct 18 | pool 18 (+18) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   4032s] landings 69224221 | new distinct 19 | pool 19 (+19) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   4474s] landings 76809517 | new distinct 21 | pool 21 (+21) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   4751s] landings 81569349 | new distinct 22 | pool 22 (+22) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   4910s] landings 84297511 | new distinct 23 | pool 23 (+23) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   5017s] landings 86128194 | new distinct 24 | pool 24 (+24) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   5210s] landings 89438688 | new distinct 25 | pool 25 (+25) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   6473s] landings 111131560 | new distinct 26 | pool 26 (+26) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   9561s] landings 164056188 | new distinct 27 | pool 27 (+27) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   9958s] landings 170889946 | new distinct 29 | pool 29 (+29) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [  10197s] landings 174979024 | new distinct 30 | pool 30 (+30) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [  10298s] landings 176720371 | new distinct 31 | pool 31 (+31) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [  10777s] landings 184942015 | new distinct 33 | pool 33 (+33) | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c final [  10800s]: landings 185332690 | new distinct 33 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c walk done: 33 new distinct schemes

@@ -189,6 +189,22 @@ class none-166, Kauers–Moosbauer 163-167, AlphaTensor 162-168, AlphaEvolve
 | projection-descent 47 (`seeds/proj47_5`, 2026-11-06: matmul/tomar_line/proj/found47/r47-00005, a fourth class by the rank-triple invariant and the exact test tomar_line/proj/scheme_iso.py, which puts 6 of our 27 descent 47s in it) | 180 | 171, exact at 8 triples (anneal 22/24 chains; exhaustive BP scan 171, 411 triples within +2; exact refine 171; settle depth 5 leaves 78 triples open below 171, depth 6 57, depth 8 one, the bottom-up pass none: 171 exact over all 411; the full +4 window, 7698 triples, settled 2026-11-08: 171 exact over all of it) | 44 + 45 + 82 (also 45 + 45 + 81) |
 | KM-parent projection-descent 47 (`seeds/projkm47_7`, 2026-11-08: matmul/tomar_line/proj/found47_km56/d180/r47-00007, a fifth class by the rank-triple type alone (a 20/11/16, b 11/27/9, c 20/11/16 factors of rank 1/2/3, no rank 4) and by the exact test; 3 of the 14 47s of the 3 h descent from the Kauers–Moosbauer <4,4,5>:60 projection pool, the other 11 in the KM (5) and projection-descent (6) classes) | 179 | **166**, exact at 2 triples (2026-11-08: scan minimum 167 at 3 of 840 X-cosets, 4493 triples within +4; refine 167 at 32 triples, 168 at 251; settle of those 283: 166 at two, none below; the full window at target 166: nothing below, 166 exact over all 4493 triples and reached by exactly those two) | 44 + 48 + 74 (also 43 + 48 + 75) |
 
+**Slot symmetries in the class stabilizers** (2026-11-09,
+tomar_line/proj/stab_slots.py, log tomar_line/proj/logs/stab_slots_five_classes.log;
+a slot symmetry is in a class's stabilizer when some sandwich carries the
+scheme onto its slot-permuted image).  AlphaEvolve's class and the
+projection-descent class: the transpose symmetry (A, B, C) -> (B^T, A^T, C^T)
+is in the stabilizer and the certificate sandwich consists of permutation
+matrices, so any L program is an R program of the same cost and vice versa
+(the published scheme's L = R = 44).  The fifth class: the exchange of the
+A and C slots (perm (2,1,0), middle slot transposed) is in the stabilizer,
+with a non-permutation certificate; it maps every orbit point with costs
+(L, R, Pt) to one with (Pt, R, L), which is why the two 166 points are
+mirror images, 44 + 48 + 43 and 43 + 48 + 44.  Kauers–Moosbauer's and
+AlphaTensor's classes have no slot symmetry in their stabilizers.  No class
+has a symmetry moving the R slot, so no isotropy can transport an L or P
+program onto R: the fifth class's R = 48 is its own bottleneck.
+
 (Annealing: all 24 chains per class end at 168 under Boyar–Peralta
 scoring; the 167 needs the exact search on one side.)
 

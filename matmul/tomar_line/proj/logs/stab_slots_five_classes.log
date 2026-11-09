@@ -1,0 +1,27 @@
+r47-00007.bits: rank 47, 6 valid slot variants
+  slot symmetry perm (0, 2, 1) transposes 001: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (1, 0, 2) transposes 111: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (1, 2, 0) transposes 110: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (2, 0, 1) transposes 101: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (2, 1, 0) transposes 010: IN the stabilizer; certificate maps are not all permutations (one certificate; others may exist)  (49 nodes)
+km47.bits: rank 47, 6 valid slot variants
+  slot symmetry perm (0, 2, 1) transposes 001: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (1, 0, 2) transposes 111: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (1, 2, 0) transposes 110: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (2, 0, 1) transposes 101: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (2, 1, 0) transposes 010: NOT in the stabilizer  (0 nodes)
+at47.bits: rank 47, 3 valid slot variants
+  slot symmetry perm (0, 2, 1) transposes 001: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (2, 0, 1) transposes 101: NOT in the stabilizer  (0 nodes)
+ref47.bits: rank 47, 6 valid slot variants
+  slot symmetry perm (0, 2, 1) transposes 001: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (1, 0, 2) transposes 111: IN the stabilizer; certificate maps are all permutation matrices  (47 nodes)
+  slot symmetry perm (1, 2, 0) transposes 110: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (2, 0, 1) transposes 101: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (2, 1, 0) transposes 010: NOT in the stabilizer  (0 nodes)
+r47-00005.bits: rank 47, 6 valid slot variants
+  slot symmetry perm (0, 2, 1) transposes 001: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (1, 0, 2) transposes 111: IN the stabilizer; certificate maps are all permutation matrices  (47 nodes)
+  slot symmetry perm (1, 2, 0) transposes 110: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (2, 0, 1) transposes 101: NOT in the stabilizer  (0 nodes)
+  slot symmetry perm (2, 1, 0) transposes 010: NOT in the stabilizer  (0 nodes)

@@ -1,0 +1,44 @@
+dps_pub: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 14, c-right|a-left 16;  (c as c_ji): b-right|c-right 16, c-left|a-left 16
+accurate: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 16, c-right|a-left 16;  (c as c_ji): b-right|c-right 16, c-left|a-left 16
+s_1: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 15, c-right|a-left 16;  (c as c_ji): b-right|c-right 16, c-left|a-left 16
+s_1o2: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 15, c-right|a-left 15;  (c as c_ji): b-right|c-right 16, c-left|a-left 16
+s_1o4: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 14, c-right|a-left 16;  (c as c_ji): b-right|c-right 16, c-left|a-left 16
+s_2: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 15, c-right|a-left 16;  (c as c_ji): b-right|c-right 16, c-left|a-left 16
+s_4: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 15, c-right|a-left 16;  (c as c_ji): b-right|c-right 16, c-left|a-left 16
+s_8: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 15, c-right|a-left 16;  (c as c_ji): b-right|c-right 16, c-left|a-left 16
+agarwal: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 4, (2, 2, 3): 8, (2, 3, 3): 4}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 8, 3: 8} c {1: 32, 2: 8, 3: 8}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 15, c-right|a-left 16;  (c as c_ji): b-right|c-right 16, c-left|a-left 16
+lam01c0_201: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 14, b-right|c-left 12, c-right|a-left 12;  (c as c_ji): b-right|c-right 12, c-left|a-left 12
+p005_201n: rank 48; [1,1,1] terms 32; sorted-type multiset {(1, 1, 1): 32, (2, 2, 2): 16}
+   per-slot rank histograms a {1: 32, 2: 16} b {1: 32, 2: 16} c {1: 32, 2: 16}
+   distinct vectors among the [1,1,1] factors: a-left 8 a-right 8 b-left 8 b-right 8 c-left 8 c-right 8
+   cyclic unions (c as c_ij): a-right|b-left 16, b-right|c-left 11, c-right|a-left 11;  (c as c_ji): b-right|c-right 12, c-left|a-left 12

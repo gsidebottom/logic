@@ -2773,7 +2773,19 @@ the two source papers for this track):
   The flip graph at 47 with short excursions is a union of closed basins, one per class; new classes came only from new
   parents.  Machine idle from 07:55 pending Greg's direction.  2026-11-09 morning: the two 166 schemes contributed to PLinOpt as
   jgdumas/plinopt PR #39 (data/4x4x4_47_mod_2_166{,b}_{L,R,P}, branch data-4x4x4-47-166 on the fork, SLPchecker + 40 x
-  MMchecker each, PR text in the #22 style); the two letters to Alexandre now cite it.
+  MMchecker each, PR text in the #22 style); the two letters to Alexandre now cite it.  Alexandre's reply (same morning) asked
+  (a) whether the two 166 schemes, of equal type, are in the same orbit -- yes by construction, plain sandwich certificate
+  a -> b (scheme_iso) -- and (b) whether a stabilizer isotropy of signed permutations transports circuits across modes:
+  computed for all five F2 classes (tomar_line/proj/stab_slots.py): AlphaEvolve's and the projection-descent class carry
+  the transpose symmetry (A,B,C)->(B^T,A^T,C^T) with PERMUTATION matrices (L and R programs interchange at equal cost; the
+  published L = R = 44), the fifth class carries the A<->C exchange (non-permutation certificate; mirror points 44+48+43 /
+  43+48+44), KM's and AlphaTensor's none; no class moves the R slot.  His <4x4x4:48>-over-R picture checked on every rank-48
+  scheme we hold (matmul/dps48/q48_structure.py, q48_structure_2026-11-09.txt): DPS published, accurate_262, the LWH family
+  s(t) at t = 1/4..8, Agrawal's, and our two 201 points ALL have exactly 32 terms of type [1,1,1] and 16 of type [2,2,2]
+  (Agrawal: 4 x [2,2,2], 8 x [2,2,3], 4 x [2,3,3] -- his replacement layers carry rank-3 factors); the rank-1 factors use 8
+  distinct vectors (up to scale) in each of the six positions, and how many are SHARED between the paired positions
+  depends on the orbit point: 16/16/16 (no sharing) at the published point, 12/12/14 at our 201 points -- his '3 x 12
+  vectors' playground is a property of special points, and our cheapest points are the ones that share most.
 
 ## 1. The thesis — why native representation should win
 

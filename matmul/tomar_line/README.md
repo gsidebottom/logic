@@ -232,6 +232,7 @@ Pools (proj/make_pools.sh; 40 bases per direction for the ref47 pool,
 | <4,4,4>, overnight run | <4,4,5>:63 (col) and its two other orientations <4,5,4>:63 (inner-a, inner-b) and <5,4,4>:63 (row), by matmul/rotate_f2.py | 4 x 1500 at 59 (6000) |
 | <3,4,4> | <3,4,5>:47 (col, 47-4), the three published 4x4 47s (row, 47-4) | 1500 + 600 + 600 + 593 at 43 (3293) |
 | <4,4,4>, Kauers-Moosbauer parent (2026-11-07 evening) | <4,4,5>:60 over F2 (their flips repository; ../external/km_flips) by col, and its rotations <4,5,4> by inner-a and inner-b and <5,4,4> by row (proj/make_km_pools.sh) | 4 x 1500 at 56 (6000) |
+| <4,4,4>, AlphaEvolve parent (2026-11-08 evening) | <4,4,5>:61 over Z reduced mod 2 (Perminov's collection, alpha_evolve/4x4x5_m61_mod0.json; ../external/ae445, matmul/json_to_bits.py) by col, and its rotations by inner-a, inner-b and row (proj/make_ae_pools.sh) | 4 x 1500 at 57 (6000) |
 
 The recipe regenerates six pools exactly; the two capped pools
 (<4,4,5> -> 4x4, at47 -> <3,4,4>) come back with 1416/1500 and 580/600
@@ -410,6 +411,21 @@ starts), so the comparison is by type.
   projection-descent class 7, the fifth class 1, and for the first time
   from this parent AlphaTensor's 1.  No sixth class.  Files in
   proj/found47_km56/d180b.
+
+- Parent pool from AlphaEvolve's <4,4,5>:61 (2026-11-08 evening;
+  matmul/external/ae445, the Z scheme of Perminov's collection reduced mod
+  2 by matmul/json_to_bits.py, all 61 products surviving, Brent-checked):
+  seeds at 57, four orientations, 1500 each, 0 failed checks
+  (proj/make_ae_pools.sh).  NEGATIVE: the 3 h descent (seed 13, 12
+  threads, beside the lns search of lane B; proj/logs/d180_444_ae57.log)
+  made 444,282 reductions in 133,198 trajectories and 1.59 G diffuse flips,
+  reached rank 51 within 44 s, and never went below 51: no landing at 49,
+  nothing written.  The AlphaTensor parent (seeds at 59) and the
+  Kauers-Moosbauer parent (56) both reach 47 at 0 s from the same kind of
+  pool, so the parent, not the seed rank, decides where the funnel ends;
+  the AlphaEvolve projections sit in a basin whose floor is 51.  The seeds
+  are not flip-isolated (5-7 shared-factor pairs per seed, against 15-27
+  for the Kauers-Moosbauer pool); the engine was working the whole time.
 
 Verdict: projection is a good seed generator exactly where the funnel
 is deep.  At the small formats it changes which records are found,

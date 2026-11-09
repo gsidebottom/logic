@@ -2748,7 +2748,13 @@ the two source papers for this track):
   shell was paused (SIGSTOP) 07:45-08:28 so the proj47_5 settle would not compete with the targeted settle, then resumed.
   The flip line's verdict sharpens: projection from the <4,4,5> parent found the class that holds the record.  Replicate descent (seed 17, 13:15-16:15,
   background priority): 16 distinct 47s (two repeats of the first run), 13,102 48s, no 46; classes KM 7 / projection-descent
-  7 / fifth 1 / AlphaTensor 1 (first time from this parent); NO sixth class (tomar_line/proj/found47_km56/d180b).
+  7 / fifth 1 / AlphaTensor 1 (first time from this parent); NO sixth class (tomar_line/proj/found47_km56/d180b).  Third parent, AlphaEvolve's
+  <4,4,5>:61 reduced mod 2 (matmul/external/ae445, matmul/json_to_bits.py; the file was already in the Perminov clone), 4 x 1500
+  seeds at 57: NEGATIVE -- the 3 h descent (444,282 reductions, 133,198 trajectories, 1.59 G flips) reached 51 in 44 s and never
+  went below 51, nothing written (proj/logs/d180_444_ae57.log); the parent decides the funnel's floor (AT 59 -> 47, KM 56 -> 47,
+  AE 57 -> 51).  Lane B of the evening (q9b.sh): the AlphaEvolve output side under 20,000 BP runs and pilot BP never beats 49;
+  lns depths 3 and 4 timed out (30 min, 1 h) without improvement, depth 5 and 6 running; then walks at 47 from the fifth class
+  (a second walk run, seed 11, started 19:28 in lane A's slot).
 
 ## 1. The thesis — why native representation should win
 

@@ -2786,6 +2786,12 @@ the two source papers for this track):
   distinct vectors (up to scale) in each of the six positions, and how many are SHARED between the paired positions
   depends on the orbit point: 16/16/16 (no sharing) at the published point, 12/12/14 at our 201 points -- his '3 x 12
   vectors' playground is a property of special points, and our cheapest points are the ones that share most.
+  His questions 1 and 3 (Greg's ask, 2026-11-09 morning; rfc2610 README, results_q3_2026-11-09.txt): (1) the stabilizer search is
+  exhaustive (all colour-consistent layer bijections per slot map, X,Y,Z solved exactly), accurate_262's stabilizer is 64 = 32 trivial +
+  32 L<->R, 8 signed permutations, as on 11-01 -- no missing isotropy; (3) per mode the commutant is Q[K], K an involution ((1 2)(3 4),
+  signed in mode Y), R^4 = two rational planes carrying INEQUIVALENT representations; in the adapted basis all 48 terms touch all four
+  blocks in all three factors and only 8 factors per side are 2x2 Kronecker products: no Laderman-from-Strassen-style derivation
+  appears, the scheme is maximally mixed w.r.t. its symmetry planes (q3_invariant.py, q3_reps.py).
 
 ## 1. The thesis — why native representation should win
 

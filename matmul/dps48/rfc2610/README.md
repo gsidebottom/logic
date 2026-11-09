@@ -109,3 +109,24 @@ predicts 1.17, 1.38, 1.61.  The 260 behaves the same, and its programs compute t
 
 His proposal was already run on Oct 25: `gamma48` on rational in role 1 starts at the 315 turned by (2) (39.2820, `../gamma/rs_scale.log`), 2,400 starts, 22.6274 x49 and nothing lower.
 gamma_inf,2 is the only whole-orbit objective we have searched.
+
+## 2026-11-09: his questions 1 and 3 on the <4x4x4:48> stabilizer
+
+**Question 1, does he miss an isotropy?**  No.  `stabilizer48.py` (and `stab_matrices.py` on top of it) is exhaustive: for
+each of the six slot maps it enumerates every bijection of the 48 layers consistent with the isotropy invariants (the
+rank triple of each layer and, for each pair, the ranks of the side-by-side and stacked concatenations in every factor,
+refined six rounds), solves X, Y, Z exactly for each, and keeps those whose image is the point layer by layer.  On
+accurate_262 (PLinOpt data/4x4x4_48_accurate_262, `stab_accurate_262.json`): order 64, 32 with trivial slot map and 32
+carrying L onto R (`cyc2+rev`), all 64 orthogonal up to scale, 8 signed permutations in all three modes (the dihedral
+group of order 8), per mode signed permutations in 32 (X), 16 (Y), 32 (Z).  Same numbers as 2026-11-01.
+
+**Question 3, the invariant subspaces of R^4** (`q3_invariant.py PREFIX STAB.json`, `q3_reps.py STAB.json`,
+`results_q3_2026-11-09.txt`).  Per mode the commutant of the 32 trivial-slot matrices has dimension 2, spanned by I and
+an involution K: in modes X and Z the permutation (1 2)(3 4) of the coordinates, in mode Y the same with two signs.  R^4
+splits exactly over Q into the two planes K = +1 and K = -1 (the sum and difference planes), and the two planes carry
+INEQUIVALENT representations of the group (characters differ), so there is no canonical identification R^4 = R^2 (x) R^2
+and "doubling" has no intrinsic meaning.  In the adapted basis every factor of every one of the 48 terms has all four
+2x2 blocks nonzero (the [1,1,1] vectors sit at 45 degrees to both planes, as `geometry.py` found), and only 8 factors
+per side are Kronecker products of 2x2 matrices, no term in all three.  So the invariant decomposition does not exhibit
+accurate_262 as derived from a smaller tensor decomposition in the way 1703.08298 derives Laderman from Strassen; the
+scheme is maximally mixed with respect to its own symmetry planes.  Same picture at the `accurate` point.

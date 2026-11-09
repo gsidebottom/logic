@@ -1,0 +1,105 @@
+== Stabilizer of accurate_262 (PLinOpt data/4x4x4_48_accurate_262), stab_matrices.py, 2026-11-09
+acc262: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 8;  all three orthogonal up to scale: 64
+   X: signed permutation in 32, orthogonal up to scale in 64
+   Y: signed permutation in 16, orthogonal up to scale in 64
+   Z: signed permutation in 32, orthogonal up to scale in 64
+
+== Stabilizer of accurate (matmul/dps48/accurate), same script
+accurate: stabilizer order 64, slot maps {'id': 32, 'cyc2+rev': 32}
+   all three matrices signed permutations: 4;  all three orthogonal up to scale: 64
+   X: signed permutation in 32, orthogonal up to scale in 64
+   Y: signed permutation in 16, orthogonal up to scale in 64
+   Z: signed permutation in 32, orthogonal up to scale in 64
+
+== q3_invariant.py on accurate_262
+cyclic reading uses W = (P column)^T, as stab_matrices.py does
+64 stabilizer elements, 32 with trivial slot map; slot maps {'id': 32, 'cyc2+rev': 32}
+mode X: commutant of the 32 trivial-slot matrices has dimension 2
+   a generic commutant element: characteristic polynomial coefficients ['1225', '-840', '214', '-24', '1']; rational eigenvalues ['5', '7']
+   eigenvalue 5: invariant subspace of dimension 2, basis [['1', '1', '0', '0'], ['0', '0', '-1', '1']]
+   eigenvalue 7: invariant subspace of dimension 2, basis [['-1', '1', '0', '0'], ['0', '0', '1', '1']]
+mode Y: commutant of the 32 trivial-slot matrices has dimension 2
+   a generic commutant element: characteristic polynomial coefficients ['1225', '-840', '214', '-24', '1']; rational eigenvalues ['5', '7']
+   eigenvalue 5: invariant subspace of dimension 2, basis [['0', '1', '1', '0'], ['-1', '0', '0', '1']]
+   eigenvalue 7: invariant subspace of dimension 2, basis [['0', '-1', '1', '0'], ['1', '0', '0', '1']]
+mode Z: commutant of the 32 trivial-slot matrices has dimension 2
+   a generic commutant element: characteristic polynomial coefficients ['1225', '-840', '214', '-24', '1']; rational eigenvalues ['5', '7']
+   eigenvalue 5: invariant subspace of dimension 2, basis [['-1', '1', '0', '0'], ['0', '0', '-1', '1']]
+   eigenvalue 7: invariant subspace of dimension 2, basis [['1', '1', '0', '0'], ['0', '0', '1', '1']]
+
+in the adapted bases (first two coordinates = first invariant plane), nonzero 2x2 blocks per factor (U, V, W), counted over the 48 terms:
+   48 x  U(1, 1, 1, 1) V(1, 1, 1, 1) W(1, 1, 1, 1)
+terms whose factors are Kronecker products of 2x2 matrices (U, V, W): {(False, False, False): 28, (True, False, False): 4, (False, True, False): 8, (False, False, True): 4, (True, False, True): 4}
+
+== q3_reps.py on accurate_262
+mode X: commutant dimension 2; traceless generator K with K^2 = 1 * I:
+     ['0', '-1', '0', '0']
+     ['-1', '0', '0', '0']
+     ['0', '0', '0', '1']
+     ['0', '0', '1', '0']
+    plane K = -1: dimension 2, character multiset {'-2': 2, '-4': 2, '0': 24, '2': 2, '4': 2}
+    plane K = 1: dimension 2, character multiset {'-4': 2, '0': 24, '2': 4, '4': 2}
+    the two planes carry INEQUIVALENT representations of the 32-element group (characters differ elementwise)
+mode Y: commutant dimension 2; traceless generator K with K^2 = 1 * I:
+     ['0', '0', '0', '1']
+     ['0', '0', '-1', '0']
+     ['0', '-1', '0', '0']
+     ['1', '0', '0', '0']
+    plane K = -1: dimension 2, character multiset {'-4': 2, '0': 24, '2': 4, '4': 2}
+    plane K = 1: dimension 2, character multiset {'-2': 2, '-4': 2, '0': 24, '2': 2, '4': 2}
+    the two planes carry INEQUIVALENT representations of the 32-element group (characters differ elementwise)
+mode Z: commutant dimension 2; traceless generator K with K^2 = 1 * I:
+     ['0', '1', '0', '0']
+     ['1', '0', '0', '0']
+     ['0', '0', '0', '1']
+     ['0', '0', '1', '0']
+    plane K = -1: dimension 2, character multiset {'-2': 2, '0': 24, '2': 2, '4': 4}
+    plane K = 1: dimension 2, character multiset {'0': 24, '2': 4, '4': 4}
+    the two planes carry INEQUIVALENT representations of the 32-element group (characters differ elementwise)
+
+== q3_invariant.py on accurate
+cyclic reading uses W = (P column)^T, as stab_matrices.py does
+64 stabilizer elements, 32 with trivial slot map; slot maps {'id': 32, 'cyc2+rev': 32}
+mode X: commutant of the 32 trivial-slot matrices has dimension 2
+   a generic commutant element: characteristic polynomial coefficients ['1225', '-840', '214', '-24', '1']; rational eigenvalues ['5', '7']
+   eigenvalue 5: invariant subspace of dimension 2, basis [['0', '-1', '1', '0'], ['-1', '0', '0', '1']]
+   eigenvalue 7: invariant subspace of dimension 2, basis [['0', '1', '1', '0'], ['1', '0', '0', '1']]
+mode Y: commutant of the 32 trivial-slot matrices has dimension 2
+   a generic commutant element: characteristic polynomial coefficients ['1225', '-840', '214', '-24', '1']; rational eigenvalues ['5', '7']
+   eigenvalue 5: invariant subspace of dimension 2, basis [['0', '1', '1', '0'], ['-1', '0', '0', '1']]
+   eigenvalue 7: invariant subspace of dimension 2, basis [['0', '-1', '1', '0'], ['1', '0', '0', '1']]
+mode Z: commutant of the 32 trivial-slot matrices has dimension 2
+   a generic commutant element: characteristic polynomial coefficients ['1225', '-840', '214', '-24', '1']; rational eigenvalues ['5', '7']
+   eigenvalue 5: invariant subspace of dimension 2, basis [['-1', '1', '0', '0'], ['0', '0', '-1', '1']]
+   eigenvalue 7: invariant subspace of dimension 2, basis [['1', '1', '0', '0'], ['0', '0', '1', '1']]
+
+in the adapted bases (first two coordinates = first invariant plane), nonzero 2x2 blocks per factor (U, V, W), counted over the 48 terms:
+   48 x  U(1, 1, 1, 1) V(1, 1, 1, 1) W(1, 1, 1, 1)
+terms whose factors are Kronecker products of 2x2 matrices (U, V, W): {(False, True, False): 4, (False, False, False): 28, (False, False, True): 8, (True, True, False): 4, (True, False, False): 4}
+
+== q3_reps.py on accurate
+mode X: commutant dimension 2; traceless generator K with K^2 = 1 * I:
+     ['0', '0', '0', '1']
+     ['0', '0', '1', '0']
+     ['0', '1', '0', '0']
+     ['1', '0', '0', '0']
+    plane K = -1: dimension 2, character multiset {'-2': 2, '-4': 1, '0': 24, '2': 2, '4': 3}
+    plane K = 1: dimension 2, character multiset {'-2': 1, '0': 24, '2': 3, '4': 4}
+    the two planes carry INEQUIVALENT representations of the 32-element group (characters differ elementwise)
+mode Y: commutant dimension 2; traceless generator K with K^2 = 1 * I:
+     ['0', '0', '0', '1']
+     ['0', '0', '-1', '0']
+     ['0', '-1', '0', '0']
+     ['1', '0', '0', '0']
+    plane K = -1: dimension 2, character multiset {'-2': 2, '-4': 3, '0': 24, '2': 2, '4': 1}
+    plane K = 1: dimension 2, character multiset {'-2': 2, '-4': 2, '0': 24, '2': 2, '4': 2}
+    the two planes carry INEQUIVALENT representations of the 32-element group (characters differ elementwise)
+mode Z: commutant dimension 2; traceless generator K with K^2 = 1 * I:
+     ['0', '1', '0', '0']
+     ['1', '0', '0', '0']
+     ['0', '0', '0', '1']
+     ['0', '0', '1', '0']
+    plane K = -1: dimension 2, character multiset {'-2': 2, '-4': 2, '0': 24, '2': 2, '4': 2}
+    plane K = 1: dimension 2, character multiset {'-4': 4, '0': 24, '2': 4}
+    the two planes carry INEQUIVALENT representations of the 32-element group (characters differ elementwise)

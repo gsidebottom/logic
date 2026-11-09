@@ -427,6 +427,24 @@ starts), so the comparison is by type.
   are not flip-isolated (5-7 shared-factor pairs per seed, against 15-27
   for the Kauers-Moosbauer pool); the engine was working the whole time.
 
+- Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
+  the "keep the CPUs busy" queue): flip --walk from its four schemes
+  (d180 r47-00007/13/14, d180b r47-00012), excursions up to 2 above 47
+  (hard 5), kick 20, seed 11, 180 min, 12 threads
+  (proj/logs/walk47_fifth_seed11.log): 239,288,720 landings at 47 and
+  only 4 new distinct schemes, all four exactly in the fifth class
+  (proj/scheme_iso.py against r47-00007) and all four flip-isolated
+  (proj/found47_km56/walk5b).  The class is a closed basin at that
+  excursion depth: every landing is one of eight schemes.  A second run with
+  excursions up to 3 (hard 6, seed 23) and a broad run from every rank-47
+  scheme we hold (all five classes, seed 29) follow overnight.
+  Beside it, follow-up 2: the AlphaEvolve class's output side
+  (matmul/x47 seeds/ref47_P transposed, 34 targets, BP 49, floor 41) under
+  20,000 plain BP runs (49: 19,369, 50: 631), 2,000 pilot-lookahead runs
+  (all 49), and lns at depths 3, 4, 5 (caps 30, 60, 120 min; 3,995 distinct
+  BP helper sets, goal 48 = 14 helpers): no program below 49 within the caps;
+  depth 6 (cap 3 h) running.
+
 Verdict: projection is a good seed generator exactly where the funnel
 is deep.  At the small formats it changes which records are found,
 not whether; at 4x4 it turns a 5-minute lottery into a sure landing

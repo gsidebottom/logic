@@ -2754,7 +2754,10 @@ the two source papers for this track):
   went below 51, nothing written (proj/logs/d180_444_ae57.log); the parent decides the funnel's floor (AT 59 -> 47, KM 56 -> 47,
   AE 57 -> 51).  Lane B of the evening (q9b.sh): the AlphaEvolve output side under 20,000 BP runs and pilot BP never beats 49;
   lns depths 3 and 4 timed out (30 min, 1 h) without improvement, depth 5 and 6 running; then walks at 47 from the fifth class
-  (a second walk run, seed 11, started 19:28 in lane A's slot).
+  (a second walk run, seed 11, started 19:28 in lane A's slot).  Walk seed 11 DONE 22:28: 239,288,720 landings at 47, 4 new
+  distinct schemes, all exactly in the fifth class and flip-isolated (proj/found47_km56/walk5b) -- a closed basin at excursion
+  depth 2; lns depth 5 also timed out (2 h), depth 6 running; next: walk with excursions to 3 (seed 23, lane A), then after
+  lane B's own walk a broad walk from every known 47 (Q10, seed 29).
 
 ## 1. The thesis — why native representation should win
 

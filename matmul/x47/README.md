@@ -211,3 +211,50 @@ scoring; the 167 needs the exact search on one side.)
 All three are flip-isolated (no two products share a factor), so plain
 flip walks cannot leave them; a rank-47 walk with up-and-down excursions
 (`flip 4 4 4 --walk --rank 47`, max excess 2) found nothing new in 5 min.
+
+## Symmetry-prescribed SAT search (2026-11-09): dry
+
+The route that found new 3x3 classes (Burichenko; Ballard–Ikenmeyer–Landsberg–Ryder):
+prescribe a symmetry group and solve for the invariant decompositions.  `hcnf.py`
+quotients the Brent system of <4,4,4> over F₂ by a group of permutation triples acting
+as sandwiches (U → X U Yᵀ, V → Y V Zᵀ, W → X W Zᵀ), one orbit shape at a time (per
+conjugacy class of subgroups, a count of orbits whose stabilizer is that subgroup; the
+representative's entries are the free variables, identified under the stabilizer), as
+CNF with one Tseitin AND per monomial and XOR ladders; `hpool.py` runs cadical/kissat
+over the shapes, most full orbits first, and decodes any model with a full
+4096-equation check.  Group `d8` = the mod-2 image of the dihedral group of eight
+signed permutations in Stab(accurate_262) (X = Z in every element; the 262's 48
+products are six free 8-orbits, so a 47 needs 8a + 4b + 2c + d = 47 with small orbits
+or fixed products).  Positive control: the standard scheme is eight free orbits; shape
+0:8 at rank 64 is SAT in under a second and decodes.
+
+Result: nothing.  The plain pool (12 workers, cap 1200 s, cadical seed 100) ran
+09:18–13:33 over the 144 shapes with five or four full orbits: every one timed out,
+none decided (symsat_2026-11-09/hpool_d8_plain_pool.log).  Rank 48 with six free
+orbits, the 262's own shape, also times out at 1200 s (the 262 itself has no mod-2
+reduction: every product's 2-adic valuation sum is negative).
+
+Would satsuma or hydra_satsuma be faster?  No.  `hsym_audit.py c0,...,c7` lists the
+quotient's symmetries exactly: for shape (4,0,0,2,0,0,3,1) the permutations of orbits of
+the same type (288) times the normalizer of d8 in S₄³ (4 cosets) are all symmetries of
+the solution set, but the XOR ladders fix each equation's monomial order by variable id,
+so every one that moves a U variable reorders the ladders: a single involution (fixes
+U, permutes the columns of V and W) is the whole clause-graph automorphism group.
+`tools/cnf_wl_symmetry.py` (colour refinement on the clause graph) confirms it on the
+CNF: every class has size 2.  satsuma's dejavu would therefore add one lex-leader
+constraint, a factor 2 at most on UNSAT proofs; hydra's XOR stage recovers the 24064
+ladder XORs, GE-forces 512 variables, and its cadical reaches no verdict in 1200 s
+(symsat_2026-11-09/p1_hydra.out).  The hidden symmetry can be injected instead:
+`--lex` adds lex-leader clauses for the consecutive orbit swaps and the normalizer
+coset representatives (9 generators, +2% clauses; the rank-64 control stays SAT and
+decodes).  Equal-budget pilot, same solver, seed and cap as the pool's round: all eight
+lex arms time out, as do rank-48 0:6 plain and lex (lex_pilot_lane.log).  Ten long-cap
+arms (12600 s, lex, cadical and kissat; rank-48 0:6 and four rank-47 shapes) ran as the
+line's last test, started 13:35; their verdicts are appended below when they land.
+
+Context: Moosbauer–Poole's symmetric flip graphs (arXiv:2502.04514; C₃ and C₃×Z₂ over
+F₂ with Hensel lifting; their wins are <5,5,5>:93 and <6,6,6>:153) found no 4x4 scheme
+below 49, and our October S₃ slot-symmetry quotient found none at 47 in 8 h.  Two
+methods and three groups agree that imposed symmetry costs 4x4 at least two ranks, and
+the five known rank-47 classes carry at most an order-2 stabilizer.  Don't build a
+symmetric flip mode for 4x4.

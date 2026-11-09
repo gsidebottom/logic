@@ -4,7 +4,7 @@
 with fresh seeds, cadical and kissat alternating.  SAT models are decoded and checked against all 4096 Brent
 equations (hcnf.decode) and saved as OUTDIR/sol_*.bits; an UNSAT verdict settles the shape.  Orbit types use one
 subgroup per conjugacy class of the group.
-Usage: hpool.py OUTDIR [--group d8] [--rank 47] [--workers 12] [--cap 1200] [--hours 8] [--max-shapes 400]
+Usage: hpool.py OUTDIR [--group d8] [--rank 47] [--workers 12] [--cap 1200] [--hours 8] [--max-shapes 400] [--lex]
 """
 import sys, pathlib, itertools, argparse, time, threading, subprocess, concurrent.futures as cf
 HERE = pathlib.Path(__file__).resolve().parent
@@ -31,6 +31,7 @@ def main():
     ap.add_argument("out"); ap.add_argument("--group", default="d8"); ap.add_argument("--rank", type=int, default=47)
     ap.add_argument("--workers", type=int, default=12); ap.add_argument("--cap", type=int, default=1200)
     ap.add_argument("--hours", type=float, default=8); ap.add_argument("--max-shapes", type=int, default=400); ap.add_argument("--min-full", type=int, default=3)
+    ap.add_argument("--lex", action="store_true", help="lex-leader symmetry breaking in every CNF (hcnf.symmetry_generators)")
     args = ap.parse_args()
     G = hcnf.GROUPS[args.group]; subs = hcnf.subgroups(G); n = len(G)
     classes = conj_classes(G, subs); reps = [c[0] for c in classes]
@@ -61,7 +62,7 @@ def main():
         f = out / "cnf" / ("h_" + "_".join(map(str, s)) + ".cnf")
         with lock:
             if not f.exists():
-                hcnf.write_cnf(G, shape_list(s), str(f))
+                hcnf.write_cnf(G, shape_list(s), str(f), lex=args.lex)
         return f
     def job(s, solver, seed):
         if time.time() > deadline or s in settled or s in solved: return

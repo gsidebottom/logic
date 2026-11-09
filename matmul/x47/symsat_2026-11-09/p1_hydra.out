@@ -1,0 +1,10 @@
+c parsed 44903 variables, 178992 clauses
+c hydra: factoring stage: not a multiplier (0 candidate factor bits, 22.9ms)
+c hydra: structure analysis (xor stage)…
+c hydra: xor stage: 24064 XOR(s), 512 var(s) GE-forced; residual 177456 clauses (2943.2ms)
+c hydra: proof-format=none
+c hydra: GE-simplified residual -> cadical (2967.4ms)
+c hydra: prover=cadical
+c hydra: stats conflicts=15648368 restarts=691218
+c TIMEOUT after 1200996.1ms
+c hydra: cadical reached no verdict (timeout/unknown)

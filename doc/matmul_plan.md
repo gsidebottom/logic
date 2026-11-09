@@ -2808,6 +2808,20 @@ the two source papers for this track):
   at least 3' (3168 of the 127,296 shapes qualify; the first are 5 x 8 + small orbits) and relaunched 09:18 (scratchpad
   hpool_d8b/pool.log).  Positive control: the standard scheme is invariant under every permutation sandwich and forms eight
   free d8-orbits; shape 0:8 at rank 64 is SAT in under 1 s and decodes to 64 distinct products, Brent OK (out/hctrl/std64_d8.bits).
+  Outcome (13:33): the plain pool's 144 shapes (all 32 five-full, 112 four-full) ALL time out at 1200 s, none decided; stopped
+  for ten long-cap arms (12600 s, --lex, cadical + kissat: rank-48 shape 0:6 and four rank-47 shapes, scratchpad lexlong/).
+  Greg: 'Would satsuma or hydra_satsuma solve these SAT problems faster?' -- no.  matmul/x47/hsym_audit.py (exact) and
+  tools/cnf_wl_symmetry.py (colour refinement on the clause graph): the quotient's variable-permutation symmetry is ~1152
+  (orbit swaps 288 x normalizer of d8 in S4^3, 4 cosets) but the XOR ladders fix the monomial order, so ONE involution
+  (fixes U, permutes the V, W columns) is the whole clause-graph automorphism group: satsuma would gain a factor 2 at most;
+  hydra's XOR stage finds the 24064 ladder XORs, GE-forces 512 variables, no verdict at 1200 s (symsat_2026-11-09/p1_hydra.out).
+  hcnf --lex injects the hidden symmetry (lex-leader for the orbit swaps + normalizer coset reps, 9 generators, +2% clauses,
+  rank-64 control SAT): equal-budget pilot on 8 pool shapes, same solver/seed/cap -- all time out; rank-48 0:6 plain and lex
+  time out; the 262 has no mod-2 reduction (every product's 2-adic valuation sum < 0).  Moosbauer-Poole 2502.04514
+  (symmetric flip graphs, C3 and C3xZ2 over F2, Hensel lift; wins 5x5:93, 6x6:153): no 4x4 below 49.  Verdict: symmetric 4x4
+  at 47 is dry by SAT (S3 Oct 18, d8 today) and by symmetric flips; don't build a symmetric flip mode.  Next parent for the
+  projection line (the method that produced the fifth class): Moosbauer's <4,4,5>:62 over Z
+  (perminov_cache .../jakobmoosbauer_flips/445-62-mod0.exp), unused so far.
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

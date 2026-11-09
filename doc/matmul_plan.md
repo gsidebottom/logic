@@ -2796,6 +2796,22 @@ the two source papers for this track):
   (4 + 4), neither with an L<->R element or an order-4 signed permutation; the order 64 is special to the DPS class.  Rank structure
   (32 x [1,1,1] + 16 x [2,2,2]) is uniform; the symmetry is not (results_stab_family_2026-11-09.txt).
 
+- **Symmetry-prescribed search started (2026-11-09 ~09:30, Greg: 'start the symmetry-prescribed search').**  The route that
+  found new 3x3 classes (Burichenko; Ballard-Ikenmeyer-Landsberg-Ryder): impose a symmetry group and solve for the invariant
+  decompositions.  matmul/x47/hcnf.py quotients the Brent system of <4,4,4> over F2 by a group of permutation triples acting as
+  sandwiches (U -> X U Y^T etc.), orbit shape by orbit shape (one subgroup per conjugacy class as the orbit's stabilizer), to
+  CNF; hpool.py runs cadical/kissat over the shapes most-constrained first (cap 1200 s, fresh seeds, decode + 4096-equation
+  check).  Group d8 = the mod-2 image of the dihedral 8 of signed permutations in Stab(accurate_262) (X = Z in every element;
+  the 262's 48 layers are six free 8-orbits, so a 47 needs small orbits or fixed products: 8a + 4b + 2c + d = 47).  Running:
+  d8 at rank 47, 12 workers, 8 h, 400 shapes.  First launch (09:14) was useless: the shape order put the degenerate shapes first
+  (47 fixed products, no full orbit) and all 400 were UNSAT in 0 s before any 262-like shape; fixed to 'most full orbits first,
+  at least 3' (3168 of the 127,296 shapes qualify; the first are 5 x 8 + small orbits) and relaunched 09:18 (scratchpad
+  hpool_d8b/pool.log).  Positive control: the standard scheme is invariant under every permutation sandwich and forms eight
+  free d8-orbits; shape 0:8 at rank 64 is SAT in under 1 s and decodes to 64 distinct products, Brent OK (out/hctrl/std64_d8.bits).
+  Earlier slot-symmetry quotients (s3cnf, Oct 18):
+  rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
+  three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).
+
 ## 1. The thesis — why native representation should win
 
 The CNF costs local search a 43× variable blowup (26,541 vs 621) — flips

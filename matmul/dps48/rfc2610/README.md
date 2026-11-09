@@ -130,3 +130,10 @@ and "doubling" has no intrinsic meaning.  In the adapted basis every factor of e
 per side are Kronecker products of 2x2 matrices, no term in all three.  So the invariant decomposition does not exhibit
 accurate_262 as derived from a smaller tensor decomposition in the way 1703.08298 derives Laderman from Strassen; the
 scheme is maximally mixed with respect to its own symmetry planes.  Same picture at the `accurate` point.
+
+**Question 2, does the family behave the same?**  The rank structure does (`../q48_structure.py`, `../q48_structure_2026-11-09.txt`):
+every rank-48 scheme we hold has 32 terms of type [1,1,1] and 16 of type [2,2,2], Agrawal's excepted in the 16 (4 x [2,2,2],
+8 x [2,2,3], 4 x [2,3,3]).  The stabilizer does not (`../stabilizer48.py`, `results_stab_family_2026-11-09.txt`): the Li-Wang-Hu
+points s(1), s(2), s(1/2) have order 32 (16 with trivial slot map, 16 with the slot map `cyc+rev` in that file's orientation), no
+signed-permutation element of order 4 and nothing carrying L onto R; Agrawal's has order 8 (4 + 4).  The order 64 with its 32 + 32
+split is special to the DPS class (rational, accurate, accurate_262, and the 201 points, checked 2026-10-24).

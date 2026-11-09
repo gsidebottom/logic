@@ -2792,6 +2792,9 @@ the two source papers for this track):
   signed in mode Y), R^4 = two rational planes carrying INEQUIVALENT representations; in the adapted basis all 48 terms touch all four
   blocks in all three factors and only 8 factors per side are 2x2 Kronecker products: no Laderman-from-Strassen-style derivation
   appears, the scheme is maximally mixed w.r.t. its symmetry planes (q3_invariant.py, q3_reps.py).
+  Question 2 (stabilizer48.py on classes/): the Li-Wang-Hu points s(1), s(2), s(1/2) have stabilizer order 32 (16 + 16), Agrawal's 8
+  (4 + 4), neither with an L<->R element or an order-4 signed permutation; the order 64 is special to the DPS class.  Rank structure
+  (32 x [1,1,1] + 16 x [2,2,2]) is uniform; the symmetry is not (results_stab_family_2026-11-09.txt).
 
 ## 1. The thesis — why native representation should win
 

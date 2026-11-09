@@ -1,0 +1,43 @@
+=== stabilizer of classes/agarwal 08:48:35
+  id       : 32 layer matchings allowed by the invariants, 4 isotropies
+  id+rev   : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc      : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc+rev  : 32 layer matchings allowed by the invariants, 4 isotropies
+  cyc2     : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc2+rev : 0 layer matchings allowed by the invariants, 0 isotropies
+stabilizer of agarwal: order 8
+order-4 elements acting by signed permutation matrices with trivial slot map: 0
+elements carrying L onto R: 0, of them by signed permutations: 0
+=== stabilizer of classes/s_1 08:49:03
+  id       : 64 layer matchings allowed by the invariants, 16 isotropies
+  id+rev   : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc      : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc+rev  : 64 layer matchings allowed by the invariants, 16 isotropies
+  cyc2     : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc2+rev : 0 layer matchings allowed by the invariants, 0 isotropies
+stabilizer of s_1: order 32
+order-4 elements acting by signed permutation matrices with trivial slot map: 0
+elements carrying L onto R: 0, of them by signed permutations: 0
+=== stabilizer of classes/s_2 08:49:55
+  id       : 64 layer matchings allowed by the invariants, 16 isotropies
+  id+rev   : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc      : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc+rev  : 64 layer matchings allowed by the invariants, 16 isotropies
+  cyc2     : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc2+rev : 0 layer matchings allowed by the invariants, 0 isotropies
+stabilizer of s_2: order 32
+order-4 elements acting by signed permutation matrices with trivial slot map: 0
+elements carrying L onto R: 0, of them by signed permutations: 0
+=== stabilizer of classes/s_1o2 08:50:45
+  id       : 64 layer matchings allowed by the invariants, 16 isotropies
+  id+rev   : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc      : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc+rev  : 64 layer matchings allowed by the invariants, 16 isotropies
+  cyc2     : 0 layer matchings allowed by the invariants, 0 isotropies
+  cyc2+rev : 0 layer matchings allowed by the invariants, 0 isotropies
+stabilizer of s_1o2: order 32
+order-4 elements acting by signed permutation matrices with trivial slot map: 0
+elements carrying L onto R: 0, of them by signed permutations: 0
+=== done 08:51:35
+
+[exited with code 0]

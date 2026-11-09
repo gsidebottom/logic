@@ -1,33 +1,50 @@
-"""Convert a Kauers-Moosbauer .exp scheme (lines "(a..+..)*(b..+..)*(c..+..)", mod 2) to the
-repository's .bits layout (alpha (r,n1,n2), beta (r,n2,n3), gamma (r,n1,n3), row-major, one line),
-verifying the Brent equations first.  The .exp writes the trilinear form sum a_ik b_kj c_ji, so c
-is indexed (j,i); both readings are tried and the one that satisfies the equations is written.
-usage: km_exp_to_bits.py in.exp N1 N2 N3 out.bits"""
+"""Convert a Kauers-Moosbauer .exp scheme (one product per line, three factors joined by '*', each factor a
+parenthesised sum or a bare monomial, integer coefficients allowed: "(a41-a42)*(b14+b15)*(-2*c11+c21)",
+"a23*(...)*(...)") to the repository's .bits layout over F2 (alpha (r,n1,n2), beta (r,n2,n3), gamma (r,n1,n3),
+row-major, one line), verifying the Brent equations first.  Coefficients are reduced mod 2; a product with a
+factor that vanishes mod 2 is dropped (reported), so an integer scheme's F2 image can have a smaller rank.
+The .exp writes the trilinear form sum a_ik b_kj c_ji, so c is indexed (j,i); both readings are tried and the one
+that satisfies the equations is written.
+usage: exp_to_bits.py in.exp N1 N2 N3 out.bits"""
 import sys, re
 src, n1, n2, n3, dst = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
-lines = [l.strip() for l in open(src) if l.strip()]
-var = re.compile(r'^([abc])(\d)(\d)$')
-terms = []
+lines = [l.strip().replace(' ', '') for l in open(src) if l.strip()]
+BARE = r'[+-]?(?:\d+\*)?[abc]\d\d'
+factor = r'(?:\(([^()]*)\)|(' + BARE + r'))'
+line_re = re.compile('^' + factor + r'\*' + factor + r'\*' + factor + '$')
+mono = re.compile(r'([+-]?)(?:(\d+)\*)?([abc])(\d)(\d)')
+terms = []; dropped = 0
 for l in lines:
-    assert '-' not in l, 'signed coefficient in a mod-2 file: ' + l
-    parts = [p.strip() for p in l.split('*')]
-    assert len(parts) == 3 and all(p[0] == '(' and p[-1] == ')' for p in parts), l
-    groups = []
-    for letter, p in zip('abc', parts):
-        vs = []
-        for v in p[1:-1].split('+'):
-            m = var.match(v.strip()); assert m and m.group(1) == letter, (l, v)
-            vs.append((int(m.group(2)), int(m.group(3))))
+    m = line_re.match(l); assert m, 'unparsed line: ' + l
+    texts = [m.group(1) or m.group(2), m.group(3) or m.group(4), m.group(5) or m.group(6)]
+    groups = []; zero = False
+    for letter, text in zip('abc', texts):
+        ent = {}
+        consumed = 0
+        for mm in mono.finditer(text):
+            consumed += len(mm.group(0))
+            assert mm.group(3) == letter, (l, text)
+            k = int(mm.group(2)) if mm.group(2) else 1
+            if k % 2: ent[(int(mm.group(4)), int(mm.group(5)))] = ent.get((int(mm.group(4)), int(mm.group(5))), 0) ^ 1
+        assert consumed == len(text), ('unparsed characters in factor', text)
+        vs = [ij for ij, v in ent.items() if v]
+        if not vs: zero = True
         groups.append(vs)
+    if zero: dropped += 1; continue
     terms.append(groups)
 r = len(terms)
+print(f"{len(lines)} products read, {dropped} vanish mod 2, rank over F2 {r}")
 def build(c_transposed):
     al = [[[0]*n2 for _ in range(n1)] for _ in range(r)]
     be = [[[0]*n3 for _ in range(n2)] for _ in range(r)]
     ga = [[[0]*n3 for _ in range(n1)] for _ in range(r)]
     for t, (A, B, C) in enumerate(terms):
-        for i, k in A: al[t][i-1][k-1] ^= 1
-        for k, j in B: be[t][k-1][j-1] ^= 1
+        for i, k in A:
+            if not (1 <= i <= n1 and 1 <= k <= n2): return None
+            al[t][i-1][k-1] ^= 1
+        for k, j in B:
+            if not (1 <= k <= n2 and 1 <= j <= n3): return None
+            be[t][k-1][j-1] ^= 1
         for x, y in C:
             i, j = (y, x) if c_transposed else (x, y)
             if not (1 <= i <= n1 and 1 <= j <= n3): return None

@@ -499,6 +499,25 @@ starts), so the comparison is by type.
   mode only returns excursion landings; KM's 60 has 10 flippable pairs, AT's
   63 has 29).
 
+- 47-adjacency against flip distance (2026-11-09 19:39-20:15;
+  proj/pspace/decay.zsh, pscore.zsh, summarize.py; logs
+  proj/logs/decay_{km60,at63}_2026-11-09.txt, *_summary.txt,
+  iso_decay_*.log).  Score of a <4,4,5> parent: project it by col into 60
+  seeds and descend 6 seconds on 12 threads; both parents score 47 under
+  three descent seeds (calibration).  Twenty mutants at each of the flip
+  distances 1, 2, 4, 8, 16, 32, 64, 128 (proj/flipk_f2.py, seeds k*1000+m):
+  from Kauers-Moosbauer's 60, 159 of 160 mutants still reach 47 within the
+  6 seconds (the one miss, distance 32, stops at 49) and all 162 rank-47
+  schemes collected are in Kauers-Moosbauer's class; from AlphaTensor's
+  63, 160 of 160 reach 47 and all 163 are in AlphaTensor's class (exact
+  class sort against the five representatives, no UNDECIDED).  So the
+  whole flip neighbourhood of a parent, out to 128 flips, projects onto
+  the parent's own 4x4 class, while the walk mode's excursion landings
+  (one plus-transition and a reduction, hence another component of the
+  rank-60 level) lose the 47 altogether.  The class of the children is a
+  property of the parent's flip component.  NEGATIVE for new classes;
+  nothing to redo here.
+
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes
   (d180 r47-00007/13/14, d180b r47-00012), excursions up to 2 above 47

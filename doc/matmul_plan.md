@@ -2843,7 +2843,13 @@ the two source papers for this track):
   are in AlphaTensor's own class (tomar_line/proj/logs/d20_444_walk_*.log, found47_walkparents).  47-adjacency is a property
   of the specific parent scheme.  Next measurement (proj/flipk_f2.py, K random Brent-checked flips; KM's 60 has only 10
   flippable pairs, AT's 63 has 29): 47-adjacency against flip distance 1..128, 20 mutants per distance, each scored by a
-  short descent of 60 projected seeds (scratchpad pspace/decay.zsh), the 47s class-sorted.
+  short descent of 60 projected seeds (scratchpad pspace/decay.zsh), the 47s class-sorted.  20:15 RESULT: 47-adjacency does
+  NOT decay with flips -- KM 159/160 mutants (distances 1-128) still reach 47 in 6 s, AT 160/160; every collected 47 (162 KM,
+  163 AT) is in the parent's own class (tomar_line/proj/pspace/, logs/decay_*).  The children's class is a property of the
+  parent's flip COMPONENT; excursion landings (another component) lose the 47.  Greg 20:08: 'do option 1 (parents of our own:
+  descend <4,4,5> from projected <4,4,6>/<4,5,5> seeds and from the trivial scheme, project, descend), then option 3 (op
+  counts: AE class's 30 open points through its 34-target output side, fifth class's whole-orbit bound) if nothing turns up';
+  option 1 running from 20:15 (scratchpad own445/run.zsh).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

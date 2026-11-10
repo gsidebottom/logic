@@ -32,9 +32,14 @@
 //! WALK mode (fixed-rank wander, the 3x3 50-hunt generator):
 //!   flip 3 3 3 --walk --seeds-dir D --out ARCH [--minutes M]
 //!        [--threads T] [--max-excess 8] [--hard-excess 14] [--kick 20]
-//!        [--rank 23]
+//!        [--rank 23] [--max-new 0] [--thin 1]
 //!   loads every *.bits in D of the given rank as seeds, pre-seeds dedup from
-//!   ARCH, writes new distinct landings as ARCH/flip-NNNNN.bits.
+//!   ARCH, writes new distinct landings as ARCH/flip-NNNNN.bits; --max-new N
+//!   stops after N new distinct schemes (0 = run out the clock) and --thin K
+//!   writes only every K-th new distinct scheme, for formats whose fixed-rank
+//!   level is not flip-isolated and would flood the archive (--max-new 30000
+//!   --thin 100 keeps 300 schemes spread along the walk instead of its first
+//!   300 neighbours).
 //! ```
 
 use logic::flip::*;
@@ -75,6 +80,8 @@ fn main() {
             arg_val(&args, "--hard-excess").unwrap_or(14);
         let kick: usize = arg_val(&args, "--kick").unwrap_or(20);
         let rank: usize = arg_val(&args, "--rank").unwrap_or(23);
+        let max_new: usize = arg_val(&args, "--max-new").unwrap_or(0);
+        let thin: usize = arg_val(&args, "--thin").unwrap_or(1).max(1);
         std::fs::create_dir_all(&out).unwrap();
         let load_dir = |dir: &str| -> Vec<Vec<Summand>> {
             let mut v = Vec::new();
@@ -120,8 +127,11 @@ fn main() {
         );
         let outdir = out.clone();
         let n = walk_campaign(
-            seeds, pool_init, cfg, max_excess, hard_excess, kick,
+            seeds, pool_init, cfg, max_excess, hard_excess, kick, max_new,
             |bits, seq| {
+                if seq % thin != 0 {
+                    return;
+                }
                 let s: String =
                     bits.iter().map(|b| (b + b'0') as char).collect();
                 let path =

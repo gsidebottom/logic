@@ -1,0 +1,4 @@
+c flip WALK: <4,4,5> rank 60, 1 seeds, 0 archived, 12 threads, 20 min
+c walk: 300 new distinct schemes, the --max-new cap, stopping
+c final [      0s]: landings 1703 | new distinct 300 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c walk done: 300 new distinct schemes

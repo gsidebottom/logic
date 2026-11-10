@@ -473,6 +473,32 @@ starts), so the comparison is by type.
   other scheme one or two projections from <4,4,4>, so further parents have
   to be made: see the walk-parent bullet.
 
+- Walk-made parents (2026-11-09 evening, 18:12-19:37; the flip engine's walk
+  mode in <4,4,5> with the new `--max-new` cap and `--thin` sampler in
+  src/bin/flip.rs and src/flip.rs: that level is far from flip-isolated and
+  would flood the archive, 30,000 distinct landings arrive in 9-10 s;
+  proj/walkparent_pipeline.zsh).  From Kauers-Moosbauer's 60 and
+  AlphaTensor's 63: the first 300 distinct excursion landings ("near", from
+  1703 and 2688 landings) and every 100th of 30,000 ("far"), each walked
+  scheme projected by col into 10 seeds (3000 seeds at 56 or 59 per run, 0
+  failed checks), a 20-minute 12-thread descent (seed 1), the 47s
+  class-sorted against the five representatives (proj/logs/walk445_*.log,
+  d20_444_walk_*.log, iso_walk_at63_*.log).  NEGATIVE for new classes, and
+  the Kauers-Moosbauer neighbours lose the 47: KM near reaches 48 once (at
+  4 s) with 11,463 distinct 49s, KM far 48 once (at 721 s) with 6,393 49s,
+  no 47 in either; AT near 47 at 0 s, one distinct 47, 13,286 48s and
+  18,112 49s; AT far 47 at 0 s, one distinct 47, 13,430 48s and 18,140 49s;
+  both AT 47s in AlphaTensor's own class (proj/found47_walkparents).
+  Against the parents themselves (47 at 0 s and 2-5 distinct 47s in 5
+  minutes from 1500 seeds), the walked parents are an order of magnitude
+  weaker or lose the level: 47-adjacency is a property of the specific
+  parent scheme, carried along the AlphaTensor walk (its 63 keeps a 47 in a
+  form the flips do not touch) and destroyed on the Kauers-Moosbauer one.
+  Controlled flip distances next (proj/flipk_f2.py: K random flips, a
+  Brent-checked mutation operator at a chosen distance, since the walk
+  mode only returns excursion landings; KM's 60 has 10 flippable pairs, AT's
+  63 has 29).
+
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes
   (d180 r47-00007/13/14, d180b r47-00012), excursions up to 2 above 47

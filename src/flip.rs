@@ -734,6 +734,7 @@ pub fn walk_campaign<F>(
     max_excess: usize,
     hard_excess: usize,
     kick: usize,
+    max_new: usize,
     mut on_new: F,
 ) -> usize
 where
@@ -898,6 +899,11 @@ where
                         println!("{}", "!".repeat(60));
                     }
                     on_new(&bits, seq);
+                    if max_new > 0 && seq >= max_new {
+                        println!("c walk: {seq} new distinct schemes, the --max-new cap, stopping");
+                        stop.store(true, Ordering::Relaxed);
+                        break;
+                    }
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,

@@ -2836,7 +2836,14 @@ the two source papers for this track):
   exhausted one and two projections from <4,4,4>; parents must be made.  Next (18:15, launched): flip --walk in <4,4,5> at
   rank 60 from KM's scheme and at 63 from AT's (new --max-new cap on the walk archive, since those levels are not
   flip-isolated and would flood it; 300 new schemes or 20 min), each walked scheme projected by col (10 seeds), a 20-min
-  12-thread descent from the pool, the 47s class-sorted against the five known representatives (scratchpad wp/pipeline.zsh).
+  12-thread descent from the pool, the 47s class-sorted against the five known representatives (scratchpad wp/pipeline.zsh,
+  now tomar_line/proj/walkparent_pipeline.zsh).  19:37: NEGATIVE for new classes -- near (first 300 excursion landings) and far
+  (every 100th of 30,000, --thin) walks from both parents: KM's walked neighbours LOSE the 47 (48 once, thousands of 49s, both
+  runs); AT's keep it weakly (47 at 0 s but one distinct 47 per 20 min against 5 in 5 min from AT itself), and both AT 47s
+  are in AlphaTensor's own class (tomar_line/proj/logs/d20_444_walk_*.log, found47_walkparents).  47-adjacency is a property
+  of the specific parent scheme.  Next measurement (proj/flipk_f2.py, K random Brent-checked flips; KM's 60 has only 10
+  flippable pairs, AT's 63 has 29): 47-adjacency against flip distance 1..128, 20 mutants per distance, each scored by a
+  short descent of 60 projected seeds (scratchpad pspace/decay.zsh), the 47s class-sorted.
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

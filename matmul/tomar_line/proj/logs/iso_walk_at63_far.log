@@ -1,0 +1,13 @@
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/at47.bits: new class representative
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/at63far/d/r47-00001.bits: same class as /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/at47.bits (47 nodes)
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/km47.bits: new class representative
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/projkm47_7.bits: new class representative
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/ref47.bits: new class representative
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/proj47_5.bits: new class representative
+
+6 schemes, 5 rank-triple types, 5 de Groote classes:
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/at47.bits: 2 scheme(s): at47.bits r47-00001.bits
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/km47.bits: 1 scheme(s): km47.bits
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/projkm47_7.bits: 1 scheme(s): projkm47_7.bits
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/ref47.bits: 1 scheme(s): ref47.bits
+  /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/reps/proj47_5.bits: 1 scheme(s): proj47_5.bits

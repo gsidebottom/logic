@@ -1,0 +1,27 @@
+c flip descend: <4,4,4> from 3000 seeds of ranks 56..56 (pool /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/wp/km60w/seeds), save<=49, write<=47, lift<=0, 12 threads, 20 min, group-moves 0 shuffles 2
+c [    0.0s] worker min rank 53
+c [    0.5s] worker min rank 50
+c [      4s] new min rank 49 (landing #1)
+c [    3.6s] worker min rank 48
+c [      4s] new min rank 48 (landing #1)
+c [     60s] reductions 5042 | landings 1831 | distinct [(48, 1), (49, 883)] | trajectories 1447 | diffuse-flips 17.6M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    120s] reductions 10024 | landings 4042 | distinct [(48, 1), (49, 1869)] | trajectories 2883 | diffuse-flips 35.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    180s] reductions 14891 | landings 6281 | distinct [(48, 1), (49, 2791)] | trajectories 4315 | diffuse-flips 52.3M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    240s] reductions 19803 | landings 8534 | distinct [(48, 1), (49, 3670)] | trajectories 5760 | diffuse-flips 69.8M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    300s] reductions 24677 | landings 10754 | distinct [(48, 1), (49, 4462)] | trajectories 7204 | diffuse-flips 87.3M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    360s] reductions 29605 | landings 13040 | distinct [(48, 1), (49, 5241)] | trajectories 8660 | diffuse-flips 104.8M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    421s] reductions 34485 | landings 15294 | distinct [(48, 1), (49, 5927)] | trajectories 10079 | diffuse-flips 121.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    481s] reductions 39416 | landings 17517 | distinct [(48, 1), (49, 6567)] | trajectories 11519 | diffuse-flips 139.3M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    541s] reductions 44319 | landings 19754 | distinct [(48, 1), (49, 7153)] | trajectories 12945 | diffuse-flips 156.5M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    601s] reductions 49405 | landings 22018 | distinct [(48, 1), (49, 7689)] | trajectories 14388 | diffuse-flips 173.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    661s] reductions 54348 | landings 24243 | distinct [(48, 1), (49, 8195)] | trajectories 15844 | diffuse-flips 191.6M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    721s] reductions 59257 | landings 26528 | distinct [(48, 1), (49, 8695)] | trajectories 17283 | diffuse-flips 209.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    781s] reductions 64253 | landings 28766 | distinct [(48, 1), (49, 9126)] | trajectories 18717 | diffuse-flips 226.3M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    841s] reductions 69271 | landings 31027 | distinct [(48, 1), (49, 9548)] | trajectories 20138 | diffuse-flips 243.4M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    901s] reductions 74233 | landings 33291 | distinct [(48, 1), (49, 9931)] | trajectories 21552 | diffuse-flips 260.5M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    961s] reductions 79167 | landings 35537 | distinct [(48, 1), (49, 10284)] | trajectories 22959 | diffuse-flips 277.5M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1021s] reductions 84083 | landings 37760 | distinct [(48, 1), (49, 10626)] | trajectories 24421 | diffuse-flips 295.2M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1081s] reductions 88956 | landings 40027 | distinct [(48, 1), (49, 10913)] | trajectories 25839 | diffuse-flips 312.4M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1141s] reductions 93901 | landings 42269 | distinct [(48, 1), (49, 11210)] | trajectories 27293 | diffuse-flips 329.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c final [   1200s]: reductions 98707 | landings 44451 | trajectories 28689 | diffuse-flips 346.8M | worker min rank 48 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c DONE: min rank 48; distinct landings by rank: [(48, 1), (49, 11463)]

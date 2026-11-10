@@ -1,0 +1,8 @@
+W(F4) order: 1152
+mode X: 16 lines, |inner products| multiset {0.0: 56, 0.707: 32, 0.5: 32}
+mode Y: 16 lines, |inner products| multiset {0.707: 32, 0.0: 56, 0.5: 32}
+mode Z: 16 lines, |inner products| multiset {0.0: 56, 0.707: 32, 0.5: 32}
+isometries in W(F4) carrying mode X's lines onto mode X's: 128
+isometries in W(F4) carrying mode X's lines onto mode Y's: 128
+isometries in W(F4) carrying mode X's lines onto mode Z's: 128
+isometries in W(F4) carrying mode Y's lines onto mode Z's: 128

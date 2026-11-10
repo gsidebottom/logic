@@ -1,0 +1,22 @@
+=== phase 0 start 20:36:27
+ref47 c k=3: 16215 subsets, 0 reduction candidates (3 dependent slots), 0 alternative candidates (2), 0.0 s
+ref47 c k=4: 178365 subsets, 0 reduction candidates (3 dependent slots), 12 alternative candidates (2), 0.0 s
+ref47 c k=5: 1533939 subsets, 0 reduction candidates (3 dependent slots), 972 alternative candidates (2), 0.1 s
+ref47 c k=6: 10737573 subsets, 288 reduction candidates (3 dependent slots), 31632 alternative candidates (2), 1.1 s
+ref47 c k=7: 62891499 subsets, 14802 reduction candidates (3 dependent slots), 606696 alternative candidates (2), 7.3 s
+proj47_5 c k=3: 16215 subsets, 0 reduction candidates (3 dependent slots), 0 alternative candidates (2), 0.0 s
+proj47_5 c k=4: 178365 subsets, 0 reduction candidates (3 dependent slots), 27 alternative candidates (2), 0.0 s
+proj47_5 c k=5: 1533939 subsets, 15 reduction candidates (3 dependent slots), 1572 alternative candidates (2), 0.2 s
+proj47_5 c k=6: 10737573 subsets, 1020 reduction candidates (3 dependent slots), 42581 alternative candidates (2), 1.1 s
+proj47_5 c k=7: 62891499 subsets, 31607 reduction candidates (3 dependent slots), 725068 alternative candidates (2), 7.4 s
+projkm47_7 c k=3: 16215 subsets, 0 reduction candidates (3 dependent slots), 0 alternative candidates (2), 0.0 s
+projkm47_7 c k=4: 178365 subsets, 0 reduction candidates (3 dependent slots), 20 alternative candidates (2), 0.0 s
+projkm47_7 c k=5: 1533939 subsets, 6 reduction candidates (3 dependent slots), 1323 alternative candidates (2), 0.1 s
+projkm47_7 c k=6: 10737573 subsets, 620 reduction candidates (3 dependent slots), 39027 alternative candidates (2), 1.1 s
+projkm47_7 c k=7: 62891499 subsets, 23523 reduction candidates (3 dependent slots), 704431 alternative candidates (2), 7.7 s
+=== phase 1 start 20:36:58
+at47: 40338 reduction candidates (k<=7)
+km47: 20552 reduction candidates (k<=7)
+ref47: 15090 reduction candidates (k<=7)
+proj47_5: 32642 reduction candidates (k<=7)
+projkm47_7: 24149 reduction candidates (k<=7)

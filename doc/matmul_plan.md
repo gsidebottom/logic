@@ -2794,7 +2794,10 @@ the two source papers for this track):
   appears, the scheme is maximally mixed w.r.t. its symmetry planes (q3_invariant.py, q3_reps.py).
   Question 2 (stabilizer48.py on classes/): the Li-Wang-Hu points s(1), s(2), s(1/2) have stabilizer order 32 (16 + 16), Agrawal's 8
   (4 + 4), neither with an L<->R element or an order-4 signed permutation; the order 64 is special to the DPS class.  Rank structure
-  (32 x [1,1,1] + 16 x [2,2,2]) is uniform; the symmetry is not (results_stab_family_2026-11-09.txt).
+  (32 x [1,1,1] + 16 x [2,2,2]) is uniform; the symmetry is not (results_stab_family_2026-11-09.txt).  His Gram-matrix
+  remark checked exactly (21:05, rfc2610/gram_modes.py): the three modes' sixteen-line configurations have identical Gram
+  multisets and 128 W(F4) isometries carry each onto each -- congruent, as he expected; the configuration's symmetry group
+  (128) exceeds the scheme's per-mode stabilizer image (32), but the extra elements are not isotropies of the decomposition.
 
 - **Symmetry-prescribed search started (2026-11-09 ~09:30, Greg: 'start the symmetry-prescribed search').**  The route that
   found new 3x3 classes (Burichenko; Ballard-Ikenmeyer-Landsberg-Ryder): impose a symmetry group and solve for the invariant
@@ -2849,7 +2852,17 @@ the two source papers for this track):
   parent's flip COMPONENT; excursion landings (another component) lose the 47.  Greg 20:08: 'do option 1 (parents of our own:
   descend <4,4,5> from projected <4,4,6>/<4,5,5> seeds and from the trivial scheme, project, descend), then option 3 (op
   counts: AE class's 30 open points through its 34-target output side, fifth class's whole-orbit bound) if nothing turns up';
-  option 1 running from 20:15 (scratchpad own445/run.zsh).
+  option 1 running from 20:15 (scratchpad own445/run.zsh).  21:06 RESULT: NEGATIVE -- our own <4,4,5> descent (200 projected
+  seeds at 69-72) gives 18,719 distinct 63s and no 62 in 20 min (trivial start stalls at 75); 300 of the 63s project to 3000
+  seeds at 59 whose 20-min descent bottoms at 49 (5,585 distinct 49s; tomar_line/proj/logs/own445_2026-11-09.txt).  Greg
+  20:30: 'slot the SAT re-solve in before option 3; no option 3 unless it has record or lower-bound potential'.  Built:
+  src/bin/kres.rs (k-subset candidates by factor dependencies: 3 slots for k->k-1, 2 slots for k->k alternatives) +
+  tomar_line/proj/kres_solve.py (exact SAT on the support-restricted residual, rebuild, Brent, class-sort).  Candidates to
+  k=7 enumerated in seconds for all five classes (reduction: 15-40 k each; alternatives: 0.6-0.9 M at k=7).  First exact
+  results: all km47 k=5 reductions UNSAT; k<=5 alternatives of km47: none exist (1,267 candidates).  Running: reduce sweep
+  k<=7 all classes (phase 1), then k=6 alternatives 12-way parallel (phase 2); option 1b (five 47+16 embeddings descended
+  in <4,4,5>) runs 21:06-.  Also 21:05: Alexandre's Gram-matrix point verified (rfc2610/gram_modes.py) and the reply
+  redrafted in his terms (doc/reply_alexandre_2026-11-09_short.md; v1 kept).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

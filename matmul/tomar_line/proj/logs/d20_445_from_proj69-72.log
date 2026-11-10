@@ -1,0 +1,30 @@
+c flip descend: <4,4,5> from 200 seeds of ranks 69..72 (pool /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/own445/seeds445), save<=66, write<=64, lift<=0, 12 threads, 20 min, group-moves 0 shuffles 2
+c [    0.0s] worker min rank 66
+c [      0s] new min rank 66 (landing #1)
+c [      0s] new min rank 65 (landing #1)
+c [    0.1s] worker min rank 65
+c [      2s] new min rank 64 (landing #1)
+c [    2.3s] worker min rank 64
+c [      5s] new min rank 63 (landing #1)
+c [    4.8s] worker min rank 63
+c [     60s] reductions 4664 | landings 3019 | distinct [(63, 572), (64, 735), (65, 866), (66, 846)] | trajectories 1256 | diffuse-flips 16.2M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    120s] reductions 9123 | landings 6445 | distinct [(63, 1526), (64, 1704), (65, 1690), (66, 1525)] | trajectories 2533 | diffuse-flips 32.4M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    180s] reductions 13649 | landings 9977 | distinct [(63, 2507), (64, 2703), (65, 2540), (66, 2227)] | trajectories 3801 | diffuse-flips 48.3M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    240s] reductions 18160 | landings 13445 | distinct [(63, 3477), (64, 3689), (65, 3377), (66, 2900)] | trajectories 5078 | diffuse-flips 64.5M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    300s] reductions 22879 | landings 17024 | distinct [(63, 4457), (64, 4687), (65, 4263), (66, 3617)] | trajectories 6413 | diffuse-flips 81.2M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    360s] reductions 27624 | landings 20616 | distinct [(63, 5443), (64, 5693), (65, 5138), (66, 4340)] | trajectories 7711 | diffuse-flips 97.6M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    421s] reductions 32295 | landings 24204 | distinct [(63, 6427), (64, 6699), (65, 6007), (66, 5071)] | trajectories 9023 | diffuse-flips 114.1M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    481s] reductions 36973 | landings 27768 | distinct [(63, 7417), (64, 7703), (65, 6865), (66, 5783)] | trajectories 10346 | diffuse-flips 130.8M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    541s] reductions 41646 | landings 31331 | distinct [(63, 8413), (64, 8712), (65, 7716), (66, 6487)] | trajectories 11659 | diffuse-flips 147.4M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    601s] reductions 46395 | landings 34918 | distinct [(63, 9396), (64, 9712), (65, 8590), (66, 7217)] | trajectories 12977 | diffuse-flips 164.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    661s] reductions 50988 | landings 38415 | distinct [(63, 10353), (64, 10696), (65, 9446), (66, 7919)] | trajectories 14285 | diffuse-flips 180.4M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    721s] reductions 55539 | landings 41874 | distinct [(63, 11320), (64, 11668), (65, 10283), (66, 8603)] | trajectories 15573 | diffuse-flips 196.6M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    781s] reductions 60130 | landings 45342 | distinct [(63, 12258), (64, 12623), (65, 11141), (66, 9317)] | trajectories 16863 | diffuse-flips 213.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    841s] reductions 64662 | landings 48834 | distinct [(63, 13214), (64, 13604), (65, 11998), (66, 10016)] | trajectories 18150 | diffuse-flips 229.3M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    901s] reductions 68945 | landings 52036 | distinct [(63, 14087), (64, 14489), (65, 12791), (66, 10669)] | trajectories 19281 | diffuse-flips 243.6M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [    961s] reductions 73542 | landings 55535 | distinct [(63, 15043), (64, 15469), (65, 13647), (66, 11374)] | trajectories 20582 | diffuse-flips 259.9M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1021s] reductions 78137 | landings 58947 | distinct [(63, 15988), (64, 16427), (65, 14463), (66, 12068)] | trajectories 21860 | diffuse-flips 276.1M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1081s] reductions 82651 | landings 62314 | distinct [(63, 16903), (64, 17356), (65, 15289), (66, 12764)] | trajectories 23126 | diffuse-flips 292.4M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1141s] reductions 87008 | landings 65529 | distinct [(63, 17778), (64, 18249), (65, 16079), (66, 13419)] | trajectories 24342 | diffuse-flips 308.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c final [   1200s]: reductions 91434 | landings 68938 | trajectories 25588 | diffuse-flips 323.7M | worker min rank 63 | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c DONE: min rank 63; distinct landings by rank: [(63, 18719), (64, 19206), (65, 16909), (66, 14101)]

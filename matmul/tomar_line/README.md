@@ -518,6 +518,40 @@ starts), so the comparison is by type.
   property of the parent's flip component.  NEGATIVE for new classes;
   nothing to redo here.
 
+- Parents of our own, option 1 (Greg, 2026-11-09 20:08; proj/own445_pipeline.zsh,
+  proj/logs/own445_2026-11-09.txt).  The flip engine descends <4,4,5> itself:
+  from 200 projected seeds at 69-72 (the catalog's <4,4,6> and <4,5,5>
+  schemes one projection up) it is at 63 in 5 s and in 20 minutes on 12
+  threads writes 18,719 distinct 63s and 19,206 64s, nothing at 62
+  (proj/logs/d20_445_from_proj69-72.log); from the trivial 80-product
+  scheme it reaches 75 in 12 s and no further in 10 minutes
+  (d10_445_trivial.log; the engine's landing counters only start at
+  --save-at, so its DONE line says 80).  The lowest 300 (all at 63)
+  projected by col into 3000 seeds at 59; their 20-minute descent
+  (d20_444_own445_59.log) reaches 49 in 2 s and never 48: 5,585 distinct
+  49s, nothing written.  NEGATIVE: our own rank-63 <4,4,5> schemes sit in
+  components with floor 49, like the catalog's Moosbauer-family parents.
+
+- k-subset re-solve, option 4 (Greg, 2026-11-09 20:30, before any lower-bound
+  work).  src/bin/kres.rs enumerates every k-subset of a 47's products whose
+  dropped factors are linearly dependent in all three slots (necessary for a
+  rewrite with k-1 products: tensor rank bounds each flattening rank) or in
+  two (necessary for a different k-product rewrite: Kruskal uniqueness
+  otherwise); proj/kres_solve.py decides each candidate exactly on the
+  residual tensor restricted to its support (rank is invariant under that
+  restriction), rebuilds and Brent-checks the full scheme, and class-sorts
+  the alternatives.  Candidates, k = 5 / 6 / 7, three dependent slots:
+  km47 4 / 496 / 20,052; at47 21 / 1,320 / 38,997; ref47 0 / 288 / 14,802;
+  proj47_5 15 / 1,020 / 31,607; projkm47_7 6 / 620 / 23,523; two slots at k =
+  6: 32-54 k per class, at k = 7: 607-874 k (regenerate with `kres 4 4 4
+  REP.bits --kmin 3 --kmax 7 --both`, 8 s on 4 threads; counts in
+  proj/logs/kres_candidates_2026-11-09.txt).  First exact results: every k =
+  5 reduction candidate of km47 is UNSAT in milliseconds; the 1,267 two-slot
+  candidates of km47 at k = 4 and 5 have no alternative decomposition at all
+  (uniqueness holds well past Kruskal's condition).  The reduce sweep over
+  all 132,731 candidates with k <= 7 and the k = 6 alternatives sweep are
+  the running jobs; their verdicts follow.
+
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes
   (d180 r47-00007/13/14, d180b r47-00012), excursions up to 2 above 47

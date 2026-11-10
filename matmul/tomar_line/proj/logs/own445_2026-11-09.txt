@@ -1,0 +1,10 @@
+=== arm 1: <4,4,5> descent from 200 projected seeds (69-72), 20 min, 12 threads, start 20:15:32
+    exit 0 | c DONE: min rank 63; distinct landings by rank: [(63, 18719), (64, 19206), (65, 16909), (66, 14101)] | files 37925
+=== arm 2: <4,4,5> descent from the trivial scheme (80), 10 min, 12 threads, start 20:35:33
+    exit 0 | c DONE: min rank 80; distinct landings by rank: [] | files 0
+=== parents: lowest written <4,4,5> schemes, at most 300, 20:45:33
+    written by rank: [(63, 18719), (64, 19206)] | parents taken: 300 ranks [(63, 300)]
+    3000 4x4 seeds; ranks: 3000 59;
+=== <4,4,4> descent from the own-parent pool, 20 min, 12 threads, start 20:46:06
+    exit 0 | c DONE: min rank 49; distinct landings by rank: [(49, 5585)] | 47 files 0
+=== option 1 done 21:06:07

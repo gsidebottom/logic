@@ -532,6 +532,22 @@ starts), so the comparison is by type.
   49s, nothing written.  NEGATIVE: our own rank-63 <4,4,5> schemes sit in
   components with floor 49, like the catalog's Moosbauer-family parents.
 
+- Parents of our own, option 1b (2026-11-09 21:06-21:47; proj/embed445.py,
+  proj/own445b_pipeline.zsh, proj/logs/own445b_2026-11-09.txt).  Each of the
+  five class representatives embedded as a <4,4,5> of rank 63, its 47
+  products plus the 16 trivial ones of the fifth column (AlphaTensor's 63
+  has this shape).  The five together descend in <4,4,5> to 60 within 10 s
+  and in 20 minutes give 15,800 distinct 60s, 15,748 61s and 12,563 62s
+  (d20_445_from_embedded63.log), so rank-60 <4,4,5> schemes are plentiful
+  from this construction.  300 of the 60s, projected by col into 3000 seeds
+  at 56 (the Kauers-Moosbauer pool's rank), descend to 47 at 0 s but give
+  one distinct 47 in 20 minutes, 10,010 48s and 16,353 49s
+  (d20_444_own445b_56.log), and the 47 is in Kauers-Moosbauer's class
+  (iso_own445b.log; proj/found47_walkparents/own445b_r47-00001).  No new
+  class.  The parents' provenance by class is not tracked by the engine;
+  per-class embedding descents would tell whether each class's 60s project
+  back to their own class, as the flip-component picture predicts.
+
 - k-subset re-solve, option 4 (Greg, 2026-11-09 20:30, before any lower-bound
   work).  src/bin/kres.rs enumerates every k-subset of a 47's products whose
   dropped factors are linearly dependent in all three slots (necessary for a

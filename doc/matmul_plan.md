@@ -2862,7 +2862,14 @@ the two source papers for this track):
   results: all km47 k=5 reductions UNSAT; k<=5 alternatives of km47: none exist (1,267 candidates).  Running: reduce sweep
   k<=7 all classes (phase 1), then k=6 alternatives 12-way parallel (phase 2); option 1b (five 47+16 embeddings descended
   in <4,4,5>) runs 21:06-.  Also 21:05: Alexandre's Gram-matrix point verified (rfc2610/gram_modes.py) and the reply
-  redrafted in his terms (doc/reply_alexandre_2026-11-09_short.md; v1 kept).
+  redrafted in his terms (doc/reply_alexandre_2026-11-09_short.md; v1 kept).  Option 1b RESULT 21:47: the five 47+16
+  embeddings (rank 63) descend in <4,4,5> to 60 in 10 s (15,800 distinct 60s in 20 min); 300 of them projected to 3000 seeds
+  at 56 give 47 at 0 s, ONE distinct 47 in 20 min, in KM's class (tomar_line/proj/logs/own445b_2026-11-09.txt).  No new
+  class.  Also: the kres reduction filter was wrong (factor-span dims instead of flattening ranks: a flattening rank also
+  drops when the other two slots' Kronecker products are dependent, which is what makes a split pair reducible); fixed,
+  controls pass (split 48 -> 47 identical to km47 at k=2; trivial-scheme k=3 alternatives: exact and SAT give the same 430
+  schemes).  SAT is hopeless at k=8 (20 s per refutation); kres_exact.py decides by slice spaces instead (rank = flattening
+  rank iff that slice space is spanned by rank-1 matrices), microseconds; the exact sweep (reduce k<=8, alt k<=7) runs 21:47-.
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

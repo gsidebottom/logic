@@ -2904,6 +2904,18 @@ the two source papers for this track):
   by mistake: its grep|sed log pipeline was block-buffered and I read 60 min of silence as a stall -- kres logs to a file
   now): alt for all-dependent subsets k=8..10 by re-enumeration (delta=1 for dims (k-1,k-1,k-1); 0.7 s for km47's
   455,573 at k=8), then k=11 reduce + alt, five classes (~4 h).
+  2026-11-10 13:35: the 08:42 sweep finished k=8..10 x5 classes at 12:32 with NOTHING (zero RED/ALT, reduce 0 open,
+  3.87 G alternatives unique, k=10 34-50 min per class) and 1,079,320 alternatives lines open (two or more dims short in
+  every direction); k=11 both running since 12:32 (km47 first, ~4 h per class, 6 h cap, watcher).  Depth-2 decider: 0.4
+  CPU-s per line as written -- the outer loop over all 2^nr 2^nc rank-one matrices, not the delta=1 inner loop (bucketing
+  that gained 10%) -> case analysis: the first extension N1 is a split of a rank-two element of S outside the rank-one span
+  S', or, when S' is a hyperplane of S, a term of a three-term decomposition of a rank-three element outside S'; spaces
+  already spanned visited first -> 0.2 ms per line.  Checks: controls line-identical; 25,776 planted delta-2 reductions
+  (open km47 lines with products 0,1 moved into the split scheme) all found (25,725 RED + 51 three-short, the exhaustive
+  binary identical on 5,155); 30 planted-flip delta-2 lines all positive; randomized brute-force unit test on 2,120 random
+  spaces identical (311 / 921 positives).  RESULT 13:28 (proj/kres_deep_alt2.zsh): 1,077,388 of the open lines UNIQUE in
+  42 s; 1,932 three-or-more short at depth 3 (running, ~5 CPU-s per line).  NOTE: target/release/kres is still the sweep's
+  08:40 binary (today's builds live in scratchpad kres/build/); rebuild after k=11 ends (touch src/bin/kres.rs first).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

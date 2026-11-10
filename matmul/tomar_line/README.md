@@ -687,6 +687,52 @@ starts), so the comparison is by type.
   + alt, five classes; the k = 8 alt pass over km47's 455,573 all-dependent
   subsets takes 0.7 s, so the sweep should run about as long as the
   overnight's phase A plus k = 11.
+  2026-11-10 afternoon: the 08:42 sweep finished k = 8..10 for the five
+  classes at 12:32 with NOTHING -- zero reducible, zero alternative, every
+  reduce candidate refuted with none left open, 3,868,627,690 alternatives
+  questions unique (k = 10: 2,284 / 2,114 / 2,058 / 2,980 / 2,437 s per
+  class) -- and 1,079,320 alternatives lines left open (166,464 / 293,451
+  / 140,916 / 261,135 / 217,354: the all-dependent subsets two or more
+  dimensions short in every direction, dims (8,8,8) at k = 10 mostly);
+  k = 11 (reduce + alt) started on km47 at 12:32.  The depth-2 decider as
+  first written cost 0.4 CPU-seconds per open line (3,000 k = 10 lines:
+  360 s on four threads), ten hours on twelve cores: not the delta = 1
+  inner loop (making it linear in the rank-two elements with a bucket
+  keyed by split component gained 10%) but the outer loop over every
+  rank-one matrix of the slice space (255 x 255 of them at 8 x 8), each
+  with a 512-element classification.  Case analysis of W = S + <N1, N2>
+  spanned by its rank-one elements, Q its rank-one elements outside S
+  spread over the three cosets of S: either two of them share a coset and
+  sum to an element t of S outside S' -- t has rank two and N1 may be
+  taken among its six splits -- or every same-coset pair sums into S', so
+  W = S' + <q1, q2, q3> forces S' to be a hyperplane of S, all three
+  cosets hit and t = q1 + q2 + q3 in S \ S' of rank 2 or 3; rank 2 is
+  covered by the splits (S + <split> is then already spanned), rank 3
+  makes q1 a term of one of the 28 three-term rank-one decompositions of
+  t.  So N1 ranges over the splits of the rank-two elements outside S'
+  plus, when S' is a hyperplane, the terms of the three-term
+  decompositions of the rank-three elements outside S'; the spaces
+  S + <N1> already spanned are visited first (the stronger verdict).
+  0.2 ms per line, 1,000-2,000x.  Checks: the five controls and the
+  455,573-line k = 8 enumeration reproduce the original binary's verdict
+  files line for line; the 25,776 open km47 lines containing products 0
+  and 1, moved into the split scheme with the third split product
+  appended, are planted reductions two dimensions short -- 25,725
+  REDUCIBLE and 51 open as three short, none refuted, the exhaustive
+  binary identical on a 5,155-line sample; the 30 delta = 2 lines of the
+  planted-flip control are all positive (28 RED + 2 ALT against the
+  exhaustive binary's 8 + 22: which verdict surfaces first depends on the
+  candidate order and the rank-one basis; every one Brent-checks); and a
+  randomized unit test (cargo test --release --bin kres) compares the
+  depth-1 and depth-2 searches with brute force on 2,120 random spaces in
+  six shapes (4x4 to 6x3, dim 2..5): identical, with 311 and 921
+  positive instances (proj/kres_depth2_controls.zsh reproduces the
+  planted controls).  RESULT (proj/kres_deep_alt2.zsh, 13:28:01-13:28:43):
+  1,077,388 of the 1,079,320 open alternatives lines are UNIQUE (7-12 s
+  per class); the 1,932 left (406 / 285 / 468 / 282 / 491; dims (7,7,7)
+  at k = 10 and (6,6,6) at k = 9: three or more dimensions short) run at
+  depth 3 (the full outer loop over the first extension with the
+  restricted depth 2 inside, about 5 CPU-seconds per line).
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

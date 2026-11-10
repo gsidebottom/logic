@@ -29,8 +29,12 @@
 //!     rank-one elements of S to add anything, so s = N + N' is a rank-two element of S
 //!     outside S' and N is one of its six two-term rank-one splits; the exact test is
 //!     S' + span{s in S : N + s rank-one} = S.
-//!     For delta >= 2 the first N runs over every rank-one matrix outside S and the rest
-//!     recurse; the cost is (2^nr - 1)(2^nc - 1) analyses of an (m+1)-dimensional space.
+//!     For delta = 2 the first N is confined too (case analysis at search_w): a split of a
+//!     rank-two element of S outside S', or, when S' is a hyperplane of S, a term of a
+//!     three-term rank-one decomposition of a rank-three element of S outside S'; spaces
+//!     S + <N> already spanned are visited first.  For delta >= 3 the first N runs over every
+//!     rank-one matrix outside S and the rest recurse; the cost is (2^nr - 1)(2^nc - 1)
+//!     classifications of a coset of S times the delta - 1 search.
 //!   Alternatives in the deficient case: some W other than the original space U, or U with
 //!   more than k rank-one elements.
 //! Every YES verdict comes with the new products (ambient bit strings) and is verified
@@ -315,6 +319,61 @@ fn analyze(ech: Vec<u128>, nr: usize, nc: usize) -> Space {
     Space { ech, r1, r2, spanned }
 }
 
+/// S + <n> with the rank-one and rank-two elements of the new coset n + S classified (those of S are known)
+fn extend(sp: &Space, n: u128, nr: usize, nc: usize) -> Space {
+    let m = sp.ech.len();
+    let (mut r1, mut r2) = (sp.r1.clone(), sp.r2.clone());
+    let mut cur: u128 = n;
+    match rank_le3(cur, nr, nc) { 1 => r1.push(cur), 2 => r2.push(cur), _ => {} }
+    for j in 1u64..(1u64 << m) {
+        cur ^= sp.ech[j.trailing_zeros() as usize];
+        match rank_le3(cur, nr, nc) { 1 => r1.push(cur), 2 => r2.push(cur), _ => {} }
+    }
+    let spanned = echelon128(&r1).len() == m + 1;
+    Space { ech: insert128(&sp.ech, n), r1, r2, spanned }
+}
+
+/// the terms of every three-term rank-one decomposition of t (28 bases {p1,p2,p3} of the row space of a rank-3
+/// matrix, t = sum x_i (x) p_i with x_i the rows whose coordinate i is 1); nothing if the rank is not 3
+fn rank3_terms(t: u128, nr: usize, nc: usize, out: &mut Vec<u128>) {
+    let rowmask: u128 = (1u128 << nc) - 1;
+    let mut basis: Vec<u32> = Vec::new();            // echelon basis of the row space (as nc-bit values)
+    for i in 0..nr {
+        let mut r = ((t >> (i * nc)) & rowmask) as u32;
+        for &b in &basis { if r ^ b < r { r ^= b; } }
+        if r != 0 { basis.push(r); basis.sort_unstable_by(|a, b| b.cmp(a)); }
+        if basis.len() > 3 { return; }
+    }
+    if basis.len() != 3 { return; }
+    let mut vecs = [0u32; 7];
+    for c in 1..8u32 {
+        let mut v = 0u32;
+        for (i, &b) in basis.iter().enumerate() { if (c >> i) & 1 == 1 { v ^= b; } }
+        vecs[(c - 1) as usize] = v;
+    }
+    for a in 0..7 { for b in (a + 1)..7 { for c in (b + 1)..7 {
+        let (p1, p2, p3) = (vecs[a], vecs[b], vecs[c]);
+        if p1 ^ p2 ^ p3 == 0 { continue; }          // dependent triple
+        let (mut x1, mut x2, mut x3) = (0u32, 0u32, 0u32);
+        for i in 0..nr {
+            let r = ((t >> (i * nc)) & rowmask) as u32;
+            if r == 0 { continue; }
+            // coordinates of r in {p1,p2,p3}
+            let mut found = false;
+            for c1 in 0..2u32 { for c2 in 0..2u32 { for c3 in 0..2u32 {
+                if (c1 | c2 | c3) == 0 { continue; }
+                let mut v = 0u32;
+                if c1 == 1 { v ^= p1; } if c2 == 1 { v ^= p2; } if c3 == 1 { v ^= p3; }
+                if v == r { if c1 == 1 { x1 |= 1 << i; } if c2 == 1 { x2 |= 1 << i; } if c3 == 1 { x3 |= 1 << i; } found = true; }
+            } } }
+            debug_assert!(found);
+        }
+        out.push(kron_small(x1, p1, nc));
+        out.push(kron_small(x2, p2, nc));
+        out.push(kron_small(x3, p3, nc));
+    } } }
+}
+
 /// Visit every space W >= S (sp) with dim W <= dim S + delta that is spanned by its rank-one elements,
 /// in the forms S, S + <N>, S + <N, N'>, ...  visit returns true to stop; the result says whether it stopped.
 fn search_w(sp: &Space, nr: usize, nc: usize, delta: usize, visit: &mut dyn FnMut(&[u128]) -> bool) -> bool {
@@ -334,30 +393,70 @@ fn search_w(sp: &Space, nr: usize, nc: usize, delta: usize, visit: &mut dyn FnMu
             for &s in &r2x { insert128_into(&mut e, s); }
             if e.len() < m { return false; }
         }
-        let mut cands: Vec<u128> = Vec::with_capacity(6 * r2x.len());
-        for &s in &r2x { rank2_splits(s, nr, nc, &mut cands); }
-        cands.sort_unstable();
-        cands.dedup();
+        // Bucket the rank-two elements by split component: N + s is rank-one iff N is one of the six two-term
+        // rank-one splits of s, so T_N = {s in r2x : N in splits(s)} is read off a sorted list of (split, s) pairs
+        // instead of testing every (N, s) pair (quadratic in |r2x|; this is linear).
+        let mut pairs: Vec<(u128, u128)> = Vec::with_capacity(6 * r2x.len());
+        let mut six: Vec<u128> = Vec::with_capacity(6);
+        for &s in &r2x {
+            six.clear();
+            rank2_splits(s, nr, nc, &mut six);
+            for &n in &six { pairs.push((n, s)); }
+        }
+        pairs.sort_unstable();
         let mut e: Vec<u128> = Vec::with_capacity(m + 1);
-        for &n in &cands {
-            if reduce128(&sp.ech, n) == 0 { continue; }
-            e.clear();
-            e.extend_from_slice(&sp_ech);
-            for &s in &r2x {
-                if is_rank1(n ^ s, nr, nc) { insert128_into(&mut e, s); if e.len() == m { break; } }
+        let mut i = 0;
+        while i < pairs.len() {
+            let n = pairs[i].0;
+            let mut j = i;
+            while j < pairs.len() && pairs[j].0 == n { j += 1; }
+            if reduce128(&sp.ech, n) != 0 {
+                e.clear();
+                e.extend_from_slice(&sp_ech);
+                for &(_, s) in &pairs[i..j] { insert128_into(&mut e, s); if e.len() == m { break; } }
+                if e.len() == m {
+                    let w = insert128(&sp.ech, n);
+                    if visit(&w) { return true; }
+                }
             }
-            if e.len() == m {
-                let w = insert128(&sp.ech, n);
-                if visit(&w) { return true; }
+            i = j;
+        }
+        return false;
+    }
+    if delta == 2 {
+        // Let Q be the rank-one elements of W = S + <N1, N2> outside S, spread over the three cosets of S in W.
+        // Either two elements of Q share a coset and sum to an element t of S outside S' -- t then has rank two
+        // and N1 can be taken as one of its six splits -- or every same-coset pair sums into S', so
+        // W = S' + <q1, q2, q3> (one q per coset) forces dim S' = m - 1, all three cosets hit and
+        // t = q1 + q2 + q3 in S \ S' of rank 2 or 3: rank 2 is covered by the splits (S + <split> is then already
+        // spanned by rank-one elements), rank 3 makes q1 a term of a three-term rank-one decomposition of t.
+        // So the first extension N1 ranges over the splits of the rank-two elements of S outside S', plus, when S'
+        // is a hyperplane of S, the terms of the three-term decompositions of the rank-three elements outside S'.
+        let m = sp.ech.len();
+        let sp_ech = echelon128(&sp.r1);
+        let mut cands: Vec<u128> = Vec::new();
+        for &s in &sp.r2 { if reduce128(&sp_ech, s) != 0 { rank2_splits(s, nr, nc, &mut cands); } }
+        if sp_ech.len() + 1 == m {
+            let mut cur: u128 = 0;
+            for j in 1u64..(1u64 << m) {
+                cur ^= sp.ech[j.trailing_zeros() as usize];
+                if rank_le3(cur, nr, nc) == 3 && reduce128(&sp_ech, cur) != 0 { rank3_terms(cur, nr, nc, &mut cands); }
             }
         }
+        cands.sort_unstable();
+        cands.dedup();
+        // the spaces S + <N1>; those already spanned by rank-one elements are visited first (a decomposition with
+        // one term fewer is the stronger verdict), then each of the others is extended once more
+        let exts: Vec<Space> = cands.iter().filter(|&&n| reduce128(&sp.ech, n) != 0).map(|&n| extend(sp, n, nr, nc)).collect();
+        for sp1 in exts.iter().filter(|e| e.spanned) { if visit(&sp1.ech) { return true; } }
+        for sp1 in exts.iter().filter(|e| !e.spanned) { if search_w(sp1, nr, nc, 1, visit) { return true; } }
         return false;
     }
     for x in 1..(1u32 << nr) {
         for y in 1..(1u32 << nc) {
             let n = kron_small(x, y, nc);
             if reduce128(&sp.ech, n) == 0 { continue; }
-            let sp1 = analyze(insert128(&sp.ech, n), nr, nc);
+            let sp1 = extend(sp, n, nr, nc);
             if search_w(&sp1, nr, nc, delta - 1, visit) { return true; }
         }
     }
@@ -754,5 +853,103 @@ fn main() {
         println!("c wrote {} candidates to {p}", all.len());
     } else {
         for l in &all { println!("{l}"); }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 { self.0 ^= self.0 << 13; self.0 ^= self.0 >> 7; self.0 ^= self.0 << 17; self.0 }
+        fn below(&mut self, n: u64) -> u64 { self.next() % n }
+    }
+
+    fn all_rank1(nr: usize, nc: usize) -> Vec<u128> {
+        let mut v = Vec::new();
+        for x in 1..(1u32 << nr) { for y in 1..(1u32 << nc) { v.push(kron_small(x, y, nc)); } }
+        v
+    }
+
+    /// brute force: is some W >= S with dim W <= dim S + delta (delta <= 2) spanned by its rank-one elements?
+    fn brute(ech: &[u128], nr: usize, nc: usize, delta: usize, r1s: &[u128]) -> bool {
+        if analyze(ech.to_vec(), nr, nc).spanned { return true; }
+        if delta == 0 { return false; }
+        for &n1 in r1s {
+            if reduce128(ech, n1) == 0 { continue; }
+            let e1 = insert128(ech, n1);
+            if analyze(e1.clone(), nr, nc).spanned { return true; }
+            if delta == 1 { continue; }
+            for &n2 in r1s {
+                if n2 <= n1 || reduce128(&e1, n2) == 0 { continue; }
+                if analyze(insert128(&e1, n2), nr, nc).spanned { return true; }
+            }
+        }
+        false
+    }
+
+    fn random_space(rng: &mut Rng, nr: usize, nc: usize, m: usize, r1s: &[u128]) -> Vec<u128> {
+        let full: u128 = if nr * nc == 128 { u128::MAX } else { (1u128 << (nr * nc)) - 1 };
+        let mut ech: Vec<u128> = Vec::new();
+        let mut guard = 0;
+        while ech.len() < m && guard < 1000 {
+            guard += 1;
+            let kind = rng.below(4);
+            let g: u128 = match kind {
+                0 => r1s[rng.below(r1s.len() as u64) as usize],
+                1 => r1s[rng.below(r1s.len() as u64) as usize] ^ r1s[rng.below(r1s.len() as u64) as usize],
+                2 => r1s[rng.below(r1s.len() as u64) as usize] ^ r1s[rng.below(r1s.len() as u64) as usize] ^ r1s[rng.below(r1s.len() as u64) as usize],
+                _ => ((rng.next() as u128) << 64 | rng.next() as u128) & full,
+            };
+            if g != 0 { insert128_into(&mut ech, g); }
+        }
+        ech
+    }
+
+    #[test]
+    fn depth_search_matches_brute_force() {
+        let mut rng = Rng(0x9E3779B97F4A7C15);
+        let shapes = [(4usize, 4usize, 800usize), (4, 5, 300), (5, 4, 300), (5, 5, 120), (3, 6, 300), (6, 3, 300)];
+        let (mut n_pos1, mut n_pos2, mut n_total) = (0, 0, 0);
+        for &(nr, nc, reps) in &shapes {
+            let r1s = all_rank1(nr, nc);
+            for _ in 0..reps {
+                let m = 2 + rng.below(4) as usize;
+                let ech = random_space(&mut rng, nr, nc, m, &r1s);
+                if ech.len() < 2 { continue; }
+                let sp = analyze(ech.clone(), nr, nc);
+                for delta in 1..=2usize {
+                    let want = brute(&ech, nr, nc, delta, &r1s);
+                    let got = search_w(&sp, nr, nc, delta, &mut |_w: &[u128]| true);
+                    assert_eq!(got, want, "shape {nr}x{nc} m={} delta={delta} space={:?}", ech.len(), ech);
+                    if want { if delta == 1 { n_pos1 += 1; } else { n_pos2 += 1; } }
+                }
+                n_total += 1;
+            }
+        }
+        println!("depth search vs brute force: {n_total} random spaces, positives delta=1: {n_pos1}, delta=2: {n_pos2}");
+        assert!(n_pos2 > 50 && n_pos2 < n_total * 2, "the test needs both outcomes");
+    }
+
+    #[test]
+    fn rank3_terms_decompose() {
+        let mut rng = Rng(12345);
+        let (nr, nc) = (5usize, 6usize);
+        let r1s = all_rank1(nr, nc);
+        let mut checked = 0;
+        for _ in 0..2000 {
+            let t = r1s[rng.below(r1s.len() as u64) as usize] ^ r1s[rng.below(r1s.len() as u64) as usize] ^ r1s[rng.below(r1s.len() as u64) as usize];
+            let mut out = Vec::new();
+            rank3_terms(t, nr, nc, &mut out);
+            if rank_le3(t, nr, nc) != 3 { assert!(out.is_empty()); continue; }
+            assert_eq!(out.len(), 84, "28 decompositions of three terms");
+            for tri in out.chunks(3) { assert_eq!(tri[0] ^ tri[1] ^ tri[2], t); for &x in tri { assert!(is_rank1(x, nr, nc)); } }
+            let mut sorted: Vec<[u128; 3]> = out.chunks(3).map(|c| { let mut a = [c[0], c[1], c[2]]; a.sort(); a }).collect();
+            sorted.sort(); sorted.dedup();
+            assert_eq!(sorted.len(), 28, "the 28 decompositions are distinct");
+            checked += 1;
+        }
+        assert!(checked > 500);
     }
 }

@@ -1,0 +1,62 @@
+=== exact sweep start 21:48:48
+--- km47 candidates 21:48:48
+    c k=3: 16215 subsets, 0 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 0.0 s
+    c k=4: 178365 subsets, 0 reduction candidates (all three flattening ranks below k), 19 alternative candidates (two dependent slots), 0.0 s
+    c k=5: 1533939 subsets, 4 reduction candidates (all three flattening ranks below k), 1248 alternative candidates (two dependent slots), 0.2 s
+    c k=6: 10737573 subsets, 496 reduction candidates (all three flattening ranks below k), 36833 alternative candidates (two dependent slots), 1.4 s
+    c k=7: 62891499 subsets, 20052 reduction candidates (all three flattening ranks below k), 667486 alternative candidates (two dependent slots), 8.1 s
+    c k=8: 314457495 subsets, 455573 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 41.4 s
+    reduce candidates k<=8: 476125; alt candidates k<=7: 726138
+    reduce: 12 chunks; 'bug' 0; 'unique' 0; 'decided_no' 476017; 'alts' 0; 'reduced' 0; 'needs_sat' 108;  schemes 0 21:50:05
+    needs SAT: 108
+    alt: 12 chunks; 'bug' 0; 'unique' 705586; 'decided_no' 0; 'alts' 0; 'reduced' 0; 'needs_sat' 20552;  schemes 0 21:50:35
+    needs SAT: 20552
+--- at47 candidates 21:50:35
+    c k=3: 16215 subsets, 0 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 0.0 s
+    c k=4: 178365 subsets, 0 reduction candidates (all three flattening ranks below k), 39 alternative candidates (two dependent slots), 0.0 s
+    c k=5: 1533939 subsets, 21 reduction candidates (all three flattening ranks below k), 2094 alternative candidates (two dependent slots), 0.2 s
+    c k=6: 10737573 subsets, 1320 reduction candidates (all three flattening ranks below k), 53573 alternative candidates (two dependent slots), 1.3 s
+    c k=7: 62891499 subsets, 38997 reduction candidates (all three flattening ranks below k), 873744 alternative candidates (two dependent slots), 8.2 s
+    c k=8: 314457495 subsets, 732728 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 41.5 s
+    reduce candidates k<=8: 773066; alt candidates k<=7: 969788
+    reduce: 12 chunks; 'bug' 0; 'unique' 0; 'decided_no' 772928; 'alts' 0; 'reduced' 0; 'needs_sat' 138;  schemes 0 21:52:06
+    needs SAT: 138
+    alt: 12 chunks; 'bug' 0; 'unique' 929450; 'decided_no' 0; 'alts' 0; 'reduced' 0; 'needs_sat' 40338;  schemes 0 21:52:44
+    needs SAT: 40338
+--- ref47 candidates 21:52:44
+    c k=3: 16215 subsets, 0 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 0.0 s
+    c k=4: 178365 subsets, 0 reduction candidates (all three flattening ranks below k), 12 alternative candidates (two dependent slots), 0.0 s
+    c k=5: 1533939 subsets, 0 reduction candidates (all three flattening ranks below k), 972 alternative candidates (two dependent slots), 0.2 s
+    c k=6: 10737573 subsets, 288 reduction candidates (all three flattening ranks below k), 31632 alternative candidates (two dependent slots), 1.6 s
+    c k=7: 62891499 subsets, 14802 reduction candidates (all three flattening ranks below k), 606696 alternative candidates (two dependent slots), 7.6 s
+    c k=8: 314457495 subsets, 370679 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 49.2 s
+    reduce candidates k<=8: 385769; alt candidates k<=7: 654402
+    reduce: 12 chunks; 'bug' 0; 'unique' 0; 'decided_no' 385661; 'alts' 0; 'reduced' 0; 'needs_sat' 108;  schemes 0 21:54:03
+    needs SAT: 108
+    alt: 12 chunks; 'bug' 0; 'unique' 639312; 'decided_no' 0; 'alts' 0; 'reduced' 0; 'needs_sat' 15090;  schemes 0 21:54:29
+    needs SAT: 15090
+--- proj47_5 candidates 21:54:29
+    c k=3: 16215 subsets, 0 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 0.0 s
+    c k=4: 178365 subsets, 0 reduction candidates (all three flattening ranks below k), 27 alternative candidates (two dependent slots), 0.0 s
+    c k=5: 1533939 subsets, 15 reduction candidates (all three flattening ranks below k), 1572 alternative candidates (two dependent slots), 0.2 s
+    c k=6: 10737573 subsets, 1020 reduction candidates (all three flattening ranks below k), 42581 alternative candidates (two dependent slots), 1.3 s
+    c k=7: 62891499 subsets, 31607 reduction candidates (all three flattening ranks below k), 725068 alternative candidates (two dependent slots), 8.0 s
+    c k=8: 314457495 subsets, 613598 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 51.8 s
+    reduce candidates k<=8: 646240; alt candidates k<=7: 801890
+    reduce: 12 chunks; 'bug' 0; 'unique' 0; 'decided_no' 646132; 'alts' 0; 'reduced' 0; 'needs_sat' 108;  schemes 0 21:56:04
+    needs SAT: 108
+    alt: 12 chunks; 'bug' 0; 'unique' 769248; 'decided_no' 0; 'alts' 0; 'reduced' 0; 'needs_sat' 32642;  schemes 0 21:56:37
+    needs SAT: 32642
+--- projkm47_7 candidates 21:56:37
+    c k=3: 16215 subsets, 0 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 0.0 s
+    c k=4: 178365 subsets, 0 reduction candidates (all three flattening ranks below k), 20 alternative candidates (two dependent slots), 0.0 s
+    c k=5: 1533939 subsets, 6 reduction candidates (all three flattening ranks below k), 1323 alternative candidates (two dependent slots), 0.2 s
+    c k=6: 10737573 subsets, 620 reduction candidates (all three flattening ranks below k), 39027 alternative candidates (two dependent slots), 1.5 s
+    c k=7: 62891499 subsets, 23523 reduction candidates (all three flattening ranks below k), 704431 alternative candidates (two dependent slots), 8.7 s
+    c k=8: 314457495 subsets, 515272 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 41.4 s
+    reduce candidates k<=8: 539421; alt candidates k<=7: 768950
+    reduce: 12 chunks; 'bug' 0; 'unique' 0; 'decided_no' 539283; 'alts' 0; 'reduced' 0; 'needs_sat' 138;  schemes 0 21:57:57
+    needs SAT: 138
+    alt: 12 chunks; 'bug' 0; 'unique' 744801; 'decided_no' 0; 'alts' 0; 'reduced' 0; 'needs_sat' 24149;  schemes 0 21:58:28
+    needs SAT: 24149
+=== exact sweep done 21:58:28

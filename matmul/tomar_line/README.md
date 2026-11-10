@@ -550,23 +550,58 @@ starts), so the comparison is by type.
 
 - k-subset re-solve, option 4 (Greg, 2026-11-09 20:30, before any lower-bound
   work).  src/bin/kres.rs enumerates every k-subset of a 47's products whose
-  dropped factors are linearly dependent in all three slots (necessary for a
-  rewrite with k-1 products: tensor rank bounds each flattening rank) or in
-  two (necessary for a different k-product rewrite: Kruskal uniqueness
-  otherwise); proj/kres_solve.py decides each candidate exactly on the
-  residual tensor restricted to its support (rank is invariant under that
-  restriction), rebuilds and Brent-checks the full scheme, and class-sorts
-  the alternatives.  Candidates, k = 5 / 6 / 7, three dependent slots:
-  km47 4 / 496 / 20,052; at47 21 / 1,320 / 38,997; ref47 0 / 288 / 14,802;
-  proj47_5 15 / 1,020 / 31,607; projkm47_7 6 / 620 / 23,523; two slots at k =
-  6: 32-54 k per class, at k = 7: 607-874 k (regenerate with `kres 4 4 4
-  REP.bits --kmin 3 --kmax 7 --both`, 8 s on 4 threads; counts in
-  proj/logs/kres_candidates_2026-11-09.txt).  First exact results: every k =
-  5 reduction candidate of km47 is UNSAT in milliseconds; the 1,267 two-slot
-  candidates of km47 at k = 4 and 5 have no alternative decomposition at all
-  (uniqueness holds well past Kruskal's condition).  The reduce sweep over
-  all 132,731 candidates with k <= 7 and the k = 6 alternatives sweep are
-  the running jobs; their verdicts follow.
+  sum R can have rank below k, by the flattening ranks: the c-flattening of
+  R has rank k unless the k c-factors are dependent or the k Kronecker
+  products a_t (x) b_t are dependent, and likewise for a and b, so a rewrite
+  with k-1 products needs that in every slot ("R" candidates; the first
+  version of the filter used factor dependencies alone and missed the
+  Kronecker case, which is what makes a split pair reducible -- caught by a
+  control and fixed the same evening, with no change to the five classes'
+  counts up to k = 8); by Kruskal's theorem a k-term decomposition of a
+  scheme without repeated factors is unique when two slots are independent,
+  so a different k-product rewrite needs dependent factors in two slots ("A"
+  candidates).  Two deciders: proj/kres_solve.py, SAT on the residual
+  restricted to its support (rank is invariant under that restriction), in
+  process through python-sat or one cadical per instance -- 0.1 s per
+  refutation at k = 6, 1 s at k = 7, 20 s at k = 8, so hopeless at k = 8;
+  and proj/kres_exact.py, exact by slice spaces: tensor rank is at least
+  each flattening rank, and rank(R) equals the flattening rank m in a
+  direction iff that direction's slice space (2^m - 1 elements) is spanned
+  by its rank-one matrices, each rank-one basis being a decomposition.
+  Every k <= 7 reduction candidate and all but 108 of km47's 455,573 at k =
+  8 have a flattening rank k - 1, so the reduce question is exact in
+  microseconds; every two-slot candidate has an independent slot, so the
+  alternatives are exactly the other rank-one bases of that slice space.
+  Validated against the SAT decider (496 k = 6 refutations; 1267 k <= 5
+  uniqueness verdicts; the 430 alternative schemes of 100 trivial-scheme
+  triples identical) and on a positive control (a 47 with one product split
+  in two is found at k = 2 and reduced back to the identical 47).  Both
+  rebuild and Brent-check the full scheme; the alternatives are class-sorted.
+  Candidates per class, k = 5 / 6 / 7 / 8, all three flattening ranks below
+  k: km47 4 / 496 / 20,052 / 455,573; at47 21 / 1,320 / 38,997 / 732,728;
+  ref47 0 / 288 / 14,802 / 370,679; proj47_5 15 / 1,020 / 31,607 / 613,598;
+  projkm47_7 6 / 620 / 23,523 / 515,272.  Two dependent slots, k = 4 / 5 / 6
+  / 7: km47 19 / 1,248 / 36,833 / 667,486; at47 39 / 2,094 / 53,573 /
+  873,744; ref47 12 / 972 / 31,632 / 606,696; proj47_5 27 / 1,572 / 42,581 /
+  725,068; projkm47_7 20 / 1,323 / 39,027 / 704,431 (a minute per class to
+  k = 8 on 12 threads; proj/logs/kres_exact_sweep_2026-11-09.txt; regenerate
+  with kres).  The exact sweep (proj/kres_exact_sweep.zsh, 21:48-21:58,
+  12-way): NEGATIVE everywhere.  Reduce: every candidate with a flattening
+  rank k - 1 is refuted, 476,017 / 772,928 / 385,661 / 646,132 / 539,283,
+  leaving 108 / 138 / 108 / 108 / 138 k = 8 subsets with all flattening
+  ranks at most 6 for the SAT decider; so no rank-46 scheme shares 39 or
+  more products with any of the five representatives, up to those
+  leftovers.  Alternatives: every one of the 3,788,397 two-slot candidates
+  has a unique k-term decomposition (705,586 / 929,450 / 639,312 / 769,248 /
+  744,801 verdicts), so no other rank-47 scheme shares 40 or more products
+  with a known one unless the differing products are dependent in all three
+  slots; those 132,771 subsets (k <= 7) go to the SAT decider (k <= 6 fully,
+  3,744; k = 7 after a timing sample).  The verdicts are class invariants
+  (an isotropy carries products to products and preserves every dependency
+  and every decomposition), so one representative per class covers all 193
+  schemes we hold: the five known 47s are locally rigid out to seven or
+  eight products.  proj/kres_leftovers.zsh runs the SAT leftovers and the k
+  = 9 reduction candidates by the exact decider; results below.
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

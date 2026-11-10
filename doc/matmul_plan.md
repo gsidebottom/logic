@@ -2870,6 +2870,12 @@ the two source papers for this track):
   controls pass (split 48 -> 47 identical to km47 at k=2; trivial-scheme k=3 alternatives: exact and SAT give the same 430
   schemes).  SAT is hopeless at k=8 (20 s per refutation); kres_exact.py decides by slice spaces instead (rank = flattening
   rank iff that slice space is spanned by rank-1 matrices), microseconds; the exact sweep (reduce k<=8, alt k<=7) runs 21:47-.
+  21:58 RESULT (tomar_line/proj/logs/kres_exact_sweep_2026-11-09.txt): NEGATIVE everywhere -- 2.82 M reduction candidates
+  (k<=8, five classes) refuted except 600 k=8 leftovers with all flattening ranks <= 6 (SAT, running); all 3.79 M two-slot
+  candidates (k<=7) have UNIQUE decompositions, i.e. no other 47 within 7 products unless the differing products are
+  dependent in all three slots (132,771 subsets, SAT: k<=6 running, k=7 timed first).  Verdicts are class invariants, so one
+  representative per class covers all 193 held schemes: the five 47s are locally rigid out to 7-8 products.  k=9 reduce by
+  the exact decider queued in the same driver (tomar_line/proj/kres_leftovers.zsh).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

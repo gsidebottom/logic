@@ -9,7 +9,8 @@ invariant under restriction to the support, so the exact questions are asked on 
   alt    : the k-product decompositions of R other than the original (products lexicographically ordered, the
            original blocked, then every found one blocked in turn, up to --alts per candidate) => schemes of rank r
            that no flip reaches (the original is flip-isolated), rebuilt, Brent-checked, deduplicated, written.
-CNF: one Tseitin AND per monomial x_s[u] y_s[v] z_s[w], an XOR ladder per cell; cadical with a per-instance cap.
+CNF: one Tseitin AND per monomial x_s[u] y_s[v] z_s[w], an XOR ladder per cell; solved in-process by python-sat's
+CaDiCaL with a conflict budget (--conflicts), or by a cadical process per instance with a time cap (--subprocess, --cap).
 usage: kres_solve.py N1 N2 N3 scheme.bits candidates.txt --mode reduce|alt --out DIR [--cap 20] [--alts 20]
        [--max N] [--tag T] [--kmax K] [--quiet]
 """
@@ -19,6 +20,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from project_f2 import load_bits, check, to_bits
 
 CADICAL = '/opt/homebrew/bin/cadical'
+try:
+    from pysat.solvers import Cadical153 as PySolver   # in-process solving (python-sat); --subprocess forces cadical
+except Exception:
+    PySolver = None
 
 
 def vec_of(bits):
@@ -93,6 +98,24 @@ def build(R, m, dims, lex=True):
     return cnf, X, Y, Z
 
 
+class Incremental:
+    """One in-process solver per candidate: solve, then add blocking clauses and solve again (alt mode)."""
+    def __init__(self, cnf, conflicts):
+        self.s = PySolver(bootstrap_with=cnf.cl); self.conf = conflicts
+    def solve(self):
+        self.s.conf_budget(self.conf)
+        r = self.s.solve_limited()
+        if r is None:
+            return 'timeout', None
+        if r is False:
+            return 'UNSAT', None
+        return 'SAT', set(v for v in self.s.get_model() if v > 0)
+    def block(self, lits):
+        self.s.add_clause(lits)
+    def close(self):
+        self.s.delete()
+
+
 def solve(cnf, path, cap):
     cnf.write(path)
     try:
@@ -125,7 +148,10 @@ def main():
     ap.add_argument('--kmax', type=int, default=99)
     ap.add_argument('--tag', default='k')
     ap.add_argument('--quiet', action='store_true')
+    ap.add_argument('--subprocess', action='store_true', help='run cadical as a process per instance instead of in-process pysat')
+    ap.add_argument('--conflicts', type=int, default=200000, help='in-process conflict budget per solve (the timeout analogue)')
     a = ap.parse_args()
+    inproc = PySolver is not None and not a.subprocess
     n1, n2, n3 = a.n1, a.n2, a.n3
     al, be, ga = load_bits(a.bits, n1, n2, n3)
     r = al.shape[0]
@@ -177,8 +203,9 @@ def main():
                 for j in range(dc): lits.append(-Z[s][j] if (zw >> j) & 1 else Z[s][j])
             cnf.add(*lits)
         rounds = a.alts if a.mode == 'alt' else 1
+        inc = Incremental(cnf, a.conflicts) if inproc else None
         for rd in range(rounds):
-            status, model = solve(cnf, tmp, a.cap)
+            status, model = inc.solve() if inproc else solve(cnf, tmp, a.cap)
             if status != 'SAT':
                 stats[status if status in stats else 'other'] += 1
                 break
@@ -229,16 +256,22 @@ def main():
                 for s in range(mm):
                     for v in X[s] + Y[s] + Z[s]:
                         lits.append(-v if v in model else v)
-                cnf.add(*lits); blocked += 1
+                if inproc:
+                    inc.block(lits)
+                else:
+                    cnf.add(*lits)
+                blocked += 1
             else:
                 break
+        if inc is not None:
+            inc.close()
         done += 1
         if a.max and done >= a.max:
             break
         if not a.quiet and done % 500 == 0:
             print(f'c {done} candidates, {stats}, {len(found)} schemes, {time.time() - t0:.0f} s', flush=True)
     if os.path.exists(tmp): os.remove(tmp)
-    print(f'c done: {done} candidates, {stats}, {len(found)} distinct schemes written to {a.out}, {time.time() - t0:.0f} s')
+    print(f'c done: {done} candidates, {stats}, {len(found)} distinct schemes written to {a.out}, {time.time() - t0:.0f} s ({"in-process pysat" if inproc else "cadical processes"})')
 
 
 if __name__ == '__main__':

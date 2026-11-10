@@ -600,8 +600,26 @@ starts), so the comparison is by type.
   (an isotropy carries products to products and preserves every dependency
   and every decomposition), so one representative per class covers all 193
   schemes we hold: the five known 47s are locally rigid out to seven or
-  eight products.  proj/kres_leftovers.zsh runs the SAT leftovers and the k
-  = 9 reduction candidates by the exact decider; results below.
+  eight products.  proj/kres_leftovers.zsh (22:00-22:28, log
+  proj/logs/kres_leftovers_2026-11-09.txt): the SAT decider refutes all 600
+  k = 8 reduce leftovers (2 M conflicts allowed, none needed) and all 3,790
+  all-three-dependent subsets with k <= 6 in alt mode (no alternative), so
+  the k <= 8 reduce and k <= 6 alt pictures are complete; a sample of 120
+  of the 20,052 k = 7 all-dependent subsets in alt mode takes 0.9 s each
+  with 22 timeouts at 500 k conflicts, so the 132,771 of them are an
+  overnight SAT job.  k = 9 reduce for km47 by the Python decider: 6,993,698
+  candidates, 6,988,525 refuted, 5,173 with all flattening ranks at most 7
+  left for SAT (16 min on 12 workers).  The decider is now also inside the
+  Rust enumerator (`kres --decide`: coordinates with tracking, u128 slice
+  matrices, Gray-code enumeration of the slice space, the rank-one span
+  test for reduce and the "more than k rank-one elements" test for alt;
+  only RED, ALT and undecided lines are written), a few microseconds per
+  candidate; it reproduces the Python verdicts exactly on both controls, on
+  km47 to k = 7 (every count) and at k = 8 (455,465 refuted, 108 undecided),
+  so k = 10 and 11 need no candidate files and take 15 min and an hour per
+  class.  proj/kres_overnight.zsh (2026-11-09 night): k = 8..10 for the five
+  classes, SAT on the k = 7 all-dependent subsets, rebuild and class-sort of
+  anything found, then k = 11 until 06:30.
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

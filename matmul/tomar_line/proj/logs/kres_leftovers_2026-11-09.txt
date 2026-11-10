@@ -1,0 +1,17 @@
+=== leftovers start 22:00:33
+    km47 reduce: 'timeout' 0; 'UNSAT' 108; 'SAT' 0;  schemes 0 22:01:31
+    at47 reduce: 'timeout' 0; 'UNSAT' 138; 'SAT' 0;  schemes 0 22:03:08
+    ref47 reduce: 'timeout' 0; 'UNSAT' 108; 'SAT' 0;  schemes 0 22:04:19
+    proj47_5 reduce: 'timeout' 0; 'UNSAT' 108; 'SAT' 0;  schemes 0 22:05:20
+    projkm47_7 reduce: 'timeout' 0; 'UNSAT' 138; 'SAT' 0;  schemes 0 22:06:33
+    km47 alt: 'timeout' 0; 'UNSAT' 500; 'SAT' 0;  schemes 0 22:07:01
+    at47 alt: 'timeout' 0; 'UNSAT' 1341; 'SAT' 0;  schemes 0 22:08:12
+    ref47 alt: 'timeout' 0; 'UNSAT' 288; 'SAT' 0;  schemes 0 22:08:28
+    proj47_5 alt: 'timeout' 0; 'UNSAT' 1035; 'SAT' 0;  schemes 0 22:09:25
+    projkm47_7 alt: 'timeout' 0; 'UNSAT' 626; 'SAT' 0;  schemes 0 22:09:57
+=== timing sample: 120 of km47's k=7 all-dependent subsets in alt mode 22:09:57
+    km47 alt: 'timeout' 22; 'UNSAT' 98; 'SAT' 0;  schemes 0 22:11:46
+=== k=9 reduction candidates, exact decider 22:11:46
+    km47 c k=9: 1362649145 subsets, 6993698 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 234.0 s
+    km47 k=9 reduce: 'bug' 0; 'decided_no' 6988525; 'reduced' 0; 'needs_sat' 5173;  schemes 0 22:28:13
+    at47 c k=9: 1362649145 subsets, 9889034 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 246.3 s

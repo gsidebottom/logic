@@ -2874,8 +2874,14 @@ the two source papers for this track):
   (k<=8, five classes) refuted except 600 k=8 leftovers with all flattening ranks <= 6 (SAT, running); all 3.79 M two-slot
   candidates (k<=7) have UNIQUE decompositions, i.e. no other 47 within 7 products unless the differing products are
   dependent in all three slots (132,771 subsets, SAT: k<=6 running, k=7 timed first).  Verdicts are class invariants, so one
-  representative per class covers all 193 held schemes: the five 47s are locally rigid out to 7-8 products.  k=9 reduce by
-  the exact decider queued in the same driver (tomar_line/proj/kres_leftovers.zsh).
+  representative per class covers all 193 held schemes: the five 47s are locally rigid out to 7-8 products.  22:28: SAT
+  leftovers ALL refuted (600 k=8 reduce; 3,790 k<=6 all-dependent alt), k=7 all-dependent alt subsets = 0.9 s each (18 %
+  timeouts at 500 k conflicts) -> overnight SAT; km47 k=9 reduce (Python decider): 6,988,525 refuted, 5,173 undecided.
+  Greg 22:41: Python workers are the pure-Python decider (1.4 ms/candidate), SAT stage is native -> decider PORTED into
+  kres.rs (--decide; identical verdicts on controls, k<=7 every count, k=8); fifth-class orbit climb: NO record chance (+4
+  window exact at 166; a better point needs gains >= 6 vs BP; climb would end ~160-163) -> not run.  Overnight
+  (tomar_line/proj/kres_overnight.zsh): k=8..10 decide five classes, SAT on k=7 all-dependent alt (132,771), rebuild +
+  class-sort, k=11 until 06:30.
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

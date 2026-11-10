@@ -2914,8 +2914,11 @@ the two source papers for this track):
   (open km47 lines with products 0,1 moved into the split scheme) all found (25,725 RED + 51 three-short, the exhaustive
   binary identical on 5,155); 30 planted-flip delta-2 lines all positive; randomized brute-force unit test on 2,120 random
   spaces identical (311 / 921 positives).  RESULT 13:28 (proj/kres_deep_alt2.zsh): 1,077,388 of the open lines UNIQUE in
-  42 s; 1,932 three-or-more short at depth 3 (running, ~5 CPU-s per line).  NOTE: target/release/kres is still the sweep's
-  08:40 binary (today's builds live in scratchpad kres/build/); rebuild after k=11 ends (touch src/bin/kres.rs first).
+  42 s; the 1,932 three-or-more short at depth 3 (13:28:43-13:49:05, 184-334 s per class) ALL UNIQUE -> ALTERNATIVES
+  CLOSED AT k<=10: NO RANK-47 SCHEME OTHER THAN THE ORIGINAL SHARES 37+ PRODUCTS with any held 47 (every k<=10 residual
+  has rank exactly k and a unique k-term decomposition), matching the rank-46 statement; logs proj/logs/kres_deep_alt2_
+  2026-11-10.txt, kres_deep_enum_2026-11-10.txt.  NOTE: target/release/kres is still the sweep's 08:40 binary (today's
+  builds live in scratchpad kres/build/); rebuild after k=11 ends (touch src/bin/kres.rs first).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

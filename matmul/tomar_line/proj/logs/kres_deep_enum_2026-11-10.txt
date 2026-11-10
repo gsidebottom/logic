@@ -1,0 +1,63 @@
+# kres k = 8..10 (reduce + alt) re-enumeration of the five rank-47 classes (proj/kres_deep_enum.zsh), 2026-11-10 08:42-12:32; k = 11 appended when done
+
+=== P3 start 08:42:26
+--- km47 k=8..10 both 08:42:26
+    c k=8: 314457495 subsets; reduce: 455573 candidates, 455573 refuted, 0 REDUCIBLE, 0 open; alt: 8438398 candidates (+ the reduce candidates), 8893863 unique, 0 with ALTERNATIVES, 108 open; 57.3 s
+    c k=9: 1362649145 subsets; reduce: 6993698 candidates, 6993698 refuted, 0 REDUCIBLE, 0 open; alt: 79509098 candidates (+ the reduce candidates), 86497623 unique, 0 with ALTERNATIVES, 5173 open; 320.8 s
+    c k=10: 5178066751 subsets; reduce: 79270821 candidates, 79270821 refuted, 0 REDUCIBLE, 0 open; alt: 579022127 candidates (+ the reduce candidates), 658131765 unique, 0 with ALTERNATIVES, 161183 open; 2284.0 s
+    lines: 166464 A; 09:26:48
+--- at47 k=8..10 both 09:26:48
+    c k=8: 314457495 subsets; reduce: 732728 candidates, 732728 refuted, 0 REDUCIBLE, 0 open; alt: 10198985 candidates (+ the reduce candidates), 10931575 unique, 0 with ALTERNATIVES, 138 open; 56.7 s
+    c k=9: 1362649145 subsets; reduce: 9889034 candidates, 9889034 refuted, 0 REDUCIBLE, 0 open; alt: 90361949 candidates (+ the reduce candidates), 100241938 unique, 0 with ALTERNATIVES, 9045 open; 322.9 s
+    c k=10: 5178066751 subsets; reduce: 102110762 candidates, 102110762 refuted, 0 REDUCIBLE, 0 open; alt: 627100671 candidates (+ the reduce candidates), 728927165 unique, 0 with ALTERNATIVES, 284268 open; 2113.5 s
+    lines: 293451 A; 10:08:22
+--- ref47 k=8..10 both 10:08:22
+    c k=8: 314457495 subsets; reduce: 370679 candidates, 370679 refuted, 0 REDUCIBLE, 0 open; alt: 7963898 candidates (+ the reduce candidates), 8334469 unique, 0 with ALTERNATIVES, 108 open; 51.9 s
+    c k=9: 1362649145 subsets; reduce: 6012966 candidates, 6012966 refuted, 0 REDUCIBLE, 0 open; alt: 77110669 candidates (+ the reduce candidates), 83119033 unique, 0 with ALTERNATIVES, 4602 open; 301.9 s
+    c k=10: 5178066751 subsets; reduce: 70747105 candidates, 70747105 refuted, 0 REDUCIBLE, 0 open; alt: 573360690 candidates (+ the reduce candidates), 643971589 unique, 0 with ALTERNATIVES, 136206 open; 2058.3 s
+    lines: 140916 A; 10:48:34
+--- proj47_5 k=8..10 both 10:48:34
+    c k=8: 314457495 subsets; reduce: 613598 candidates, 613598 refuted, 0 REDUCIBLE, 0 open; alt: 8759297 candidates (+ the reduce candidates), 9372787 unique, 0 with ALTERNATIVES, 108 open; 52.9 s
+    c k=9: 1362649145 subsets; reduce: 8487646 candidates, 8487646 refuted, 0 REDUCIBLE, 0 open; alt: 79875713 candidates (+ the reduce candidates), 88355634 unique, 0 with ALTERNATIVES, 7725 open; 387.8 s
+    c k=10: 5178066751 subsets; reduce: 89441970 candidates, 89441970 refuted, 0 REDUCIBLE, 0 open; alt: 568655467 candidates (+ the reduce candidates), 657844135 unique, 0 with ALTERNATIVES, 253302 open; 2980.4 s
+    lines: 261135 A; 11:45:36
+--- projkm47_7 k=8..10 both 11:45:36
+    c k=8: 314457495 subsets; reduce: 515272 candidates, 515272 refuted, 0 REDUCIBLE, 0 open; alt: 8853709 candidates (+ the reduce candidates), 9368843 unique, 0 with ALTERNATIVES, 138 open; 47.7 s
+    c k=9: 1362649145 subsets; reduce: 7708097 candidates, 7708097 refuted, 0 REDUCIBLE, 0 open; alt: 82846437 candidates (+ the reduce candidates), 90547579 unique, 0 with ALTERNATIVES, 6955 open; 336.3 s
+    c k=10: 5178066751 subsets; reduce: 85605619 candidates, 85605619 refuted, 0 REDUCIBLE, 0 open; alt: 598694334 candidates (+ the reduce candidates), 684089692 unique, 0 with ALTERNATIVES, 210261 open; 2436.8 s
+    lines: 217354 A; 12:32:38
+
+=== km47 k=8..10 log
+c kres: <4,4,4> rank 47 from SCRATCH/wp/reps/km47.bits; factor span dims 16,16,16; k = 8..10; R and A candidates; decided, maxdelta 2 / alt 1
+c k=8: 314457495 subsets; reduce: 455573 candidates, 455573 refuted, 0 REDUCIBLE, 0 open; alt: 8438398 candidates (+ the reduce candidates), 8893863 unique, 0 with ALTERNATIVES, 108 open; 57.3 s
+c k=9: 1362649145 subsets; reduce: 6993698 candidates, 6993698 refuted, 0 REDUCIBLE, 0 open; alt: 79509098 candidates (+ the reduce candidates), 86497623 unique, 0 with ALTERNATIVES, 5173 open; 320.8 s
+c k=10: 5178066751 subsets; reduce: 79270821 candidates, 79270821 refuted, 0 REDUCIBLE, 0 open; alt: 579022127 candidates (+ the reduce candidates), 658131765 unique, 0 with ALTERNATIVES, 161183 open; 2284.0 s
+c wrote 166464 candidates to SCRATCH/kres/deep/P3_km47_k8-10.txt
+
+=== at47 k=8..10 log
+c kres: <4,4,4> rank 47 from SCRATCH/wp/reps/at47.bits; factor span dims 16,16,16; k = 8..10; R and A candidates; decided, maxdelta 2 / alt 1
+c k=8: 314457495 subsets; reduce: 732728 candidates, 732728 refuted, 0 REDUCIBLE, 0 open; alt: 10198985 candidates (+ the reduce candidates), 10931575 unique, 0 with ALTERNATIVES, 138 open; 56.7 s
+c k=9: 1362649145 subsets; reduce: 9889034 candidates, 9889034 refuted, 0 REDUCIBLE, 0 open; alt: 90361949 candidates (+ the reduce candidates), 100241938 unique, 0 with ALTERNATIVES, 9045 open; 322.9 s
+c k=10: 5178066751 subsets; reduce: 102110762 candidates, 102110762 refuted, 0 REDUCIBLE, 0 open; alt: 627100671 candidates (+ the reduce candidates), 728927165 unique, 0 with ALTERNATIVES, 284268 open; 2113.5 s
+c wrote 293451 candidates to SCRATCH/kres/deep/P3_at47_k8-10.txt
+
+=== ref47 k=8..10 log
+c kres: <4,4,4> rank 47 from SCRATCH/wp/reps/ref47.bits; factor span dims 16,16,16; k = 8..10; R and A candidates; decided, maxdelta 2 / alt 1
+c k=8: 314457495 subsets; reduce: 370679 candidates, 370679 refuted, 0 REDUCIBLE, 0 open; alt: 7963898 candidates (+ the reduce candidates), 8334469 unique, 0 with ALTERNATIVES, 108 open; 51.9 s
+c k=9: 1362649145 subsets; reduce: 6012966 candidates, 6012966 refuted, 0 REDUCIBLE, 0 open; alt: 77110669 candidates (+ the reduce candidates), 83119033 unique, 0 with ALTERNATIVES, 4602 open; 301.9 s
+c k=10: 5178066751 subsets; reduce: 70747105 candidates, 70747105 refuted, 0 REDUCIBLE, 0 open; alt: 573360690 candidates (+ the reduce candidates), 643971589 unique, 0 with ALTERNATIVES, 136206 open; 2058.3 s
+c wrote 140916 candidates to SCRATCH/kres/deep/P3_ref47_k8-10.txt
+
+=== proj47_5 k=8..10 log
+c kres: <4,4,4> rank 47 from SCRATCH/wp/reps/proj47_5.bits; factor span dims 16,16,16; k = 8..10; R and A candidates; decided, maxdelta 2 / alt 1
+c k=8: 314457495 subsets; reduce: 613598 candidates, 613598 refuted, 0 REDUCIBLE, 0 open; alt: 8759297 candidates (+ the reduce candidates), 9372787 unique, 0 with ALTERNATIVES, 108 open; 52.9 s
+c k=9: 1362649145 subsets; reduce: 8487646 candidates, 8487646 refuted, 0 REDUCIBLE, 0 open; alt: 79875713 candidates (+ the reduce candidates), 88355634 unique, 0 with ALTERNATIVES, 7725 open; 387.8 s
+c k=10: 5178066751 subsets; reduce: 89441970 candidates, 89441970 refuted, 0 REDUCIBLE, 0 open; alt: 568655467 candidates (+ the reduce candidates), 657844135 unique, 0 with ALTERNATIVES, 253302 open; 2980.4 s
+c wrote 261135 candidates to SCRATCH/kres/deep/P3_proj47_5_k8-10.txt
+
+=== projkm47_7 k=8..10 log
+c kres: <4,4,4> rank 47 from SCRATCH/wp/reps/projkm47_7.bits; factor span dims 16,16,16; k = 8..10; R and A candidates; decided, maxdelta 2 / alt 1
+c k=8: 314457495 subsets; reduce: 515272 candidates, 515272 refuted, 0 REDUCIBLE, 0 open; alt: 8853709 candidates (+ the reduce candidates), 9368843 unique, 0 with ALTERNATIVES, 138 open; 47.7 s
+c k=9: 1362649145 subsets; reduce: 7708097 candidates, 7708097 refuted, 0 REDUCIBLE, 0 open; alt: 82846437 candidates (+ the reduce candidates), 90547579 unique, 0 with ALTERNATIVES, 6955 open; 336.3 s
+c k=10: 5178066751 subsets; reduce: 85605619 candidates, 85605619 refuted, 0 REDUCIBLE, 0 open; alt: 598694334 candidates (+ the reduce candidates), 684089692 unique, 0 with ALTERNATIVES, 210261 open; 2436.8 s
+c wrote 217354 candidates to SCRATCH/kres/deep/P3_projkm47_7_k8-10.txt

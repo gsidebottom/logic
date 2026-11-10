@@ -730,9 +730,19 @@ starts), so the comparison is by type.
   planted controls).  RESULT (proj/kres_deep_alt2.zsh, 13:28:01-13:28:43):
   1,077,388 of the 1,079,320 open alternatives lines are UNIQUE (7-12 s
   per class); the 1,932 left (406 / 285 / 468 / 282 / 491; dims (7,7,7)
-  at k = 10 and (6,6,6) at k = 9: three or more dimensions short) run at
+  at k = 10 and (6,6,6) at k = 9: three or more dimensions short) ran at
   depth 3 (the full outer loop over the first extension with the
-  restricted depth 2 inside, about 5 CPU-seconds per line).
+  restricted depth 2 inside, 13:28:43-13:49:05, 184-334 s per class): ALL
+  UNIQUE, none left open.  So the alternatives question is closed at
+  k <= 10 exactly like the rank-46 one: every k <= 10 subset of a held 47
+  has a residual of rank exactly k with a unique k-term decomposition
+  (Kruskal for the subsets with two independent slots, kres for the rest;
+  a minimal decomposition lives in the factor supports, so restricting to
+  the spans loses nothing), hence NO RANK-47 SCHEME OTHER THAN THE
+  ORIGINAL SHARES 37 OR MORE PRODUCTS with any of the 193 rank-47 schemes
+  we hold, and no rank-46 scheme does either.  Logs:
+  proj/logs/kres_deep_alt2_2026-11-10.txt (with the 1,932 depth-3 lines)
+  and proj/logs/kres_deep_enum_2026-11-10.txt (k = 8..10 per class).
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

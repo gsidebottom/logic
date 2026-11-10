@@ -1,0 +1,46 @@
+=== C3: reduce negatives (108 SAT-refuted k=8 lines; expect all refuted)
+c k=8: 108 refuted
+=== C4: alt on the all-dependent k<=7 lists (expect all unique)
+c k=5: 4 unique
+c k=6: 496 unique
+c k=7: 20052 unique
+=== C1: planted reduction, delta = 1
+c k=8: 314457495 subsets, 455573 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 70.8 s
+split 0,1: products 0 and 1 replaced in place, third appended at index 47; rank 48
+wrote /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/kres/deep/ctrl/ctrl_c1.bits
+subset k=9 idx=0,1,2,3,4,6,28,40,47 factor-span dims 7,7,7
+  direction 0 (slices over slots 1 x 2, 7x7 matrices): flattening rank 7, original space dim 9
+  direction 1 (slices over slots 0 x 2, 7x7 matrices): flattening rank 7, original space dim 9
+  direction 2 (slices over slots 0 x 1, 7x7 matrices): flattening rank 7, original space dim 9
+  reduce: YES, 8 products, verified=1 (deficient, delta = 1) 0.000 s
+    new=0001000000000000/0111011110110111/0001011100001111,0000000000100000/1100101101110000/0110000001011010,0000010100011001/1001110101000110/0000011000111110,1001000000100000/1100000011000000/0110000011110000,0000000000001011/1100110100011100/0000000000001001,0001001000001110/0110011010110110/0011011100001111,1001000000000000/0111000011000000/1100101011110000,1001101011100000/1111000001000000/1110101011110000
+  alt: OPEN (deficient, delta = 2; beyond maxdelta) 0.000 s
+c k=9: 1 REDUCIBLE
+RED k=9 idx=0,1,2,3,4,6,28,40,47 -> rank 47, new: c1_RED_r47_00000.bits   RANK 47 < 48
+1 verdict lines, 1 distinct schemes written to /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/kres/deep/ctrl/c1_apply, best rank 47 (input 48)
+=== C2: planted reduction, delta = 2
+split 0,1: products 0 and 1 replaced in place, third appended at index 47; rank 48
+wrote /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/kres/deep/ctrl/ctrl_c2.bits
+subset k=9 idx=0,1,5,8,10,15,24,29,47 factor-span dims 6,6,6
+  direction 0 (slices over slots 1 x 2, 6x6 matrices): flattening rank 6, original space dim 9
+  direction 1 (slices over slots 0 x 2, 6x6 matrices): flattening rank 6, original space dim 9
+  direction 2 (slices over slots 0 x 1, 6x6 matrices): flattening rank 6, original space dim 9
+  reduce: YES, 8 products, verified=1 (deficient, delta = 2) 0.005 s
+    new=0001000000000000/0111011110110111/0001011100001111,0111001000001110/0000000011010000/0011000000000000,0001000000001010/1100110000001100/0110000000001111,0101000000101010/0000101110110000/0110000001111010,0000000000001010/1100011110111100/0110000001111000,0000000000000110/0110110110110110/0000000000000010,0001001000001110/0110011010110110/0011011100001111,0110000000000000/0000000010110000/0010000000000000
+  alt: OPEN (deficient, delta = 3; beyond maxdelta) 0.000 s
+c k=9: 1 REDUCIBLE
+RED k=9 idx=0,1,5,8,10,15,24,29,47 -> rank 47, new: c2_RED_r47_00000.bits   RANK 47 < 48
+1 verdict lines, 1 distinct schemes written to /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/kres/deep/ctrl/c2_apply, best rank 47 (input 48)
+=== C5: planted alternatives in the split scheme (products 0 -> X1, 1 -> X2, 47 -> X3; X1,X2 share c; X2,X3 share a')
+c k=7: 73629072 subsets, 197824 reduction candidates (all three flattening ranks below k), 0 alternative candidates (two dependent slots), 8.7 s
+c k=7: 28764 ALTERNATIVES, 148967 REDUCIBLE, 30 alt-open, 20063 unique
+  flippable pairs in the split scheme: [(0, 1), (1, 47), (29, 47)]
+  flippable pair present   A       30
+  flippable pair present   ALT     28764
+  flippable pair present   RED     148967
+  no flippable pair        unique  20063
+148966 rank 47, duplicate of c
+   1 rank 47, new
+28749 rank 48, duplicate of c
+  15 rank 48, new
+=== done 07:39:50

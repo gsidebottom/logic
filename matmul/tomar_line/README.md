@@ -620,6 +620,65 @@ starts), so the comparison is by type.
   class.  proj/kres_overnight.zsh (2026-11-09 night): k = 8..10 for the five
   classes, SAT on the k = 7 all-dependent subsets, rebuild and class-sort of
   anything found, then k = 11 until 06:30.
+  2026-11-10 morning, the overnight's outcome (proj/logs/kres_overnight_2026-11-09.txt):
+  phase A (k = 8..10, five classes, 22:52-01:32) found NOTHING -- zero
+  reducible and zero alternative among the exactly decided candidates --
+  and left 166,464 / 293,451 / 140,916 / 261,135 / 217,354 reduce lines
+  open (all three flattening ranks at most k - 2; k = 10 mostly, dims
+  (8,8,8) and (8,8,7)); phase B's SAT took 4.7 h for km47's 20,052 k = 7
+  all-dependent subsets (16,927 unique, 3,125 timeouts at 500 k conflicts,
+  no alternative) and its ten-times-budget retry was a 40-hour job, stopped
+  at 07:05 with the other four classes untouched.  The open cases are now
+  exact too.  The deficient case (kres.rs doc comment): a decomposition of
+  R with d terms is the same thing as a space W containing the slice space
+  S (dim m) with dim W <= d that is spanned by its rank-one elements (a
+  rank-one basis of W gives the terms; the Kronecker matrices of any
+  decomposition span such a W; restricting to the factor spans loses
+  nothing), so with delta = target - m the question is whether some
+  S + <N_1, ..., N_delta> with rank-one N_i is spanned by rank-one
+  elements.  For delta = 1 the N are confined: W is spanned only if some
+  N + s with 0 != s in S is rank-one too, so s = N + (N + s) has rank at
+  most 2 and N is one of the two-term rank-one splits of a rank-<=2 element
+  of S (six per rank-2 element, 2^nr + 2^nc - 4 per rank-1 element); the
+  exact test is span(rank-one elements of S) + span{s in S : N + s
+  rank-one} = S.  For delta >= 2 the first N runs over every rank-one
+  matrix outside S and the rest recurse.  Alternatives in the deficient
+  case: a W other than the original space U, or U with more than k
+  rank-one elements.  Every YES carries the new products and is verified
+  against the tensor of the dropped ones; `kres --lines FILE` decides the
+  R / A lines of a candidate file, `--subset` one subset verbosely,
+  proj/kres_apply.py splices the products in and Brent-checks the scheme,
+  proj/kres_ctrl.py plants controls.  Controls (proj/kres_deep_controls.zsh,
+  log proj/logs/kres_deep_controls_2026-11-10.txt): the 600 SAT-refuted
+  k = 8 leftovers are refuted; the 3,790 SAT-unique k <= 6 all-dependent
+  subsets are unique; a (7,7,7) k = 8 subset with two products split into
+  three (same sum, no repeated Kronecker product: (a+a')bc, a'(b+b')c,
+  a'b'(c+c')) is reduced from 9 to 8 products through the delta = 1 path
+  and a (6,6,6) one of rank 8 through the delta = 2 path, both rebuilt to
+  km47 itself; in the split scheme every all-dependent k = 7 subset
+  containing a flippable pair (the split products share factors, and the
+  third split product happens to share its c-factor with product 29) shows
+  an alternative (28,764 ALT; 148,967 reductions where all three split
+  products are present; 30 open at delta >= 2) and every one without such
+  a pair is unique (20,063); the 16 distinct alternative schemes all
+  Brent-check.  RESULTS (proj/kres_deep_lines.zsh, 07:29-07:38, log
+  proj/logs/kres_deep_lines_2026-11-10.txt): every open reduce line of the
+  five classes is REFUTED -- k = 9: 5,173 / 9,045 / 4,602 / 7,725 / 6,955;
+  k = 10: 161,183 / 284,268 / 136,206 / 253,302 / 210,261 (80-150 s per
+  class).  So NO RANK-46 SCHEME SHARES 37 OR MORE PRODUCTS with any of the
+  193 rank-47 schemes we hold (k <= 10 exact, all five classes).  The k = 7
+  all-dependent alternatives question is closed exactly in 2 s where SAT
+  needed 4.7 h for one class: all 128,981 subsets (20,052 / 38,997 /
+  14,802 / 31,607 / 23,523) are unique, km47's 3,125 SAT timeouts included,
+  so NO OTHER RANK-47 SCHEME SHARES 40 OR MORE PRODUCTS with a known one.
+  Side fact from the controls: no rank-47 scheme file in the repo (the five
+  representatives, found47_km56, the walk parents' 47s, the two 166 points)
+  has two products sharing a factor, so Kruskal's two-independent-slot
+  criterion is complete for them and no Kauers-Moosbauer flip leaves a 47
+  (the flip engine only ever moves through rank 48).  Running from 07:40
+  (proj/kres_deep_enum.zsh, scratchpad kres/deep/p3.log): the alternatives
+  question for the all-dependent subsets at k = 8..10 (delta = 1 for dims
+  (k-1,k-1,k-1)) by re-enumeration, then k = 11 reduce + alt, five classes.
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

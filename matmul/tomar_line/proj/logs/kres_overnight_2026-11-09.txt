@@ -1,0 +1,28 @@
+=== A: k=8..10 decide, start 22:52:01
+--- km47 22:52:01
+    c k=8: 314457495 subsets; reduce: 455573 candidates, 455465 refuted, 0 REDUCIBLE, 108 undecided; alt: 8438398 candidates, 8438398 unique, 0 with ALTERNATIVES, 0 undecided (+ the 455573 reducible ones, for SAT); 51.5 s
+    c k=9: 1362649145 subsets; reduce: 6993698 candidates, 6988525 refuted, 0 REDUCIBLE, 5173 undecided; alt: 79509098 candidates, 79509098 unique, 0 with ALTERNATIVES, 0 undecided (+ the 6993698 reducible ones, for SAT); 260.4 s
+    c k=10: 5178066751 subsets; reduce: 79270821 candidates, 79109638 refuted, 0 REDUCIBLE, 161183 undecided; alt: 579022127 candidates, 579022127 unique, 0 with ALTERNATIVES, 0 undecided (+ the 79270821 reducible ones, for SAT); 1631.3 s
+    lines: 166464 R;
+--- at47 23:24:24
+    c k=8: 314457495 subsets; reduce: 732728 candidates, 732590 refuted, 0 REDUCIBLE, 138 undecided; alt: 10198985 candidates, 10198985 unique, 0 with ALTERNATIVES, 0 undecided (+ the 732728 reducible ones, for SAT); 45.8 s
+    c k=9: 1362649145 subsets; reduce: 9889034 candidates, 9879989 refuted, 0 REDUCIBLE, 9045 undecided; alt: 90361949 candidates, 90361949 unique, 0 with ALTERNATIVES, 0 undecided (+ the 9889034 reducible ones, for SAT); 260.7 s
+    c k=10: 5178066751 subsets; reduce: 102110762 candidates, 101826494 refuted, 0 REDUCIBLE, 284268 undecided; alt: 627100671 candidates, 627100671 unique, 0 with ALTERNATIVES, 0 undecided (+ the 102110762 reducible ones, for SAT); 1494.4 s
+    lines: 293451 R;
+--- ref47 23:54:26
+    c k=8: 314457495 subsets; reduce: 370679 candidates, 370571 refuted, 0 REDUCIBLE, 108 undecided; alt: 7963898 candidates, 7963898 unique, 0 with ALTERNATIVES, 0 undecided (+ the 370679 reducible ones, for SAT); 42.5 s
+    c k=9: 1362649145 subsets; reduce: 6012966 candidates, 6008364 refuted, 0 REDUCIBLE, 4602 undecided; alt: 77110669 candidates, 77110669 unique, 0 with ALTERNATIVES, 0 undecided (+ the 6012966 reducible ones, for SAT); 233.2 s
+    c k=10: 5178066751 subsets; reduce: 70747105 candidates, 70610899 refuted, 0 REDUCIBLE, 136206 undecided; alt: 573360690 candidates, 573360690 unique, 0 with ALTERNATIVES, 0 undecided (+ the 70747105 reducible ones, for SAT); 1465.0 s
+    lines: 140916 R;
+--- proj47_5 00:23:27
+    c k=8: 314457495 subsets; reduce: 613598 candidates, 613490 refuted, 0 REDUCIBLE, 108 undecided; alt: 8759297 candidates, 8759297 unique, 0 with ALTERNATIVES, 0 undecided (+ the 613598 reducible ones, for SAT); 47.5 s
+    c k=9: 1362649145 subsets; reduce: 8487646 candidates, 8479921 refuted, 0 REDUCIBLE, 7725 undecided; alt: 79875713 candidates, 79875713 unique, 0 with ALTERNATIVES, 0 undecided (+ the 8487646 reducible ones, for SAT); 293.3 s
+    c k=10: 5178066751 subsets; reduce: 89441970 candidates, 89188668 refuted, 0 REDUCIBLE, 253302 undecided; alt: 568655467 candidates, 568655467 unique, 0 with ALTERNATIVES, 0 undecided (+ the 89441970 reducible ones, for SAT); 1850.9 s
+    lines: 261135 R;
+--- projkm47_7 00:59:59
+    c k=8: 314457495 subsets; reduce: 515272 candidates, 515134 refuted, 0 REDUCIBLE, 138 undecided; alt: 8853709 candidates, 8853709 unique, 0 with ALTERNATIVES, 0 undecided (+ the 515272 reducible ones, for SAT); 45.0 s
+    c k=9: 1362649145 subsets; reduce: 7708097 candidates, 7701142 refuted, 0 REDUCIBLE, 6955 undecided; alt: 82846437 candidates, 82846437 unique, 0 with ALTERNATIVES, 0 undecided (+ the 7708097 reducible ones, for SAT); 265.7 s
+    c k=10: 5178066751 subsets; reduce: 85605619 candidates, 85395358 refuted, 0 REDUCIBLE, 210261 undecided; alt: 598694334 candidates, 598694334 unique, 0 with ALTERNATIVES, 0 undecided (+ the 85605619 reducible ones, for SAT); 1664.6 s
+    lines: 217354 R;
+=== B: SAT on the k=7 all-dependent subsets, alt mode, start 01:32:55
+    km47 alt (20052, budget 500000): 'timeout' 3125; 'UNSAT' 16927; 'SAT' 0;  schemes 0 06:13:07

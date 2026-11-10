@@ -1,0 +1,37 @@
+=== P1 start 07:29:20
+--- km47 07:29:20
+    c k=8: 108 refuted
+    c k=9: 5173 refuted
+    c k=10: 161183 refuted
+    c 117.9 s
+    c wrote 0 lines to /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/kres/deep/P1_km47.txt
+    verdict lines: 
+--- at47 07:31:18
+    c k=8: 138 refuted
+    c k=9: 9045 refuted
+    c k=10: 284268 refuted
+    c 92.7 s
+    c wrote 0 lines to /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/kres/deep/P1_at47.txt
+    verdict lines: 
+--- ref47 07:32:51
+    c k=8: 108 refuted
+    c k=9: 4602 refuted
+    c k=10: 136206 refuted
+    c 104.6 s
+    c wrote 0 lines to /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/kres/deep/P1_ref47.txt
+    verdict lines: 
+--- proj47_5 07:34:35
+    c k=8: 108 refuted
+    c k=9: 7725 refuted
+    c k=10: 253302 refuted
+    c 80.7 s
+    c wrote 0 lines to /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/kres/deep/P1_proj47_5.txt
+    verdict lines: 
+--- projkm47_7 07:35:56
+    c k=8: 138 refuted
+    c k=9: 6955 refuted
+    c k=10: 210261 refuted
+    c 152.6 s
+    c wrote 0 lines to /private/tmp/claude-501/-Users-greg-projects-logic/fde6fc44-1302-4fb7-9f35-47e08b29f1c6/scratchpad/kres/deep/P1_projkm47_7.txt
+    verdict lines: 
+=== P1 done 07:38:29

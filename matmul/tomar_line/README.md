@@ -638,10 +638,13 @@ starts), so the comparison is by type.
   S + <N_1, ..., N_delta> with rank-one N_i is spanned by rank-one
   elements.  For delta = 1 the N are confined: W is spanned only if some
   N + s with 0 != s in S is rank-one too, so s = N + (N + s) has rank at
-  most 2 and N is one of the two-term rank-one splits of a rank-<=2 element
-  of S (six per rank-2 element, 2^nr + 2^nc - 4 per rank-1 element); the
-  exact test is span(rank-one elements of S) + span{s in S : N + s
-  rank-one} = S.  For delta >= 2 the first N runs over every rank-one
+  most 2, and s must lie outside the span S' of the rank-one elements of S
+  to add anything, so s is a rank-two element of S outside S' and N is one
+  of its six two-term rank-one splits (the first version also tried the
+  2^nr + 2^nc - 4 neighbours of every rank-one element of S, which are
+  redundant: 40x slower, identical verdicts on 455,573 subsets); the exact
+  test is S' + span{s in S : N + s rank-one} = S.  For delta >= 2 the
+  first N runs over every rank-one
   matrix outside S and the rest recurse.  Alternatives in the deficient
   case: a W other than the original space U, or U with more than k
   rank-one elements.  Every YES carries the new products and is verified
@@ -675,10 +678,15 @@ starts), so the comparison is by type.
   representatives, found47_km56, the walk parents' 47s, the two 166 points)
   has two products sharing a factor, so Kruskal's two-independent-slot
   criterion is complete for them and no Kauers-Moosbauer flip leaves a 47
-  (the flip engine only ever moves through rank 48).  Running from 07:40
-  (proj/kres_deep_enum.zsh, scratchpad kres/deep/p3.log): the alternatives
-  question for the all-dependent subsets at k = 8..10 (delta = 1 for dims
-  (k-1,k-1,k-1)) by re-enumeration, then k = 11 reduce + alt, five classes.
+  (the flip engine only ever moves through rank 48).  Running from 08:42
+  (proj/kres_deep_enum.zsh, scratchpad kres/deep/p3.log; a first launch at
+  07:40 was stopped by mistake -- its grep|sed log pipeline was
+  block-buffered and read as a stall; kres now logs straight to a file):
+  the alternatives question for the all-dependent subsets at k = 8..10
+  (delta = 1 for dims (k-1,k-1,k-1)) by re-enumeration, then k = 11 reduce
+  + alt, five classes; the k = 8 alt pass over km47's 455,573 all-dependent
+  subsets takes 0.7 s, so the sweep should run about as long as the
+  overnight's phase A plus k = 11.
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

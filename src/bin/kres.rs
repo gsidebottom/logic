@@ -25,10 +25,10 @@
 //!     or whether S has more than k rank-one elements (alt: another rank-one basis);
 //!   * m < target ("deficient", delta = target - m): W = S + <N_1, ..., N_delta> with
 //!     rank-one N_i.  For delta = 1 the N are confined: W is spanned only if some N + s
-//!     (s in S, s != 0) is rank-one too, so s = N + N' has rank <= 2, and N is one of the
-//!     two-term rank-one splits of a rank-<=2 element of S (six per rank-2 element,
-//!     2^nr + 2^nc - 4 per rank-1 element); the exact test is
-//!     span(rank-one elements of S) + span{s in S : N + s rank-one} = S.
+//!     (s in S, s != 0) is rank-one too, and s must lie outside the span S' of the
+//!     rank-one elements of S to add anything, so s = N + N' is a rank-two element of S
+//!     outside S' and N is one of its six two-term rank-one splits; the exact test is
+//!     S' + span{s in S : N + s rank-one} = S.
 //!     For delta >= 2 the first N runs over every rank-one matrix outside S and the rest
 //!     recurse; the cost is (2^nr - 1)(2^nc - 1) analyses of an (m+1)-dimensional space.
 //!   Alternatives in the deficient case: some W other than the original space U, or U with
@@ -301,7 +301,7 @@ fn rank2_splits(s: u128, nr: usize, nc: usize, out: &mut Vec<u128>) {
 }
 
 /// a space of nr x nc matrices with its rank-one and rank-two elements
-struct Space { ech: Vec<u128>, r1: Vec<u128>, r2: Vec<u128>, spanned: bool, le2_spans: bool }
+struct Space { ech: Vec<u128>, r1: Vec<u128>, r2: Vec<u128>, spanned: bool }
 
 fn analyze(ech: Vec<u128>, nr: usize, nc: usize) -> Space {
     let m = ech.len();
@@ -312,12 +312,7 @@ fn analyze(ech: Vec<u128>, nr: usize, nc: usize) -> Space {
         match rank_le3(cur, nr, nc) { 1 => r1.push(cur), 2 => r2.push(cur), _ => {} }
     }
     let spanned = echelon128(&r1).len() == m;
-    let le2_spans = spanned || {
-        let mut e = echelon128(&r1);
-        for &s in &r2 { insert128_into(&mut e, s); }
-        e.len() == m
-    };
-    Space { ech, r1, r2, spanned, le2_spans }
+    Space { ech, r1, r2, spanned }
 }
 
 /// Visit every space W >= S (sp) with dim W <= dim S + delta that is spanned by its rank-one elements,
@@ -326,22 +321,32 @@ fn search_w(sp: &Space, nr: usize, nc: usize, delta: usize, visit: &mut dyn FnMu
     if sp.spanned { return visit(&sp.ech); }
     if delta == 0 { return false; }
     if delta == 1 {
-        if !sp.le2_spans { return false; }
+        // S' = span of the rank-one elements of S, a proper subspace here.  W = S + <N> is spanned by its rank-one
+        // elements iff S' + span{s in S : N + s rank-one} = S.  The s that can add anything lie outside S', so they
+        // are rank-two elements of S outside S', and N is one of the six two-term splits of such an s (the
+        // candidates derived from rank-one elements of S are redundant: a working N is adjacent to some rank-two s).
         let m = sp.ech.len();
-        let mut cands: Vec<u128> = Vec::new();
-        for &s in &sp.r2 { rank2_splits(s, nr, nc, &mut cands); }
-        for &s in &sp.r1 {
-            let (x0, y0) = rank1_factors(s, nr, nc);
-            for y in 1..(1u32 << nc) { if y != y0 { cands.push(kron_small(x0, y, nc)); } }
-            for x in 1..(1u32 << nr) { if x != x0 { cands.push(kron_small(x, y0, nc)); } }
+        let sp_ech = echelon128(&sp.r1);
+        let r2x: Vec<u128> = sp.r2.iter().copied().filter(|&s| reduce128(&sp_ech, s) != 0).collect();
+        if r2x.is_empty() { return false; }
+        {
+            let mut e = sp_ech.clone();
+            for &s in &r2x { insert128_into(&mut e, s); }
+            if e.len() < m { return false; }
         }
+        let mut cands: Vec<u128> = Vec::with_capacity(6 * r2x.len());
+        for &s in &r2x { rank2_splits(s, nr, nc, &mut cands); }
         cands.sort_unstable();
         cands.dedup();
+        let mut e: Vec<u128> = Vec::with_capacity(m + 1);
         for &n in &cands {
             if reduce128(&sp.ech, n) == 0 { continue; }
-            let mut gens: Vec<u128> = sp.r1.clone();
-            for &s in sp.r1.iter().chain(sp.r2.iter()) { if is_rank1(n ^ s, nr, nc) { gens.push(s); } }
-            if echelon128(&gens).len() == m {
+            e.clear();
+            e.extend_from_slice(&sp_ech);
+            for &s in &r2x {
+                if is_rank1(n ^ s, nr, nc) { insert128_into(&mut e, s); if e.len() == m { break; } }
+            }
+            if e.len() == m {
                 let w = insert128(&sp.ech, n);
                 if visit(&w) { return true; }
             }

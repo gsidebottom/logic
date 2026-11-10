@@ -2888,8 +2888,10 @@ the two source papers for this track):
   Greg: 'still Python processes running; I thought we were going to rewrite in Rust' -- the Python was the pysat driver (the
   time was CaDiCaL's); the fix is to replace SAT by an exact test.  DEFICIENT-CASE DECIDER (kres.rs, same morning): rank(R)
   <= d iff some space W containing the slice space S (dim m), dim W <= d, is spanned by rank-one matrices; with delta =
-  d - m, for delta = 1 the extra matrix N must come from a two-term rank-one split of a rank-<=2 element of S (six per
-  rank-2 element), exact test span(rank-1 of S) + span{s : N + s rank-1} = S; delta >= 2 recurses over all rank-one N.
+  d - m, for delta = 1 the extra matrix N must come from a two-term rank-one split of a rank-2 element of S outside the
+  span S' of its rank-one elements (six per element; the rank-one-derived candidates of the first version were redundant,
+  dropping them is 40x faster with identical verdicts), exact test S' + span{s : N + s rank-1} = S; delta >= 2 recurses
+  over all rank-one N.
   Yes-verdicts carry the new products, tensor-verified; kres --lines / --subset, kres_apply.py (splice + Brent),
   kres_ctrl.py (planted controls).  Controls pass (tomar_line/proj/logs/kres_deep_controls_2026-11-10.txt): 600 SAT-refuted
   k=8 leftovers refuted, 3,790 SAT-unique k<=6 alt subsets unique, planted 9->8 reductions found through both the delta=1
@@ -2898,8 +2900,10 @@ the two source papers for this track):
   reduce lines REFUTED (k=9 33,500; k=10 1,045,220; 80-150 s per class) -> NO RANK-46 WITHIN 10 PRODUCTS of any known 47
   (exact, five classes = all 193 held schemes); k=7 all-dependent alternatives: all 128,981 unique in 2 s -> NO OTHER 47
   WITHIN 7 PRODUCTS of a known one.  Side fact: no rank-47 scheme we hold has two products sharing a factor (Kruskal
-  complete; no KM flip leaves a 47).  Running 07:40- (tomar_line/proj/kres_deep_enum.zsh): alt for all-dependent subsets
-  k=8..10 by re-enumeration (delta=1 for dims (k-1,k-1,k-1)), then k=11 reduce + alt, five classes (~10 h).
+  complete; no KM flip leaves a 47).  Running 08:42- (tomar_line/proj/kres_deep_enum.zsh; the 07:40 launch was stopped
+  by mistake: its grep|sed log pipeline was block-buffered and I read 60 min of silence as a stall -- kres logs to a file
+  now): alt for all-dependent subsets k=8..10 by re-enumeration (delta=1 for dims (k-1,k-1,k-1); 0.7 s for km47's
+  455,573 at k=8), then k=11 reduce + alt, five classes (~4 h).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

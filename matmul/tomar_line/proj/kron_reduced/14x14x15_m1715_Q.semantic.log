@@ -1,0 +1,2 @@
+14x14x15_delI0_J0_Q.json: shape (14, 14, 15), 1715 products; 2 random products with entries up to 1e9: wrong entries per trial [0, 0] -> ALL EXACT; one coefficient changed: 1 wrong entries -> REJECTED (0.9 s)
+semantic exit 0 22:41:31

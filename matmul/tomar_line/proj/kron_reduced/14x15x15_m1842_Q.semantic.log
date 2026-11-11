@@ -1,0 +1,6 @@
+=== semantic check
+14x15x15_m1842_Q.json: shape (14, 15, 15), 1842 products; 3 random products with entries up to 1e9: wrong entries per trial [0, 0, 0] -> ALL EXACT; one coefficient changed: 1 wrong entries -> REJECTED (1.0 s)
+exit 0 22:11:37
+=== ranks
+14x15x15_m1842_Q.json: shape 14x15x15, 1842 products, Kronecker-span ranks [1842, 1842, 1842] -> bound 1842 (11.9 s)
+exit 0 22:11:49

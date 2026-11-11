@@ -1,0 +1,8 @@
+13x14x16_m1805_drop252.json: shape (13, 14, 16), m = 1805
+  [scheme] m = 1805; common denominators [1, 1, 1]; bound B on every entry: 11 bits (below 2^53)
+  [scheme] slot-2 index convention ik: modular route: contraction 1 FAILS modulo 1048573 (0.1 s); direct route: float64 contraction FAILS (5712 entries differ) (0.1 s)
+  [scheme] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 1 + 1 primes (each product above 2 (B + DD), 12 bits) (0.2 s); direct route: float64 and int64 contractions EXACT MATCH (0.4 s)
+  [negative control: one entry changed] m = 1805; common denominators [1, 1, 1]; bound B on every entry: 11 bits (below 2^53)
+  [negative control: one entry changed] slot-2 index convention ki: modular route: contraction 1 FAILS modulo 1048573 (0.1 s); direct route: float64 contraction FAILS (9 entries differ) (0.1 s)
+  RESULT 13x14x16_m1805_drop252.json: 1805 products; VERIFIES EXACTLY (ki); corrupted copy REJECTED; ring: TERNARY (all coefficients in {-1, 0, 1}); distinct values per slot [3, 3, 3]
+13x14x16_m1805_drop252.json: shape (13, 14, 16), 1805 products; 3 random products with entries up to 1e9: wrong entries per trial [0, 0, 0] -> ALL EXACT; one coefficient changed: 1 wrong entries -> REJECTED (0.5 s)

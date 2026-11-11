@@ -744,6 +744,224 @@ starts), so the comparison is by type.
   proj/logs/kres_deep_alt2_2026-11-10.txt (with the 1,932 depth-3 lines)
   and proj/logs/kres_deep_enum_2026-11-10.txt (k = 8..10 per class).
 
+- The five rank-47 classes are ONE 48-scheme family (2026-11-10 evening,
+  found while preparing a speed-up of kres).  Prior art first: the move
+  below is the BLOCK FLIP, and the dependency test of the next bullet the
+  2-REDUCIBILITY, of LITA ("Local Improvements to Trilinear Aggregation",
+  Khoruzhii, Serafin, Gelss, Pokutta, github.com/khoruzhii/lita, pushed
+  2026-10-07, manuscript in preparation; it presents 2-reducibility as a
+  strict generalisation of the Kauers-Moosbauer reducibility of
+  arXiv:2212.01175 and ships a fast check, src/reduce.h).  We met both
+  independently on 2026-11-10 and use their names; nothing here is a new
+  move, and neither is the "generalized flip" of Alexandre's bud move
+  (tested NULL in October).
+  The census: for a direction d take G_d = the span of the 47 Kronecker
+  products of the two OTHER slots' factors, and list every rank-one
+  element of G_d (proj/kron_census.py, a Gray code over the first factor
+  with one small elimination per step; the same census in Rust,
+  kres --census, agrees on all five classes and on two planted controls).
+  In every class dim G_d = 47 in all three directions (no dependency, so
+  no scheme is 2-reducible), and the rank-one elements are the 47 products
+  plus exactly ONE extra, in one direction, whose index set is all 47
+  products: THE SUM OF ALL 47 KRONECKER PRODUCTS IS RANK ONE (km47 and
+  projkm47_7 in direction 1; at47, ref47 and proj47_5 in direction 2).
+  The family: with K_t the Kronecker products, z_t the third factors and
+  K* = sum_t K_t, every vector beta of the third slot gives
+      T = sum_t K_t (x) (z_t + beta)  +  K* (x) beta,
+  48 products in general and 47 when beta = 0 (the scheme itself) or
+  beta = z_j (product j disappears): 47 neighbours per scheme, none
+  sharing a product with it (which is why the k <= 10 statement above
+  never saw them).  Scan of all 65,536 beta for km47
+  (proj/allsum_betascan.py): exactly those 48 give 47 products.
+  Classes of the 48 (proj/allsum_flip.py writes the neighbours,
+  scheme_iso.py sorts them, exact): from EACH of the five representatives
+  the family splits 24 KM / 12 projkm47_7 / 4 AT / 4 ref47 / 4 proj47_5.
+  So NO NEW CLASS, and the five classes we collected over a month are one
+  family up to the symmetries of the tensor: one block flip from each
+  other.
+  Does a second move leave the family?  In the family direction it
+  cannot: every member spans the same G_d, whose rank-one elements are
+  the 47 K_t and K*, so the 2-reductions of a 48-product member are
+  exactly the 48 rank-47 members, and the block flip of a rank-47 member
+  is the family again.  For the two other directions, a census of all
+  65,536 members of km47's family (proj/allsum_beta_census.py, the 48
+  rank-47 members and the 65,488 with 48 products): every member has full
+  Kronecker rank and no extra rank-one element.  So no member is
+  2-reducible below 47 (no 46 here) and no member has a second block
+  flip: the family is closed.
+  Logs: proj/logs/kron_census_and_scans_2026-11-10.txt (sections
+  kres/census/*).
+
+- 2-reducibility at catalog scale, and RANK RECORDS BY PROJECTION +
+  PIVOT SEARCH (2026-11-10 evening).  The test is LITA's (see the bullet
+  above for the credit): in direction d write a scheme as
+  sum_t K_t (x) f_t, K_t the Kronecker product of the two other slots'
+  factors of product t and f_t its slot-d factor; when the K_t are
+  dependent, one product per dependency can be dropped after folding its
+  f into the others.  Tools: proj/kron_fast.py (the three Kronecker-span
+  ranks modulo a prime, from Gram matrices), proj/kron_reduce.py (the
+  reduction EXACTLY over Q: dependencies modulo 2^31 - 1, lifted to Q
+  from several primes by the Chinese remainder theorem -- a one-prime
+  lift fails on the large schemes -- each verified exactly on the
+  Kronecker products, then the Brent equations of input and output
+  verified exactly by two independent routes, and a corrupted copy of the
+  output must be REJECTED), proj/scheme_semantic_check.py (shares no code:
+  runs the scheme on random integer matrices in exact rationals, and
+  requires a copy with one changed coefficient to fail).
+  What we hold (negative).  Every record-rank F_2 store has full
+  Kronecker rank in all three directions: 2x4x5 rank 33 (28,202 files),
+  3x3x3 rank 23 (201,379), 3x3x4 rank 29 (4,631), 3x3x5 rank 36 (12,005),
+  4x4x4 (2,033 files).  Of the 47,320 rank-39 landings of 3x4x4, 8,830
+  reduce to 38 (176 of them by a dependency no flip sees); 38 is the
+  known record.
+  The catalog (dronperminov/FastMatrixMultiplication at 6f8ef61 of
+  2026-11-09, 680 shapes, rings Q / Z / ZT): 4,185 scheme files in four
+  formats scanned, 21 flagged as 2-reducible, one file not scanned
+  (known/mizopl/3x6x8_m108_cr381_cn1412_ZT_reduced.json, an
+  addition-reduced program in another layout).  Three flagged files hold
+  the catalog's best rank of their shape and ring, and their exact
+  reductions are records by themselves: 13x14x14 over Q 1582 -> 1580,
+  15x16x16 over Q 2223 -> 2221, 13x14x16 ternary 1806 -> 1805 (the
+  catalog's Z and ZT columns; its Q column stays 1796).  The other
+  flagged files tie or stay above the catalog's best of their shape
+  (11x12x15 and 12x12x14 m1240 -> 1234, 5x12x16 m656 -> 655, ...).
+  Projection.  The catalog carries seven square schemes of LITA
+  (known/lita: 13x13x13 m1379 and m1420, 14x14x14 m1594 and m1603,
+  15x15x15 m1977, 16x16x16 m2237 and m2247).  Deleting one row index of A
+  (proj/kron_project.py; products with a zero factor die) gives a scheme
+  of the next smaller shape that is 2-reducible, and the catalog's own
+  rational entries for those shapes look like exactly that: its 13x14x14
+  m1602 and 15x16x16 m2246 files have the rank signatures of the
+  projected m1603 and m2247 ([1588, 1602, 1589] and [2230, 2246, 2231]).
+  THE DROPPED SET IS A SEARCH SPACE (proj/kron_kill.py).  With N (k x m)
+  the dependency space of the K_t, every F + N^T W is a scheme with the
+  same K_t, and a zero row is a product gone.  The best W sits at a pivot
+  set (k products whose dependencies are independent); exchanging pivot j
+  for product t changes only the rows in the support of the normalised
+  dependency of j, and the rows that vanish are those sharing t's ratio
+  f'_s / N'[j, s], so one step's gain is (size of t's ratio group) -
+  (size of the zero group).  Greedy start on the products with most
+  companions, then exchange steps with plateau walking.  The gain is not
+  "one per dependency" and not even "about two": 29 for 14, 34 for 16,
+  113 for 17 dependencies below.
+  Results.  Row index 0 of A deleted, pivots found modulo 1048573
+  (three trials each, all the same count), then replayed over Q and
+  verified exactly twice (kron_reduce.py's two Brent routes with its
+  corrupted-copy control, then scheme_semantic_check.py).  The last two
+  rows delete a second index from the verified 14x15x15 scheme: inner
+  index 0, column 0 of A and row 0 of B (14x14x15), or row 7 of its A,
+  the source's row 8 (13x15x15):
+
+    shape     LITA source      alive  ranks after the deletion  step                   rank  catalog Q  [S]
+    13x14x14  14x14x14 m1594   1594   [1580, 1594, 1580]        d2: 14 dep,  29 gone   1565  1582       1614
+    15x16x16  16x16x16 m2237   2237   [2221, 2237, 2221]        d2: 16 dep,  34 gone   2203  2223       2262
+    14x15x15  15x15x15 m1977   1955   [1938, 1955, 1948]        d0: 17 dep, 113 gone   1842  1848       1890
+    14x14x15  15x15x15 m1977   1827   second deletion           d1: 17 dep, 112 gone   1715  1790       1798
+    13x15x15  15x15x15 m1977   1797   second deletion           d0: 21 dep,  34 gone   1763  1776       1797
+
+  ([S] = the rank on Sedoglavic's page fmm.univ-lille.fr for the shape,
+  which lags the catalog.)  All five outputs have full Kronecker rank in
+  all three directions.  Coefficients are rational with denominators up
+  to 400, 720, 1088, 1088 and 1088 (the 14x15x15 scheme: 62,867 + 35,592 + 31,539
+  nonzeros; the projected input's common denominators are 5440, 40, 40).
+  One product per dependency would have given 1580, 2221 and 1938: a
+  first sweep that screened by that count reported NO candidate for the
+  15x15x15 file.  Screen with the pivot search, not with the rank.
+  Other deletions, modulo the prime only (proj/kron_proj_multi.py, one
+  line per deletion sequence; proj/kron_proj_catalog.py, one line per
+  file, for whole directories):
+  * 14x14x14 m1603 less row 0: 1574 (below the catalog's 1582, above
+    1565).
+  * 13x13x13 m1379, all 39 single deletions: 30 reach 1275, 6 reach 1276
+    and index 6 of each slot stops at 1340.  The catalog's 12x13x13 is
+    1274 (from Sedoglavic's tensor file): one short.  The deleted index
+    matters, the slot does not (the same pattern in I, J and K).
+  * 15x15x15 m1977, sample single deletions: indices 0 and 14 of every
+    slot give 1842, I1 gives 1843, the middle index 7 of each slot only
+    1932 (8 dependencies and 14 gone, then 1 and 1).  Forcing the first
+    direction is worse: --first 2 gives 1939, --first 1 finds no
+    dependency; fold the best direction first.
+  * Two deletions from 15x15x15, the pivot search after each
+    (kron_proj_multi.py --mode each; the second index is an index of the
+    current scheme): I0 then any J or K index gives 14x14x15 at 1715 on
+    24 of 30 sequences and below the catalog's 1790 on 28 (worst 1804);
+    I0 then I7 gives 13x15x15 at 1763, the other 13 I-sequences 1786 to
+    1796.  Deleting both first and reducing once (--mode end) is worse:
+    1788 to 1793 for 13x15x15, 1811 for 14x14x15.
+  What this is and is not.  The reduction is LITA's 2-reducibility and
+  the schemes are LITA's; the catalog's author evidently projects them
+  already (the signatures above), and the catalog's records 1582 and
+  2223 for these shapes are themselves still 2-reducible by 2.  What is
+  added here is the search over WHICH products to drop.  We have not compared with what LITA's own reduction
+  (src/reduce.h) drops, and LITA's repository holds 14x14x14 r1593 and
+  16x16x16 r2236, one below the catalog's copies: not downloaded (needs
+  Greg's say), and the same path applied to them is the obvious next
+  step.
+  Stored: proj/kron_reduced/<shape>_m<rank>_Q.json.gz (the catalog's JSON
+  convention) with .deps.json (the exact dependencies), .path.json
+  (deletion, direction, pivots), .reduce.log and .semantic.log, for
+  13x14x14 m1565, 15x16x16 m2203, 14x15x15 m1842, 14x14x15 m1715 and
+  13x15x15 m1763 (the last two hold the second stage; the first stage is
+  the 14x15x15 file); the direct
+  reductions 13x14x14 m1580, 15x16x16 m2221 and 13x14x16 m1805 (ZT) are
+  kept beside them.  Logs: proj/logs/kron_proj_records_2026-11-10.txt.
+  Open: the same two-deletion chains from LITA's 13x13x13, 14x14x14 and
+  16x16x16 squares (running at this commit), pairs, more pivot-search effort at 12x13x13, and the whole catalog
+  (391 files with m >= 1000; about 43 single-thread hours for every
+  single deletion) once the kres sweep frees the cores.
+
+- kres enumerator rebuilt on the rank-one census, and k = 11
+  (2026-11-10 evening; src/bin/kres.rs, the comment block above
+  `struct Census` has the proofs).  The census of the bullet above is
+  computed once per class.  A direction is USABLE when its 47 Kronecker
+  products are independent and the list of rank-one elements of G_d is
+  complete; then for every index set I the rank-one elements of the span
+  U_I of its Kronecker products are the |I| products themselves plus the
+  extras whose index set lies inside I.  All five classes have one extra
+  with index set all 47, so for |I| < 47 there is none, and three facts
+  replace most of the decider's work: a candidate of full flattening rank
+  in a usable direction is UNIQUE without a call; a slice space of
+  dimension |I| - 1 inside U_I is spanned by rank-one elements iff it
+  holds |I| - 1 of the products; U_I never holds more than |I| rank-one
+  elements.  Work units are index prefixes of length min(3, k - 1) handed
+  out one at a time (the old unit, the first index, left a single-threaded
+  tail).  Unit tests: 4 pass (census against brute force, prefixes cover
+  the subsets, the two older ones).
+  Regression against the old binary's passes, counts AND every output
+  line identical (seconds on 12 threads):
+
+      class        k = 8        k = 9         k = 10          k = 11        lines compared
+      km47         1.3 (57.3)   14.3 (320.8)  171.5 (2284.0)  1458.1 (21006.3)   3,708,935 at k = 11
+      at47         2.1          20.6          211.2           -             293,451
+      ref47        0.9          10.1          124.4           -             140,916
+      proj47_5     1.1          12.4          149.2           -             261,135
+      projkm47_7   1.2          12.9          150.3           -             217,354
+
+  (old binary in parentheses; 14.4x at k = 11, 44x at k = 8).
+  k = 11, 17,417,133,617 subsets per class, both questions:
+
+      class        reduce candidates   refuted       alt unique       with alternatives   alt open     seconds
+      km47           696,533,842       all (0 open)  4,009,871,769    0                   3,708,935    1458.1
+      at47           836,152,622       all (0 open)  4,288,209,270    0                   5,863,323    1589.3
+      ref47          639,452,711       all (0 open)  3,974,642,490    0                   3,107,355    1360.3
+      proj47_5       745,935,616       all (0 open)  3,952,191,420    0                   5,318,037    1488.4
+      projkm47_7     739,466,849       all (6 open)  4,136,130,372    0                   4,534,865    1598.9
+
+  So NO RANK-46 SCHEME SHARES 36 OR MORE PRODUCTS with a scheme of the
+  five classes (exact, k <= 11), and no alternative rank-47 decomposition
+  shows up at depth 1; the open lines (candidates two or more short of a
+  spanning set) go to the depth-2 pass as at k <= 10.  Depth 2 (105 to
+  191 s per class) refutes projkm47_7's 6 open reduce lines and leaves
+  9,109 / 10,518 / 9,267 / 9,783 / 12,297 alternative lines open (km47 /
+  at47 / ref47 / proj47_5 / projkm47_7; slice dimensions mostly 8,8,8),
+  none positive.  The 50,974 lines left go to a depth-3 pass, running at
+  this commit (proj/kres_census_k11_alt3.zsh; at k <= 10 depth 3 took
+  0.5 to 0.7 s per line at 12 threads).
+  Drivers as run: proj/kres_census_k11.zsh (the sweep with its
+  regressions), proj/kres_census_k11_alt2.zsh (the depth-2 pass),
+  proj/kres_census_k11_chain.zsh; log
+  proj/logs/kres_census_k11_2026-11-10.txt.
+
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes
   (d180 r47-00007/13/14, d180b r47-00012), excursions up to 2 above 47

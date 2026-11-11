@@ -2919,6 +2919,41 @@ the two source papers for this track):
   has rank exactly k and a unique k-term decomposition), matching the rank-46 statement; logs proj/logs/kres_deep_alt2_
   2026-11-10.txt, kres_deep_enum_2026-11-10.txt.  NOTE: target/release/kres is still the sweep's 08:40 binary (today's
   builds live in scratchpad kres/build/); rebuild after k=11 ends (touch src/bin/kres.rs first).
+  2026-11-10 evening, THREE THINGS (tomar_line/README.md has the full bullets).
+  (a) RANK-ONE CENSUS -> ONE 48-FAMILY.  In every rank-47 class the Kronecker products of each direction are independent
+  (dim 47) and their span holds exactly ONE more rank-one element, in one direction (km47 d=1, at47 d=2, ref47 d=2,
+  proj47_5 d=2, projkm47_7 d=1), a combination of all 47.  That is a 48-term family T = sum_t K_t (x) (z_t + b) + K* (x) b
+  with 47 products iff b = 0 or b = z_j; its 48 members split 24 KM / 12 projkm47_7 / 4 AT / 4 ref47 / 4 proj47_5 from
+  EVERY class: the five classes are one family, no new class, no 46 in it.  PRIOR ART: this is the "2-reducible" test and
+  the "block flip" of LITA (github.com/khoruzhii/lita, Khoruzhii, Serafin, Gelss, Pokutta; generalises Kauers-Moosbauer
+  reducibility) -- credit them, use their names, not new.
+  (b) kres ENUMERATOR REBUILT ON THE CENSUS (src/bin/kres.rs, struct Census): with the complete rank-one list of a usable
+  direction, full-flattening-rank candidates are unique without a decider call and the spanning question is a count;
+  work units are index prefixes.  Regression against the old binary: counts and every output line identical on all five
+  classes at k = 8..10 and on km47 at k = 11 (1458 s vs 21,006 s, 14.4x; k = 8: 1.3 s vs 57.3 s).  k = 11 (17,417,133,617
+  subsets per class): reduce candidates ALL REFUTED, 0 open, and 0 alternatives at depth 1 in km47 / at47 / ref47 /
+  proj47_5 / projkm47_7 (696.5 M / 836.2 M / 639.5 M / 745.9 M / 739.5 M reduce candidates, projkm47_7 with 6 open at
+  depth 1, refuted at depth 2; alt open 3,708,935 / 5,863,323 / 3,107,355 / 5,318,037 / 4,534,865 -> depth-2 pass).
+  -> NO RANK-46 WITHIN 11 PRODUCTS of those classes (exact).
+  Depth 2 (105-191 s per class): 9,109 / 10,518 / 9,267 / 9,783 / 12,297 alternative lines open, none positive;
+  depth 3 on the 50,974 lines running at this commit (proj/kres_census_k11_alt3.zsh; 0.5-0.7 s per line at k <= 10,
+  so about 8 h).
+  (c) 2-REDUCIBILITY AT CATALOG SCALE + RANK RECORDS (proj/kron_*.py).  Our F_2 record stores all have full Kronecker
+  rank (negative).  Perminov's catalog (dronperminov/FastMatrixMultiplication 6f8ef61, 680 shapes): 4,185 files scanned,
+  21 flagged; direct exact reductions 13x14x14 Q 1582 -> 1580, 15x16x16 Q 2223 -> 2221, 13x14x16 ZT 1806 -> 1805.  Then
+  PROJECTION + PIVOT SEARCH on LITA's square schemes (delete row 0 of A, then choose WHICH products the dependencies
+  kill: kron_kill.py, an exchange walk over pivot sets, gain = ratio-group size): 13x14x14 over Q 1565 (catalog 1582,
+  Sedoglavic's page 1614), 15x16x16 over Q 2203 (2223; 2262), 14x15x15 over Q 1842 (1848; 1890) -- each replayed over Q,
+  Brent-verified exactly by two routes + an independent semantic check, corrupted copies rejected; stored in
+  proj/kron_reduced/.  The count "one per dependency" under-predicts (it gave 1580 / 2221 / 1938): screen with the pivot
+  search.  Near miss: 12x13x13 from 13x13x13 m1379 reaches 1275 on 30 of 39 single deletions, record 1274.  Honest
+  framing: LITA's test on LITA's schemes, and the catalog's author already projects and reduces them; ours is the pivot
+  choice.  LITA's own r1593 / r2236 squares not downloaded (needs Greg's say).
+  2026-11-10 22:30-22:41: TWO-DELETION CHAINS from 15x15x15 m1977 add 14x14x15 Q 1715 (catalog 1790, Sedoglavic 1798;
+  I0 then the inner index 0) and 13x15x15 Q 1763 (catalog 1776, Sedoglavic 1797; I0 then row 7 of the 14x15x15
+  scheme), each verified exactly twice: FIVE verified rank records, stored in proj/kron_reduced/.
+  NOTE: target/release/kres is still the old build; kres_census (scratchpad kres/build/) is this source; rebuild after
+  the k = 11 chain ends (touch src/bin/kres.rs first).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).

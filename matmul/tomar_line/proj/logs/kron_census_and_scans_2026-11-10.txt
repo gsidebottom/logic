@@ -1,0 +1,911 @@
+Consolidated logs, 2026-11-10: the rank-one census of the five rank-47 classes, the 48-scheme family, the family-member census, and the 2-reducibility scans of our stores and of the catalog.
+Scratch paths are shortened to $S. Each section is one log file, verbatim, lines cut at 600 characters.
+
+##### kres/census/py_at47.log
+at47.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+at47.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+at47.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0010000101000111 y=0000001110010101 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+at47.bits: NOT CLEAN
+
+##### kres/census/py_ctrl_c1.log
+ctrl_c1.bits d=0: products 48, dim G 48, dependencies 0, rank-one elements 51 (originals 48, extra 3) -> NOT CLEAN
+   EXTRA |J|=2 x=0110000001100110 y=0000000000000100 J=[29, 47]
+   EXTRA |J|=2 x=0110110101100110 y=1111000011101000 J=[0, 1]
+   EXTRA |J|=3 x=0110110101100110 y=1111000011101100 J=[0, 1, 47]
+ctrl_c1.bits d=1: products 48, dim G 48, dependencies 0, rank-one elements 53 (originals 48, extra 5) -> NOT CLEAN
+   EXTRA |J|=2 x=0000000000001000 y=1111000011101000 J=[0, 1]
+   EXTRA |J|=2 x=0111000001001110 y=0000000000000100 J=[29, 47]
+   EXTRA |J|=2 x=0111000001001000 y=1111000011101100 J=[1, 47]
+   EXTRA |J|=3 x=0111000001001110 y=0000000000001000 J=[15, 29, 47]
+   EXTRA |J|=47 x=0101010000001100 y=0000000000000110 J=[0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+ctrl_c1.bits d=2: products 48, dim G 48, dependencies 0, rank-one elements 50 (originals 48, extra 2) -> NOT CLEAN
+   EXTRA |J|=2 x=0111000001001000 y=1110110111101110 J=[1, 47]
+   EXTRA |J|=3 x=0000000000001000 y=1110110111101110 J=[0, 1, 47]
+ctrl_c1.bits: NOT CLEAN
+
+##### kres/census/py_ctrl_c2.log
+ctrl_c2.bits d=0: products 48, dim G 48, dependencies 0, rank-one elements 51 (originals 48, extra 3) -> NOT CLEAN
+   EXTRA |J|=2 x=0110000001100110 y=0000000000000100 J=[29, 47]
+   EXTRA |J|=2 x=0110110101100110 y=1111000011101000 J=[0, 1]
+   EXTRA |J|=3 x=0110110101100110 y=1111000011101100 J=[0, 1, 47]
+ctrl_c2.bits d=1: products 48, dim G 48, dependencies 0, rank-one elements 53 (originals 48, extra 5) -> NOT CLEAN
+   EXTRA |J|=2 x=0000000000001000 y=1111000011101000 J=[0, 1]
+   EXTRA |J|=2 x=0111000001001110 y=0000000000000100 J=[29, 47]
+   EXTRA |J|=2 x=0111000001001000 y=1111000011101100 J=[1, 47]
+   EXTRA |J|=3 x=0111000001001110 y=0000000000001000 J=[15, 29, 47]
+   EXTRA |J|=47 x=0101010000001100 y=0000000000000110 J=[0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+ctrl_c2.bits d=2: products 48, dim G 48, dependencies 0, rank-one elements 50 (originals 48, extra 2) -> NOT CLEAN
+   EXTRA |J|=2 x=0111000001001000 y=1110110111101110 J=[1, 47]
+   EXTRA |J|=3 x=0000000000001000 y=1110110111101110 J=[0, 1, 47]
+ctrl_c2.bits: NOT CLEAN
+
+##### kres/census/py_km47.log
+km47.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+km47.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0101010000001100 y=0000000000000110 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+km47.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+km47.bits: NOT CLEAN
+
+##### kres/census/py_nb_at47_j00.log
+at47_d2_j00.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+at47_d2_j00.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+at47_d2_j00.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0000000000000100 y=0000000100000000 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+at47_d2_j00.bits: NOT CLEAN
+
+##### kres/census/py_nb_at47_j23.log
+at47_d2_j23.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+at47_d2_j23.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+at47_d2_j23.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=1100000001011000 y=0000010000000000 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+at47_d2_j23.bits: NOT CLEAN
+
+##### kres/census/py_nb_km47_j00.log
+km47_d1_j00.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+km47_d1_j00.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0000000000001000 y=1111000011101000 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+km47_d1_j00.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+km47_d1_j00.bits: NOT CLEAN
+
+##### kres/census/py_nb_km47_j23.log
+km47_d1_j23.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+km47_d1_j23.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=1001000000000000 y=0011110001100000 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+km47_d1_j23.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+km47_d1_j23.bits: NOT CLEAN
+
+##### kres/census/py_proj47_5.log
+proj47_5.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+proj47_5.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+proj47_5.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0000000100010001 y=0000000000001101 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+proj47_5.bits: NOT CLEAN
+
+##### kres/census/py_projkm47_7.log
+projkm47_7.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+projkm47_7.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0011000010000000 y=1000000000100000 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+projkm47_7.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+projkm47_7.bits: NOT CLEAN
+
+##### kres/census/py_ref47.log
+ref47.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+ref47.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+ref47.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=1000100010001000 y=1111000000000000 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+ref47.bits: NOT CLEAN
+
+##### kres/census/rs_at47.log
+at47.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+at47.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+at47.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0010000101000111 y=0000001110010101 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+at47.bits: NOT CLEAN
+
+##### kres/census/rs_ctrl_c1.log
+ctrl_c1.bits d=0: products 48, dim G 48, dependencies 0, rank-one elements 51 (originals 48, extra 3) -> NOT CLEAN
+   EXTRA |J|=2 x=0110000001100110 y=0000000000000100 J=[29, 47]
+   EXTRA |J|=2 x=0110110101100110 y=1111000011101000 J=[0, 1]
+   EXTRA |J|=3 x=0110110101100110 y=1111000011101100 J=[0, 1, 47]
+ctrl_c1.bits d=1: products 48, dim G 48, dependencies 0, rank-one elements 53 (originals 48, extra 5) -> NOT CLEAN
+   EXTRA |J|=2 x=0000000000001000 y=1111000011101000 J=[0, 1]
+   EXTRA |J|=2 x=0111000001001110 y=0000000000000100 J=[29, 47]
+   EXTRA |J|=2 x=0111000001001000 y=1111000011101100 J=[1, 47]
+   EXTRA |J|=3 x=0111000001001110 y=0000000000001000 J=[15, 29, 47]
+   EXTRA |J|=47 x=0101010000001100 y=0000000000000110 J=[0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+ctrl_c1.bits d=2: products 48, dim G 48, dependencies 0, rank-one elements 50 (originals 48, extra 2) -> NOT CLEAN
+   EXTRA |J|=2 x=0111000001001000 y=1110110111101110 J=[1, 47]
+   EXTRA |J|=3 x=0000000000001000 y=1110110111101110 J=[0, 1, 47]
+ctrl_c1.bits: NOT CLEAN
+
+##### kres/census/rs_ctrl_c2.log
+ctrl_c2.bits d=0: products 48, dim G 48, dependencies 0, rank-one elements 51 (originals 48, extra 3) -> NOT CLEAN
+   EXTRA |J|=2 x=0110000001100110 y=0000000000000100 J=[29, 47]
+   EXTRA |J|=2 x=0110110101100110 y=1111000011101000 J=[0, 1]
+   EXTRA |J|=3 x=0110110101100110 y=1111000011101100 J=[0, 1, 47]
+ctrl_c2.bits d=1: products 48, dim G 48, dependencies 0, rank-one elements 53 (originals 48, extra 5) -> NOT CLEAN
+   EXTRA |J|=2 x=0000000000001000 y=1111000011101000 J=[0, 1]
+   EXTRA |J|=2 x=0111000001001110 y=0000000000000100 J=[29, 47]
+   EXTRA |J|=2 x=0111000001001000 y=1111000011101100 J=[1, 47]
+   EXTRA |J|=3 x=0111000001001110 y=0000000000001000 J=[15, 29, 47]
+   EXTRA |J|=47 x=0101010000001100 y=0000000000000110 J=[0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+ctrl_c2.bits d=2: products 48, dim G 48, dependencies 0, rank-one elements 50 (originals 48, extra 2) -> NOT CLEAN
+   EXTRA |J|=2 x=0111000001001000 y=1110110111101110 J=[1, 47]
+   EXTRA |J|=3 x=0000000000001000 y=1110110111101110 J=[0, 1, 47]
+ctrl_c2.bits: NOT CLEAN
+
+##### kres/census/rs_km47.log
+km47.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+km47.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0101010000001100 y=0000000000000110 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+km47.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+km47.bits: NOT CLEAN
+
+##### kres/census/rs_proj47_5.log
+proj47_5.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+proj47_5.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+proj47_5.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0000000100010001 y=0000000000001101 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+proj47_5.bits: NOT CLEAN
+
+##### kres/census/rs_projkm47_7.log
+projkm47_7.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+projkm47_7.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=0011000010000000 y=1000000000100000 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+projkm47_7.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+projkm47_7.bits: NOT CLEAN
+
+##### kres/census/rs_ref47.log
+ref47.bits d=0: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+ref47.bits d=1: products 47, dim G 47, dependencies 0, rank-one elements 47 (originals 47, extra 0) -> CLEAN
+ref47.bits d=2: products 47, dim G 47, dependencies 0, rank-one elements 48 (originals 47, extra 1) -> NOT CLEAN
+   EXTRA |J|=47 x=1000100010001000 y=1111000000000000 J=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]
+ref47.bits: NOT CLEAN
+
+##### kres/census/rs_at47.time
+real 0.02
+user 0.01
+sys 0.00
+
+##### kres/census/rs_km47.time
+real 0.22
+user 0.02
+sys 0.00
+
+##### kres/census/rs_proj47_5.time
+real 0.01
+user 0.01
+sys 0.00
+
+##### kres/census/rs_projkm47_7.time
+real 0.02
+user 0.01
+sys 0.00
+
+##### kres/census/rs_ref47.time
+real 0.01
+user 0.01
+sys 0.00
+
+##### kres/census/iso_at47.log
+  $S/wp/reps/at47.bits: new class representative
+  $S/kres/census/nb_at47/at47_d2_j24.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j43.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j45.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/wp/reps/km47.bits: new class representative
+  $S/kres/census/nb_at47/at47_d2_j03.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j05.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j07.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j10.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j11.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j12.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j13.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j15.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j17.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j19.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j20.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j23.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j25.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j26.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j28.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j29.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j33.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j35.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j39.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j40.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j41.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j42.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j44.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j46.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/wp/reps/projkm47_7.bits: new class representative
+  $S/kres/census/nb_at47/at47_d2_j01.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_at47/at47_d2_j02.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j06.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_at47/at47_d2_j08.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j09.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j14.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j16.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_at47/at47_d2_j18.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j21.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_at47/at47_d2_j22.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j27.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_at47/at47_d2_j31.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/wp/reps/ref47.bits: new class representative
+  $S/kres/census/nb_at47/at47_d2_j00.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j04.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j30.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j38.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/wp/reps/proj47_5.bits: new class representative
+  $S/kres/census/nb_at47/at47_d2_j32.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j34.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j36.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_at47/at47_d2_j37.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+
+52 schemes, 5 rank-triple types, 5 de Groote classes:
+  $S/wp/reps/at47.bits: 4 scheme(s): at47.bits at47_d2_j24.bits at47_d2_j43.bits at47_d2_j45.bits
+  $S/wp/reps/km47.bits: 25 scheme(s): km47.bits at47_d2_j03.bits at47_d2_j05.bits at47_d2_j07.bits at47_d2_j10.bits at47_d2_j11.bits at47_d2_j12.bits at47_d2_j13.bits at47_d2_j15.bits at47_d2_j17.bits at47_d2_j19.bits at47_d2_j20.bits at47_d2_j23.bits at47_d2_j25.bits at47_d2_j26.bits at47_d2_j28.bits at47_d2_j29.bits at47_d2_j33.bits at47_d2_j35.bits at47_d2_j39.bits at47_d2_j40.bits at47_d2_j41.bits at47_d2_j42.bits at47_d2_j44.bits at47_d2_j46.bits
+  $S/wp/reps/projkm47_7.bits: 13 scheme(s): projkm47_7.bits at47_d2_j01.bits at47_d2_j02.bits at47_d2_j06.bits at47_d2_j08.bits at47_d2_j09.bits at47_d2_j14.bits at47_d2_j16.bits at47_d2_j18.bits at47_d2_j21.bits at47_d2_j22.bits at47_d2_j27.bits at47_d2_j31.bits
+  $S/wp/reps/ref47.bits: 5 scheme(s): ref47.bits at47_d2_j00.bits at47_d2_j04.bits at47_d2_j30.bits at47_d2_j38.bits
+  $S/wp/reps/proj47_5.bits: 5 scheme(s): proj47_5.bits at47_d2_j32.bits at47_d2_j34.bits at47_d2_j36.bits at47_d2_j37.bits
+
+##### kres/census/iso_km47.log
+  $S/wp/reps/at47.bits: new class representative
+  $S/kres/census/nb_km47/km47_d1_j01.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j04.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j08.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j40.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/wp/reps/km47.bits: new class representative
+  $S/kres/census/nb_km47/km47_d1_j00.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j06.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j07.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j09.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j10.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j11.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j13.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j15.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j16.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j18.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j20.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j21.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j23.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j26.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j27.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j28.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j34.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j35.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j36.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j37.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j39.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j45.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j46.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/wp/reps/projkm47_7.bits: new class representative
+  $S/kres/census/nb_km47/km47_d1_j03.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j12.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_km47/km47_d1_j14.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_km47/km47_d1_j17.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j24.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_km47/km47_d1_j25.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_km47/km47_d1_j30.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j32.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_km47/km47_d1_j33.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_km47/km47_d1_j38.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j42.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j43.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/wp/reps/ref47.bits: new class representative
+  $S/kres/census/nb_km47/km47_d1_j02.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j19.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j22.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j41.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/wp/reps/proj47_5.bits: new class representative
+  $S/kres/census/nb_km47/km47_d1_j05.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j29.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j31.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_km47/km47_d1_j44.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+
+52 schemes, 5 rank-triple types, 5 de Groote classes:
+  $S/wp/reps/at47.bits: 5 scheme(s): at47.bits km47_d1_j01.bits km47_d1_j04.bits km47_d1_j08.bits km47_d1_j40.bits
+  $S/wp/reps/km47.bits: 24 scheme(s): km47.bits km47_d1_j00.bits km47_d1_j06.bits km47_d1_j07.bits km47_d1_j09.bits km47_d1_j10.bits km47_d1_j11.bits km47_d1_j13.bits km47_d1_j15.bits km47_d1_j16.bits km47_d1_j18.bits km47_d1_j20.bits km47_d1_j21.bits km47_d1_j23.bits km47_d1_j26.bits km47_d1_j27.bits km47_d1_j28.bits km47_d1_j34.bits km47_d1_j35.bits km47_d1_j36.bits km47_d1_j37.bits km47_d1_j39.bits km47_d1_j45.bits km47_d1_j46.bits
+  $S/wp/reps/projkm47_7.bits: 13 scheme(s): projkm47_7.bits km47_d1_j03.bits km47_d1_j12.bits km47_d1_j14.bits km47_d1_j17.bits km47_d1_j24.bits km47_d1_j25.bits km47_d1_j30.bits km47_d1_j32.bits km47_d1_j33.bits km47_d1_j38.bits km47_d1_j42.bits km47_d1_j43.bits
+  $S/wp/reps/ref47.bits: 5 scheme(s): ref47.bits km47_d1_j02.bits km47_d1_j19.bits km47_d1_j22.bits km47_d1_j41.bits
+  $S/wp/reps/proj47_5.bits: 5 scheme(s): proj47_5.bits km47_d1_j05.bits km47_d1_j29.bits km47_d1_j31.bits km47_d1_j44.bits
+
+##### kres/census/iso_proj47_5.log
+  $S/wp/reps/at47.bits: new class representative
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j00.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j16.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j42.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j45.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/wp/reps/km47.bits: new class representative
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j01.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j02.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j03.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j04.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j05.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j07.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j09.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j18.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j20.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j21.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j24.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j25.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j27.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j28.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j29.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j30.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j31.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j32.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j33.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j39.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j40.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j41.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j43.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j46.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/wp/reps/projkm47_7.bits: new class representative
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j08.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j10.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j11.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j12.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j14.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j19.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j22.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j23.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j26.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j34.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j35.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j44.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/wp/reps/ref47.bits: new class representative
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j06.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j17.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j36.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j37.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/wp/reps/proj47_5.bits: new class representative
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j13.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j15.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_proj47_5/proj47_5_d2_j38.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+
+52 schemes, 5 rank-triple types, 5 de Groote classes:
+  $S/wp/reps/at47.bits: 5 scheme(s): at47.bits proj47_5_d2_j00.bits proj47_5_d2_j16.bits proj47_5_d2_j42.bits proj47_5_d2_j45.bits
+  $S/wp/reps/km47.bits: 25 scheme(s): km47.bits proj47_5_d2_j01.bits proj47_5_d2_j02.bits proj47_5_d2_j03.bits proj47_5_d2_j04.bits proj47_5_d2_j05.bits proj47_5_d2_j07.bits proj47_5_d2_j09.bits proj47_5_d2_j18.bits proj47_5_d2_j20.bits proj47_5_d2_j21.bits proj47_5_d2_j24.bits proj47_5_d2_j25.bits proj47_5_d2_j27.bits proj47_5_d2_j28.bits proj47_5_d2_j29.bits proj47_5_d2_j30.bits proj47_5_d2_j31.bits proj47_5_d2_j32.bits proj47_5_d2_j33.bits proj47_5_d2_j39.bits proj47_5_d2_j40.bits proj47_5_d2_j41
+  $S/wp/reps/projkm47_7.bits: 13 scheme(s): projkm47_7.bits proj47_5_d2_j08.bits proj47_5_d2_j10.bits proj47_5_d2_j11.bits proj47_5_d2_j12.bits proj47_5_d2_j14.bits proj47_5_d2_j19.bits proj47_5_d2_j22.bits proj47_5_d2_j23.bits proj47_5_d2_j26.bits proj47_5_d2_j34.bits proj47_5_d2_j35.bits proj47_5_d2_j44.bits
+  $S/wp/reps/ref47.bits: 5 scheme(s): ref47.bits proj47_5_d2_j06.bits proj47_5_d2_j17.bits proj47_5_d2_j36.bits proj47_5_d2_j37.bits
+  $S/wp/reps/proj47_5.bits: 4 scheme(s): proj47_5.bits proj47_5_d2_j13.bits proj47_5_d2_j15.bits proj47_5_d2_j38.bits
+
+##### kres/census/iso_projkm47_7.log
+  $S/wp/reps/at47.bits: new class representative
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j12.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j14.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j33.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j45.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/wp/reps/km47.bits: new class representative
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j00.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j01.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j03.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j05.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j06.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j08.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j09.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j10.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j11.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j13.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j17.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j18.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j21.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j22.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j25.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j27.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j31.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j34.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j35.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j36.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j37.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j40.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j41.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j43.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/wp/reps/projkm47_7.bits: new class representative
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j02.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j07.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j15.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j16.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j20.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j26.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j29.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j38.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j39.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j44.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j46.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/wp/reps/ref47.bits: new class representative
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j19.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j24.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j28.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j42.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/wp/reps/proj47_5.bits: new class representative
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j04.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j23.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j30.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_projkm47_7/projkm47_7_d1_j32.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+
+52 schemes, 5 rank-triple types, 5 de Groote classes:
+  $S/wp/reps/at47.bits: 5 scheme(s): at47.bits projkm47_7_d1_j12.bits projkm47_7_d1_j14.bits projkm47_7_d1_j33.bits projkm47_7_d1_j45.bits
+  $S/wp/reps/km47.bits: 25 scheme(s): km47.bits projkm47_7_d1_j00.bits projkm47_7_d1_j01.bits projkm47_7_d1_j03.bits projkm47_7_d1_j05.bits projkm47_7_d1_j06.bits projkm47_7_d1_j08.bits projkm47_7_d1_j09.bits projkm47_7_d1_j10.bits projkm47_7_d1_j11.bits projkm47_7_d1_j13.bits projkm47_7_d1_j17.bits projkm47_7_d1_j18.bits projkm47_7_d1_j21.bits projkm47_7_d1_j22.bits projkm47_7_d1_j25.bits projkm47_7_d1_j27.bits projkm47_7_d1_j31.bits projkm47_7_d1_j34.bits projkm47_7_d1_j35.bits projkm47_7_d1_j36.b
+  $S/wp/reps/projkm47_7.bits: 12 scheme(s): projkm47_7.bits projkm47_7_d1_j02.bits projkm47_7_d1_j07.bits projkm47_7_d1_j15.bits projkm47_7_d1_j16.bits projkm47_7_d1_j20.bits projkm47_7_d1_j26.bits projkm47_7_d1_j29.bits projkm47_7_d1_j38.bits projkm47_7_d1_j39.bits projkm47_7_d1_j44.bits projkm47_7_d1_j46.bits
+  $S/wp/reps/ref47.bits: 5 scheme(s): ref47.bits projkm47_7_d1_j19.bits projkm47_7_d1_j24.bits projkm47_7_d1_j28.bits projkm47_7_d1_j42.bits
+  $S/wp/reps/proj47_5.bits: 5 scheme(s): proj47_5.bits projkm47_7_d1_j04.bits projkm47_7_d1_j23.bits projkm47_7_d1_j30.bits projkm47_7_d1_j32.bits
+
+##### kres/census/iso_ref47.log
+  $S/wp/reps/at47.bits: new class representative
+  $S/kres/census/nb_ref47/ref47_d2_j31.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j36.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j43.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j45.bits: same class as $S/wp/reps/at47.bits (47 nodes)
+  $S/wp/reps/km47.bits: new class representative
+  $S/kres/census/nb_ref47/ref47_d2_j05.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j08.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j09.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j10.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j12.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j13.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j15.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j17.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j19.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j20.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j21.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j22.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j24.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j25.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j27.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j28.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j29.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j33.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j34.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j35.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j39.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j40.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j41.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j44.bits: same class as $S/wp/reps/km47.bits (47 nodes)
+  $S/wp/reps/projkm47_7.bits: new class representative
+  $S/kres/census/nb_ref47/ref47_d2_j03.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j04.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j06.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j07.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j11.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j14.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j16.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j18.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j23.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j26.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j32.bits: same class as $S/wp/reps/projkm47_7.bits (49 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j38.bits: same class as $S/wp/reps/projkm47_7.bits (47 nodes)
+  $S/wp/reps/ref47.bits: new class representative
+  $S/kres/census/nb_ref47/ref47_d2_j00.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j01.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j02.bits: same class as $S/wp/reps/ref47.bits (47 nodes)
+  $S/wp/reps/proj47_5.bits: new class representative
+  $S/kres/census/nb_ref47/ref47_d2_j30.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j37.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j42.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+  $S/kres/census/nb_ref47/ref47_d2_j46.bits: same class as $S/wp/reps/proj47_5.bits (47 nodes)
+
+52 schemes, 5 rank-triple types, 5 de Groote classes:
+  $S/wp/reps/at47.bits: 5 scheme(s): at47.bits ref47_d2_j31.bits ref47_d2_j36.bits ref47_d2_j43.bits ref47_d2_j45.bits
+  $S/wp/reps/km47.bits: 25 scheme(s): km47.bits ref47_d2_j05.bits ref47_d2_j08.bits ref47_d2_j09.bits ref47_d2_j10.bits ref47_d2_j12.bits ref47_d2_j13.bits ref47_d2_j15.bits ref47_d2_j17.bits ref47_d2_j19.bits ref47_d2_j20.bits ref47_d2_j21.bits ref47_d2_j22.bits ref47_d2_j24.bits ref47_d2_j25.bits ref47_d2_j27.bits ref47_d2_j28.bits ref47_d2_j29.bits ref47_d2_j33.bits ref47_d2_j34.bits ref47_d2_j35.bits ref47_d2_j39.bits ref47_d2_j40.bits ref47_d2_j41.bits ref47_d2_j44.bits
+  $S/wp/reps/projkm47_7.bits: 13 scheme(s): projkm47_7.bits ref47_d2_j03.bits ref47_d2_j04.bits ref47_d2_j06.bits ref47_d2_j07.bits ref47_d2_j11.bits ref47_d2_j14.bits ref47_d2_j16.bits ref47_d2_j18.bits ref47_d2_j23.bits ref47_d2_j26.bits ref47_d2_j32.bits ref47_d2_j38.bits
+  $S/wp/reps/ref47.bits: 4 scheme(s): ref47.bits ref47_d2_j00.bits ref47_d2_j01.bits ref47_d2_j02.bits
+  $S/wp/reps/proj47_5.bits: 5 scheme(s): proj47_5.bits ref47_d2_j30.bits ref47_d2_j37.bits ref47_d2_j42.bits ref47_d2_j46.bits
+
+##### kres/census/beta_km47_0.log
+hist (products, direction, deficit) -> count: [((47, 0, 0), 28), ((47, 2, 0), 28), ((48, 0, 0), 8164), ((48, 2, 0), 8164)]
+
+##### kres/census/beta_km47_1.log
+hist (products, direction, deficit) -> count: [((47, 0, 0), 4), ((47, 2, 0), 4), ((48, 0, 0), 8188), ((48, 2, 0), 8188)]
+
+##### kres/census/beta_km47_2.log
+hist (products, direction, deficit) -> count: [((48, 0, 0), 8192), ((48, 2, 0), 8192)]
+
+##### kres/census/beta_km47_3.log
+hist (products, direction, deficit) -> count: [((47, 0, 0), 8), ((47, 2, 0), 8), ((48, 0, 0), 8184), ((48, 2, 0), 8184)]
+
+##### kres/census/beta_km47_4.log
+hist (products, direction, deficit) -> count: [((47, 0, 0), 3), ((47, 2, 0), 3), ((48, 0, 0), 8189), ((48, 2, 0), 8189)]
+
+##### kres/census/beta_km47_5.log
+hist (products, direction, deficit) -> count: [((47, 0, 0), 3), ((47, 2, 0), 3), ((48, 0, 0), 8189), ((48, 2, 0), 8189)]
+
+##### kres/census/beta_km47_6.log
+hist (products, direction, deficit) -> count: [((47, 0, 0), 1), ((47, 2, 0), 1), ((48, 0, 0), 8191), ((48, 2, 0), 8191)]
+
+##### kres/census/beta_km47_7.log
+hist (products, direction, deficit) -> count: [((47, 0, 0), 1), ((47, 2, 0), 1), ((48, 0, 0), 8191), ((48, 2, 0), 8191)]
+
+##### kres/census/bc_km47.log
+family direction d=1; beta in [0, 65536); 2 workers
+  .. 8192 members done
+  .. 16384 members done
+  .. 24576 members done
+  .. 32768 members done
+  .. 40960 members done
+  .. 49152 members done
+  .. 57344 members done
+  .. 65536 members done
+members: 65536
+hist (products, direction, deficit, extras) -> members: [((47, 0, 0, 0), 48), ((47, 2, 0, 0), 48), ((48, 0, 0, 0), 65488), ((48, 2, 0, 0), 65488)]
+extras (products, direction, |J|, products sharing the factor) -> count: []
+reducing extras: 0
+exit 0 21:01:21
+
+##### kronscan/perminov.log
+FLAG Q  matmul/perminov_cache/repo/schemes/results/serendipitous_base/2x4x10_m67_f869b0e6c342a153c0db824f7e5c268e807f58f9_ZT.json: (2, 4, 10) m=67: Kronecker ranks over Q (mod 2147483647) [67, 66, 67] -> at most 66 products
+FLAG F2 matmul/perminov_cache/repo/schemes/results/serendipitous_base/2x4x10_m67_f869b0e6c342a153c0db824f7e5c268e807f58f9_ZT.json: (2, 4, 10) m=67: 67 products survive mod 2, Kronecker ranks [67, 66, 67] -> at most 66 products over F2
+  .. 200/2533 files
+  .. 400/2533 files
+ERROR matmul/perminov_cache/repo/schemes/known/mizopl/3x6x8_m108_cr381_cn1412_ZT_reduced.json TypeError('argument should be a string or a Rational instance')
+  .. 600/2533 files
+  .. 800/2533 files
+  .. 1000/2533 files
+  .. 1200/2533 files
+  .. 1400/2533 files
+  .. 1600/2533 files
+FLAG F2 matmul/perminov_cache/repo/schemes/results/ZT/9x9x11_m595_ZT.json: (9, 9, 11) m=595: 595 products survive mod 2, Kronecker ranks [595, 595, 594] -> at most 594 products over F2
+FLAG F2 matmul/perminov_cache/repo/schemes/results/ZT/9x9x11_m596_ZT.json: (9, 9, 11) m=596: 596 products survive mod 2, Kronecker ranks [596, 596, 595] -> at most 595 products over F2
+FLAG Q  matmul/perminov_cache/repo/schemes/results/ZT/9x9x11_m599_ZT.json: (9, 9, 11) m=599: Kronecker ranks over Q (mod 2147483647) [599, 598, 598] -> at most 598 products
+FLAG F2 matmul/perminov_cache/repo/schemes/results/ZT/9x9x11_m599_ZT.json: (9, 9, 11) m=599: 599 products survive mod 2, Kronecker ranks [599, 598, 598] -> at most 598 products over F2
+FLAG Q  matmul/perminov_cache/repo/schemes/results/ZT/9x9x11_m600_ZT.json: (9, 9, 11) m=600: Kronecker ranks over Q (mod 2147483647) [600, 598, 598] -> at most 598 products
+FLAG F2 matmul/perminov_cache/repo/schemes/results/ZT/9x9x11_m600_ZT.json: (9, 9, 11) m=600: 600 products survive mod 2, Kronecker ranks [600, 598, 598] -> at most 598 products over F2
+  .. 1800/2533 files
+FLAG Q  matmul/perminov_cache/repo/schemes/results/Q/9x10x13_m765_Q.json: (9, 10, 13) m=765: Kronecker ranks over Q (mod 2147483647) [765, 764, 765] -> at most 764 products
+FLAG Q  matmul/perminov_cache/repo/schemes/known/MerlijnW70_fmm_schemes/9x11x13_m840_ZT.json: (9, 11, 13) m=840: Kronecker ranks over Q (mod 2147483647) [840, 839, 840] -> at most 839 products
+FLAG F2 matmul/perminov_cache/repo/schemes/known/MerlijnW70_fmm_schemes/9x11x13_m840_ZT.json: (9, 11, 13) m=840: 840 products survive mod 2, Kronecker ranks [840, 839, 840] -> at most 839 products over F2
+  .. 2000/2533 files
+  .. 2200/2533 files
+FLAG Q  matmul/perminov_cache/repo/schemes/known/MerlijnW70_fmm_schemes/11x14x14_m1373_ZT.json: (11, 14, 14) m=1373: Kronecker ranks over Q (mod 2147483647) [1373, 1371, 1373] -> at most 1371 products
+FLAG F2 matmul/perminov_cache/repo/schemes/known/MerlijnW70_fmm_schemes/11x14x14_m1373_ZT.json: (11, 14, 14) m=1373: 1373 products survive mod 2, Kronecker ranks [1373, 1371, 1373] -> at most 1371 products over F2
+FLAG Q  matmul/perminov_cache/repo/schemes/results/Q/11x13x15_m1371_Q.json: (11, 13, 15) m=1371: Kronecker ranks over Q (mod 2147483647) [1371, 1370, 1371] -> at most 1370 products
+FLAG Q  matmul/perminov_cache/repo/schemes/results/Q/13x13x13_m1421_Q.json: (13, 13, 13) m=1421: Kronecker ranks over Q (mod 2147483647) [1421, 1421, 1420] -> at most 1420 products
+  .. 2400/2533 files
+FLAG Q  matmul/perminov_cache/repo/schemes/results/ZT/12x13x16_m1518_ZT.json: (12, 13, 16) m=1518: Kronecker ranks over Q (mod 2147483647) [1516, 1518, 1518] -> at most 1516 products
+FLAG F2 matmul/perminov_cache/repo/schemes/results/ZT/12x13x16_m1518_ZT.json: (12, 13, 16) m=1518: 1518 products survive mod 2, Kronecker ranks [1516, 1518, 1518] -> at most 1516 products over F2
+FLAG Q  matmul/perminov_cache/repo/schemes/results/Q/11x12x15_m1240_Q.json: (11, 12, 15) m=1240: Kronecker ranks over Q (mod 2147483647) [1240, 1240, 1234] -> at most 1234 products
+FLAG Q  matmul/perminov_cache/repo/schemes/results/Q/12x12x14_m1240_Q.json: (12, 12, 14) m=1240: Kronecker ranks over Q (mod 2147483647) [1240, 1240, 1234] -> at most 1234 products
+FLAG Q  matmul/perminov_cache/repo/schemes/known/MerlijnW70_fmm_schemes/13x14x16_m1806_ZT.json: (13, 14, 16) m=1806: Kronecker ranks over Q (mod 2147483647) [1805, 1806, 1806] -> at most 1805 products
+FLAG F2 matmul/perminov_cache/repo/schemes/known/MerlijnW70_fmm_schemes/13x14x16_m1806_ZT.json: (13, 14, 16) m=1806: 1806 products survive mod 2, Kronecker ranks [1805, 1806, 1806] -> at most 1805 products over F2
+FLAG Q  matmul/perminov_cache/repo/schemes/results/Q/13x14x14_m1602_Q.json: (13, 14, 14) m=1602: Kronecker ranks over Q (mod 2147483647) [1588, 1602, 1589] -> at most 1588 products
+FLAG Q  matmul/perminov_cache/repo/schemes/results/Q/13x14x14_m1582_Q.json: (13, 14, 14) m=1582: Kronecker ranks over Q (mod 2147483647) [1582, 1582, 1580] -> at most 1580 products
+FLAG Q  matmul/perminov_cache/repo/schemes/results/Q/15x16x16_m2246_Q.json: (15, 16, 16) m=2246: Kronecker ranks over Q (mod 2147483647) [2230, 2246, 2231] -> at most 2230 products
+FLAG Q  matmul/perminov_cache/repo/schemes/results/Q/15x16x16_m2223_Q.json: (15, 16, 16) m=2223: Kronecker ranks over Q (mod 2147483647) [2223, 2223, 2221] -> at most 2221 products
+scanned 2533 files; flagged over Q: 16; flagged over F2: 9
+exit 0 21:01:50
+
+##### kronscan/v2/known_other.log
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x3x5_tensor.mpl ValueError("Invalid literal for Fraction: '1-0'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x4x6_tensor.mpl ValueError("Invalid literal for Fraction: '-0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x3x10_tensor.mpl ValueError("Invalid literal for Fraction: '0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x3x13_tensor.mpl ValueError("Invalid literal for Fraction: '(-0+1)'")
+  .. 200/1652 files
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x4x11_tensor.mpl ValueError("Invalid literal for Fraction: '-1+0-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x3x15_tensor.mpl ValueError("Invalid literal for Fraction: '0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x7x8_tensor.mpl ValueError("Invalid literal for Fraction: '1+1'")
+  .. 400/1652 files
+  .. 600/1652 files
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x7x10_tensor.mpl ValueError("Invalid literal for Fraction: '(0)'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x7x11_tensor.mpl ValueError("Invalid literal for Fraction: '-0-0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x8x10_tensor.mpl ValueError("Invalid literal for Fraction: '1+1'")
+  .. 800/1652 files
+  .. 1000/1652 files
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x8x12_tensor.mpl ValueError("Invalid literal for Fraction: '0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x6x10_tensor.mpl ValueError("Invalid literal for Fraction: '0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x8x11_tensor.mpl ValueError("Invalid literal for Fraction: '0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x7x15_tensor.mpl ValueError("Invalid literal for Fraction: '(1)'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x9x12_tensor.mpl ValueError("Invalid literal for Fraction: '0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x10x11_tensor.mpl ValueError("Invalid literal for Fraction: '1+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x7x16_tensor.mpl ValueError("Invalid literal for Fraction: '-0-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x10x12_tensor.mpl ValueError("Invalid literal for Fraction: '1-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x7x10_tensor.mpl ValueError("Invalid literal for Fraction: '-0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x8x15_tensor.mpl ValueError("Invalid literal for Fraction: '1*1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x10x13_tensor.mpl ValueError("Invalid literal for Fraction: '1+1'")
+  .. 1200/1652 files
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x6x11_tensor.mpl ValueError("Invalid literal for Fraction: '1-0'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x8x11_tensor.mpl ValueError("Invalid literal for Fraction: '-1+0'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x7x13_tensor.mpl ValueError("Invalid literal for Fraction: '-1+0'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x12x13_tensor.mpl ValueError("Invalid literal for Fraction: '1-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x7x12_tensor.mpl ValueError("Invalid literal for Fraction: '1-0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x12x14_tensor.mpl ValueError("Invalid literal for Fraction: '1-0'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x8x13_tensor.mpl ValueError("Invalid literal for Fraction: '1-1+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x8x11_tensor.mpl ValueError("Invalid literal for Fraction: '-1+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x7x15_tensor.mpl ValueError("Invalid literal for Fraction: '0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x7x13_tensor.mpl ValueError("Invalid literal for Fraction: '-1+1-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x8x12_tensor.mpl ValueError("Invalid literal for Fraction: '-0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x9x11_tensor.mpl ValueError("Invalid literal for Fraction: '1-0'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x9x14_tensor.mpl ValueError("Invalid literal for Fraction: '-0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x8x13_tensor.mpl ValueError("Invalid literal for Fraction: '-1+1+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x9x12_tensor.mpl ValueError("Invalid literal for Fraction: '-1+1-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x7x15_tensor.mpl ValueError("Invalid literal for Fraction: '-1+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x14x15_tensor.mpl ValueError("Invalid literal for Fraction: '1+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x9x15_tensor.mpl ValueError("Invalid literal for Fraction: '1+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x11x13_tensor.mpl ValueError("Invalid literal for Fraction: '1-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x14x16_tensor.mpl ValueError("Invalid literal for Fraction: '1-0'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x10x15_tensor.mpl ValueError("Invalid literal for Fraction: '-0+1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x11x14_tensor.mpl ValueError("Invalid literal for Fraction: '1-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x9x15_tensor.mpl ValueError("Invalid literal for Fraction: '1-0'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/4x11x15_tensor.mpl ValueError("Invalid literal for Fraction: '1-1'")
+  .. 1400/1652 files
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/8x9x11_tensor.mpl ValueError("Invalid literal for Fraction: '1*2'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x11x15_tensor.mpl ValueError("Invalid literal for Fraction: '(-0+1)'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x12x16_tensor.mpl ValueError("Invalid literal for Fraction: '-1+0-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/9x11x11_tensor.mpl ValueError("Invalid literal for Fraction: '1-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x13x16_tensor.mpl ValueError("Invalid literal for Fraction: '1-0'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/5x14x16_tensor.mpl ValueError("Invalid literal for Fraction: '-1-1'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x12x15_tensor.mpl ValueError("Invalid literal for Fraction: '1-1'")
+FLAG Q  matmul/perminov_cache/repo/schemes/known/tensor/8x11x16_tensor.mpl: (8, 11, 16) m=920: Kronecker ranks over Q (mod 2147483647) [916, 913, 920] -> at most 913 products; Q d=0 NOT flip-visible; Q d=1 flip-visible (slot 0 shared by 4)
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/9x12x15_tensor.mpl ValueError("Invalid literal for Fraction: '+-1/8'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/9x13x15_tensor.mpl ValueError("Invalid literal for Fraction: '+-1/8*0+1/8'")
+FLAG Q  matmul/perminov_cache/repo/schemes/known/tensor/11x12x15_tensor.mpl: (11, 12, 15) m=1264: Kronecker ranks over Q (mod 2147483647) [1264, 1260, 1257] -> at most 1257 products; Q d=1 NOT flip-visible; Q d=2 flip-visible (slot 1 shared by 3)
+  .. 1600/1652 files
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/11x13x16_tensor.mpl ValueError("Invalid literal for Fraction: '-(1-0)'")
+FLAG F2 matmul/perminov_cache/repo/schemes/known/tensor/13x14x14_tensor.mpl: (13, 14, 14) m=1625: 1624 products survive mod 2, Kronecker ranks [1624, 1623, 1624] -> at most 1623 products over F2; F2 d=1 flip-visible (slot 0 shared by 2)
+FLAG Q  matmul/perminov_cache/repo/schemes/known/tensor/11x15x16_tensor.mpl: (11, 15, 16) m=1656: Kronecker ranks over Q (mod 2147483647) [1652, 1649, 1656] -> at most 1649 products; Q d=0 NOT flip-visible; Q d=1 flip-visible (slot 0 shared by 3)
+scanned 1652 files; flagged over Q: 3; flagged over F2: 1
+exit 0 21:00:45
+
+##### kronscan/v2/known_mpl_retry.log
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x7x11_tensor.mpl ValueError("invalid literal for int() with base 10: '*'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x8x10_tensor.mpl ValueError("invalid literal for int() with base 10: '*'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x8x11_tensor.mpl ValueError("invalid literal for int() with base 10: '*'")
+ERROR matmul/perminov_cache/repo/schemes/known/tensor/2x7x16_tensor.mpl ValueError("invalid literal for int() with base 10: '*'")
+FLAG Q  matmul/perminov_cache/repo/schemes/known/tensor/8x9x11_tensor.mpl: (8, 9, 11) m=533: Kronecker ranks over Q (mod 2147483647) [533, 533, 532] -> at most 532 products; Q d=2 NOT flip-visible
+FLAG Q  matmul/perminov_cache/repo/schemes/known/tensor/5x12x16_tensor.mpl: (5, 12, 16) m=656: Kronecker ranks over Q (mod 2147483647) [656, 656, 655] -> at most 655 products; Q d=2 flip-visible (slot 0 shared by 2)
+scanned 55 files; flagged over Q: 2; flagged over F2: 0
+exit 0 21:04:47
+
+##### kronscan/v2/bits_245.log
+shape 2x4x5: 28202 files, 0 skipped (length does not fit), 0 with a deficit, 0 with a deficit the flip graph does not see
+  r = 33, Kronecker ranks (33, 33, 33): 28202
+exit 0 20:55:50
+
+##### kronscan/v2/bits_333.log
+shape 3x3x3: 201379 files, 0 skipped (length does not fit), 0 with a deficit, 0 with a deficit the flip graph does not see
+  r = 23, Kronecker ranks (23, 23, 23): 201379
+exit 0 20:56:10
+
+##### kronscan/v2/bits_334.log
+shape 3x3x4: 4631 files, 0 skipped (length does not fit), 0 with a deficit, 0 with a deficit the flip graph does not see
+  r = 29, Kronecker ranks (29, 29, 29): 4631
+exit 0 20:55:52
+
+##### kronscan/v2/bits_335.log
+shape 3x3x5: 12005 files, 0 skipped (length does not fit), 0 with a deficit, 0 with a deficit the flip graph does not see
+  r = 36, Kronecker ranks (36, 36, 36): 12005
+exit 0 20:55:52
+
+##### kronscan/v2/bits_344.log
+DEFICIT matmul/foundR/f344/r39-00454.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00474.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00496.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 3)
+DEFICIT matmul/foundR/f344/r39-00517.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00524.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00531.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00533.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00535.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 3)
+DEFICIT matmul/foundR/f344/r39-00541.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00574.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00584.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 3)
+DEFICIT matmul/foundR/f344/r39-00594.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 3)
+DEFICIT matmul/foundR/f344/r39-00596.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00598.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 3)
+DEFICIT matmul/foundR/f344/r39-00599.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 3)
+DEFICIT matmul/foundR/f344/r39-00611.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00627.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00628.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00634.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00639.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00646.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 3)
+DEFICIT matmul/foundR/f344/r39-00650.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00651.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00656.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00658.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00660.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00678.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00684.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00685.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00691.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00694.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 3)
+DEFICIT matmul/foundR/f344/r39-00702.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00711.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00712.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00715.bits: r = 39, Kronecker ranks [38, 39, 39] -> at most 38 products; d=0 flip-visible (slot 1 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00718.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00719.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 2 shared by 3)
+DEFICIT matmul/foundR/f344/r39-00740.bits: r = 39, Kronecker ranks [39, 39, 38] -> at most 38 products; d=2 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00744.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00748.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 flip-visible (slot 0 shared by 2)
+DEFICIT matmul/foundR/f344/r39-00863.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-00878.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-00932.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-01333.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-01393.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-01935.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-02102.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-02257.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-02885.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-03080.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-03379.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-03550.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-03583.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-03712.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-03725.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-04007.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-04213.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-04233.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-04279.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-04856.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-05147.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-05684.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-05797.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-06191.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-06296.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-06302.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-06437.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-06442.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-06512.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-06521.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-06963.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-07175.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-07277.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-08141.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-08153.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-08320.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-08654.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-08820.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-08923.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-09174.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-10201.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-10430.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-10736.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-10900.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-11150.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-11217.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-11607.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-11784.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-12923.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-13173.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-13301.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-13627.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-13915.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-13992.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-14015.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-14114.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-14293.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-14451.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-15314.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-15466.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-15661.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-15818.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-15956.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-16112.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-16944.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-17135.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-17271.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-18370.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-18444.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-18465.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-18808.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-18819.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-19087.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-19234.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-19442.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-20292.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-21006.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-22447.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-22502.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-22577.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-23126.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-23287.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-22766.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-23510.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-24598.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-24649.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-24750.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-24799.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-24836.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-25263.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-25576.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-25597.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-25999.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-26169.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-26274.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-26384.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-26663.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-26793.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-27070.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-27573.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-27897.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-27973.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-28327.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-28385.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-29334.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-29538.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-29885.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-30396.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-30599.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-30665.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-30761.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-31208.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-31406.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-31550.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-31864.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-32459.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-33329.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-33683.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-34153.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-34159.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-34700.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-34725.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-34740.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-34778.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-34921.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-34254.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-35003.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-35061.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-35303.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-37120.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-37946.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-38035.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-38047.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-38351.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-38969.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-39204.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-39371.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-40157.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-40533.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-40589.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-40620.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-41153.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-41310.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-41953.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-42199.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-42306.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-42341.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-42350.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-42377.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-42636.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-42737.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-43019.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-43116.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-43158.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-43470.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-43907.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-44177.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-44288.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-44760.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-45156.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-45254.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-45259.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-45450.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-45617.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-45691.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-45737.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-45963.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-45992.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-46026.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-46041.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-46051.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-46724.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-46767.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-47275.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-47016.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+DEFICIT matmul/foundR/f344/r39-47072.bits: r = 39, Kronecker ranks [39, 38, 39] -> at most 38 products; d=1 NOT flip-visible
+shape 3x4x4: 48461 files, 0 skipped (length does not fit), 8830 with a deficit, 176 with a deficit the flip graph does not see
+  r = 38, Kronecker ranks (38, 38, 38): 1141
+  r = 39, Kronecker ranks (38, 38, 39): 8
+  r = 39, Kronecker ranks (38, 39, 39): 2444
+  r = 39, Kronecker ranks (39, 38, 38): 5
+  r = 39, Kronecker ranks (39, 38, 39): 3939
+  r = 39, Kronecker ranks (39, 39, 38): 2434
+  r = 39, Kronecker ranks (39, 39, 39): 38490
+exit 0 20:55:47
+
+##### kronscan/v2/bits_444.log
+shape 4x4x4: 2033 files, 626 skipped (length does not fit), 0 with a deficit, 0 with a deficit the flip graph does not see
+  r = 47, Kronecker ranks (47, 47, 47): 205
+  r = 49, Kronecker ranks (49, 49, 49): 1201
+  r = 64, Kronecker ranks (64, 64, 64): 1
+exit 0 20:55:53

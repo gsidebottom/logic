@@ -1,0 +1,94 @@
+# k = 11 k-subset re-solve with the rank-one-census enumerator, 2026-11-10 (scratch logs, $S = session scratch dir).
+
+##### kres/deep/p6.log
+=== P6 start 20:31:32
+--- km47 k=11 both 20:31:32
+    exit 0
+    c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c census d=1: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+    c census d=2: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c k=11: 17417133617 subsets; reduce: 696533842 candidates, 696533842 refuted, 0 REDUCIBLE, 0 open; alt: 3317046862 candidates (+ the reduce candidates), 4009871769 unique, 0 with ALTERNATIVES, 3708935 open; 1458.1 s
+    lines: 3708935 A; 20:56:01
+    REGRESSION km47 k=11: counts and all 3708935 lines IDENTICAL to the old binary's pass
+--- at47 k=8..10 both (regression) 20:56:02
+    exit 0
+    c k=8: 314457495 subsets; reduce: 732728 candidates, 732728 refuted, 0 REDUCIBLE, 0 open; alt: 10198985 candidates (+ the reduce candidates), 10931575 unique, 0 with ALTERNATIVES, 138 open; 2.1 s
+    c k=9: 1362649145 subsets; reduce: 9889034 candidates, 9889034 refuted, 0 REDUCIBLE, 0 open; alt: 90361949 candidates (+ the reduce candidates), 100241938 unique, 0 with ALTERNATIVES, 9045 open; 20.6 s
+    c k=10: 5178066751 subsets; reduce: 102110762 candidates, 102110762 refuted, 0 REDUCIBLE, 0 open; alt: 627100671 candidates (+ the reduce candidates), 728927165 unique, 0 with ALTERNATIVES, 284268 open; 211.2 s
+    REGRESSION at47 k=8..10: counts and all 293451 lines IDENTICAL to the old binary's pass
+--- at47 k=11 both 20:59:56
+    exit 0
+    c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c census d=1: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c census d=2: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+    c k=11: 17417133617 subsets; reduce: 836152622 candidates, 836152622 refuted, 0 REDUCIBLE, 0 open; alt: 3457919971 candidates (+ the reduce candidates), 4288209270 unique, 0 with ALTERNATIVES, 5863323 open; 1589.3 s
+    lines: 5863323 A; 21:26:41
+--- ref47 k=8..10 both (regression) 21:26:41
+    exit 0
+    c k=8: 314457495 subsets; reduce: 370679 candidates, 370679 refuted, 0 REDUCIBLE, 0 open; alt: 7963898 candidates (+ the reduce candidates), 8334469 unique, 0 with ALTERNATIVES, 108 open; 0.9 s
+    c k=9: 1362649145 subsets; reduce: 6012966 candidates, 6012966 refuted, 0 REDUCIBLE, 0 open; alt: 77110669 candidates (+ the reduce candidates), 83119033 unique, 0 with ALTERNATIVES, 4602 open; 10.1 s
+    c k=10: 5178066751 subsets; reduce: 70747105 candidates, 70747105 refuted, 0 REDUCIBLE, 0 open; alt: 573360690 candidates (+ the reduce candidates), 643971589 unique, 0 with ALTERNATIVES, 136206 open; 124.4 s
+    REGRESSION ref47 k=8..10: counts and all 140916 lines IDENTICAL to the old binary's pass
+--- ref47 k=11 both 21:28:56
+    exit 0
+    c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c census d=1: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c census d=2: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+    c k=11: 17417133617 subsets; reduce: 639452711 candidates, 639452711 refuted, 0 REDUCIBLE, 0 open; alt: 3338297134 candidates (+ the reduce candidates), 3974642490 unique, 0 with ALTERNATIVES, 3107355 open; 1360.3 s
+    lines: 3107355 A; 21:51:45
+--- proj47_5 k=8..10 both (regression) 21:51:45
+    exit 0
+    c k=8: 314457495 subsets; reduce: 613598 candidates, 613598 refuted, 0 REDUCIBLE, 0 open; alt: 8759297 candidates (+ the reduce candidates), 9372787 unique, 0 with ALTERNATIVES, 108 open; 1.1 s
+    c k=9: 1362649145 subsets; reduce: 8487646 candidates, 8487646 refuted, 0 REDUCIBLE, 0 open; alt: 79875713 candidates (+ the reduce candidates), 88355634 unique, 0 with ALTERNATIVES, 7725 open; 12.4 s
+    c k=10: 5178066751 subsets; reduce: 89441970 candidates, 89441970 refuted, 0 REDUCIBLE, 0 open; alt: 568655467 candidates (+ the reduce candidates), 657844135 unique, 0 with ALTERNATIVES, 253302 open; 149.2 s
+    REGRESSION proj47_5 k=8..10: counts and all 261135 lines IDENTICAL to the old binary's pass
+--- proj47_5 k=11 both 21:54:29
+    exit 0
+    c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c census d=1: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c census d=2: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+    c k=11: 17417133617 subsets; reduce: 745935616 candidates, 745935616 refuted, 0 REDUCIBLE, 0 open; alt: 3211573841 candidates (+ the reduce candidates), 3952191420 unique, 0 with ALTERNATIVES, 5318037 open; 1488.4 s
+    lines: 5318037 A; 22:19:31
+--- projkm47_7 k=8..10 both (regression) 22:19:31
+    exit 0
+    c k=8: 314457495 subsets; reduce: 515272 candidates, 515272 refuted, 0 REDUCIBLE, 0 open; alt: 8853709 candidates (+ the reduce candidates), 9368843 unique, 0 with ALTERNATIVES, 138 open; 1.2 s
+    c k=9: 1362649145 subsets; reduce: 7708097 candidates, 7708097 refuted, 0 REDUCIBLE, 0 open; alt: 82846437 candidates (+ the reduce candidates), 90547579 unique, 0 with ALTERNATIVES, 6955 open; 12.9 s
+    c k=10: 5178066751 subsets; reduce: 85605619 candidates, 85605619 refuted, 0 REDUCIBLE, 0 open; alt: 598694334 candidates (+ the reduce candidates), 684089692 unique, 0 with ALTERNATIVES, 210261 open; 150.3 s
+    REGRESSION projkm47_7 k=8..10: counts and all 217354 lines IDENTICAL to the old binary's pass
+--- projkm47_7 k=11 both 22:22:16
+    exit 0
+    c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c census d=1: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+    c census d=2: dim G 47 of 47, rank-one elements 47 (extra 0)
+    c k=11: 17417133617 subsets; reduce: 739466849 candidates, 739466843 refuted, 0 REDUCIBLE, 6 open; alt: 3401198388 candidates (+ the reduce candidates), 4136130372 unique, 0 with ALTERNATIVES, 4534865 open; 1598.9 s
+    lines: 4534865 A; 6 R; 22:49:06
+=== P6 done 22:49:06
+=== chain ended 23:01:32
+
+##### kres/deep/p7.log
+=== P7 start 22:49:06
+--- km47 depth 2 (reduce to depth 3, alt to depth 2) on 3708935 lines: 3708935 A  22:49:07
+    exit 0 ; c k=11: 9109 alt-open, 3699826 unique; c 105.3 s
+    written: 9109 A 
+    open at depth 2: 9109 lines (7259 dims=8,8,8  784 dims=8,8,7  690 dims=7,8,8  260 dims=8,7,8 ) 22:50:53
+--- at47 depth 2 (reduce to depth 3, alt to depth 2) on 5863323 lines: 5863323 A  22:50:55
+    exit 0 ; c k=11: 10518 alt-open, 5852805 unique; c 191.1 s
+    written: 10518 A 
+    open at depth 2: 10518 lines (8613 dims=8,8,8  597 dims=8,8,7  561 dims=8,7,8  561 dims=7,8,8 ) 22:54:06
+--- ref47 depth 2 (reduce to depth 3, alt to depth 2) on 3107355 lines: 3107355 A  22:54:07
+    exit 0 ; c k=11: 9267 alt-open, 3098088 unique; c 141.0 s
+    written: 9267 A 
+    open at depth 2: 9267 lines (7233 dims=8,8,8  882 dims=8,7,8  882 dims=7,8,8  150 dims=8,8,7 ) 22:56:28
+--- proj47_5 depth 2 (reduce to depth 3, alt to depth 2) on 5318037 lines: 5318037 A  22:56:29
+    exit 0 ; c k=11: 9783 alt-open, 5308254 unique; c 170.1 s
+    written: 9783 A 
+    open at depth 2: 9783 lines (7989 dims=8,8,8  594 dims=8,8,7  507 dims=8,7,8  507 dims=7,8,8 ) 22:59:20
+--- projkm47_7 depth 2 (reduce to depth 3, alt to depth 2) on 4534871 lines: 4534865 A  6 R  22:59:21
+    exit 0 ; c k=11: 12297 alt-open, 6 refuted, 4522574 unique; c 130.3 s
+    written: 12297 A 
+    open at depth 2: 12297 lines (10023 dims=8,8,8  933 dims=8,8,7  933 dims=7,8,8  264 dims=8,7,8 ) 23:01:31
+=== P7 done 23:01:31
+
+##### kres/deep/p8.log
+=== P8 start 23:03:32
+--- km47 depth 3 on 9109 lines left open at depth 2 23:03:32

@@ -1,0 +1,16 @@
+13x14x16_m1806_ZT.json: shape (13, 14, 16), m = 1806, direction 0 (Kronecker products of slots 1, 2)
+  [input] m = 1806; common denominators [1, 1, 1]; bound B on every entry: 11 bits (below 2^53)
+  [input] slot-2 index convention ik: modular route: contraction 1 FAILS modulo 1048573 (0.0 s); direct route: float64 contraction FAILS (5712 entries differ) (0.1 s)
+  [input] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 1 + 1 primes (each product above 2 (B + DD), 12 bits) (0.2 s); direct route: float64 and int64 contractions EXACT MATCH (0.4 s)
+  Gram rank modulo 2147483647: 1805 of 1806; 1 dependencies; pivots [166] (30.4 s)
+  supports [9], union 9 products
+    prime 2147483629: 2 primes, modulus of 62 bits (0.0 s)
+  dependency with pivot 166: 9 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 2 distinct coefficients, largest numerator or denominator 1; products [166, 252, 613, 1025, 1360, 1651, 1701, 1711, 1755]
+  folded: 1806 -> 1805 products
+  [output] m = 1805; common denominators [1, 1, 1]; bound B on every entry: 11 bits (below 2^53)
+  [output] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 1 + 1 primes (each product above 2 (B + DD), 12 bits) (0.2 s); direct route: float64 and int64 contractions EXACT MATCH (0.4 s)
+  [negative control: one entry of the output changed] m = 1805; common denominators [1, 1, 1]; bound B on every entry: 11 bits (below 2^53)
+  [negative control: one entry of the output changed] slot-2 index convention ki: modular route: contraction 1 FAILS modulo 1048573 (0.1 s); direct route: float64 contraction FAILS (48 entries differ) (0.1 s)
+  RESULT: input verifies (ki); output with 1805 products VERIFIES EXACTLY; corrupted copy REJECTED
+  written reduced/13x14x16_m1805_d0.json
+exit 0 21:25:01

@@ -1,0 +1,18 @@
+13x14x14_m1582_Q.json: shape (13, 14, 14), m = 1582, direction 2 (Kronecker products of slots 0, 1)
+  [input] m = 1582; common denominators [800, 200, 200]; bound B on every entry: 42 bits (below 2^53)
+  [input] slot-2 index convention ik: modular route: contraction 1 FAILS modulo 1048573 (0.1 s); direct route: float64 contraction FAILS (5040 entries differ) (0.1 s)
+  [input] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 3 + 3 primes (each product above 2 (B + DD), 43 bits) (3.7 s); direct route: float64 and int64 contractions EXACT MATCH (3.1 s)
+  Gram rank modulo 2147483647: 1580 of 1582; 2 dependencies; pivots [0, 3] (22.0 s)
+  supports [597, 694], union 707 products
+    prime 2147483629: 2 primes, modulus of 62 bits (2.3 s)
+    prime 2147483587: 3 primes, modulus of 93 bits (2.3 s)
+  dependency with pivot 0: 597 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.6 s); common denominator of 30 bits; 68 distinct coefficients, largest numerator or denominator 144200; products [0, 8, 15, 23, 30, 38, 45, 53, 60, 68, 75, 76, 77, 78, 79, 80]...
+  dependency with pivot 3: 694 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.7 s); common denominator of 27 bits; 62 distinct coefficients, largest numerator or denominator 20600; products [3, 5, 6, 9, 18, 20, 21, 24, 33, 35, 36, 39, 48, 50, 51, 54]...
+  folded: 1582 -> 1580 products
+  [output] m = 1580; common denominators [800, 200, 288400]; bound B on every entry: 50 bits (below 2^53)
+  [output] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 3 + 3 primes (each product above 2 (B + DD), 51 bits) (3.3 s); direct route: float64 and int64 contractions EXACT MATCH (2.3 s)
+  [negative control: one entry of the output changed] m = 1580; common denominators [800, 200, 288400]; bound B on every entry: 50 bits (below 2^53)
+  [negative control: one entry of the output changed] slot-2 index convention ki: modular route: contraction 1 FAILS modulo 1048573 (0.1 s); direct route: float64 contraction FAILS (196 entries differ) (0.1 s)
+  RESULT: input verifies (ki); output with 1580 products VERIFIES EXACTLY; corrupted copy REJECTED
+  written reduced/13x14x14_m1580_Q.json
+exit 0 21:19:08

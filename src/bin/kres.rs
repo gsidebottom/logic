@@ -102,26 +102,32 @@ impl WBasis {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct Basis {
-    v: Vec<u32>, // echelon: distinct leading bits, sorted by leading bit descending
+    v: [u32; 32], // echelon: distinct leading bits, sorted by leading bit descending (the first n entries)
+    n: usize,
 }
 impl Basis {
-    fn new() -> Self { Basis { v: Vec::with_capacity(16) } }
+    fn new() -> Self { Basis { v: [0; 32], n: 0 } }
     /// reduce x against the basis; a zero result means x is in the span
+    #[inline]
     fn reduce(&self, mut x: u32) -> u32 {
-        for &b in &self.v {
+        for &b in &self.v[..self.n] {
             let lead = 31 - b.leading_zeros();
             if (x >> lead) & 1 == 1 { x ^= b; }
         }
         x
     }
+    /// add a reduced, nonzero x
+    #[inline]
     fn insert(&mut self, x: u32) {
         let lead = 31 - x.leading_zeros();
-        let pos = self.v.iter().position(|&b| (31 - b.leading_zeros()) < lead).unwrap_or(self.v.len());
-        self.v.insert(pos, x);
+        let mut pos = self.n;
+        while pos > 0 && (31 - self.v[pos - 1].leading_zeros()) < lead { self.v[pos] = self.v[pos - 1]; pos -= 1; }
+        self.v[pos] = x;
+        self.n += 1;
     }
-    fn dim(&self) -> usize { self.v.len() }
+    fn dim(&self) -> usize { self.n }
 }
 
 fn arg_val<T: std::str::FromStr>(args: &[String], key: &str) -> Option<T> {
@@ -552,11 +558,162 @@ fn fmt_prods(ps: &[Prod], n: [usize; 3]) -> String {
     ps.iter().map(|p| format!("{}/{}/{}", bits(p[0], wa), bits(p[1], wb), bits(p[2], wc))).collect::<Vec<_>>().join(",")
 }
 
+/// One direction of the global rank-one census: G = span of the Kronecker products of the two other slots'
+/// factors over ALL products of the scheme.
+struct DirCensus {
+    dim: usize,                   // dim G
+    deps: Vec<u64>,               // index sets of the dependencies met while building the basis
+    found: Vec<(u32, u32, u64)>,  // every rank-one x (x) y in G with the set J of the products summing to it
+    complete: bool,               // false when a cap stopped the list
+}
+
+/// Every rank-one element of G = span(kr), kr[t] = x_t (x) y_t with bit i*wc + j = x_i y_j.
+/// x (x) y lies in G iff sum_j y_j q_j(x) = 0 with q_j(x) = (x (x) e_j) mod G, linear in x: a Gray code over x
+/// keeps the q_j up to date and the admissible y are the kernel of one small elimination per x.
+fn census_dir(kr: &[Wide], wr: usize, wc: usize, cap: usize) -> DirCensus {
+    let nbits = wr * wc;
+    assert!(nbits <= 256 && wr <= 24 && wc <= 32 && kr.len() <= 64);
+    let mut piv: Vec<Option<(Wide, u64)>> = vec![None; 256];
+    let (mut deps, mut dim) = (Vec::new(), 0usize);
+    for (t, &v) in kr.iter().enumerate() {
+        let (mut x, mut m) = (v, 1u64 << t);
+        loop {
+            let l = wide_lead(&x);
+            if l < 0 { deps.push(m); break; }
+            match piv[l as usize] {
+                Some((e, em)) => { for q in 0..4 { x[q] ^= e[q]; } m ^= em; }
+                None => { piv[l as usize] = Some((x, m)); dim += 1; break; }
+            }
+        }
+    }
+    // coordinates over the products of an element of G (None outside G)
+    let red = |mut v: Wide| -> Option<u64> {
+        let mut m = 0u64;
+        loop {
+            let l = wide_lead(&v);
+            if l < 0 { return Some(m); }
+            match piv[l as usize] { Some((e, em)) => { for q in 0..4 { v[q] ^= e[q]; } m ^= em; } None => return None }
+        }
+    };
+    // canonical remainder modulo G (no bit at a pivot position)
+    let redq = |mut v: Wide| -> Wide {
+        let mut out = [0u64; 4];
+        loop {
+            let l = wide_lead(&v);
+            if l < 0 { return out; }
+            let (q, b) = ((l / 64) as usize, (l % 64) as u32);
+            match piv[l as usize] {
+                Some((e, _)) => { for i in 0..4 { v[i] ^= e[i]; } }
+                None => { out[q] |= 1u64 << b; v[q] ^= 1u64 << b; }
+            }
+        }
+    };
+    let rq: Vec<Wide> = (0..nbits).map(|b| { let mut u = [0u64; 4]; u[b / 64] |= 1u64 << (b % 64); redq(u) }).collect();
+    let mut q: Vec<Wide> = vec![[0u64; 4]; wc];
+    let mut found: Vec<(u32, u32, u64)> = Vec::new();
+    let mut complete = true;
+    let mut prev = 0u32;
+    let mut pv: Vec<(i32, Wide, u32)> = Vec::with_capacity(wc);
+    let mut kern: Vec<u32> = Vec::with_capacity(wc);
+    'outer: for g in 1u32..(1u32 << wr) {
+        let x = g ^ (g >> 1);
+        let b = (x ^ prev).trailing_zeros() as usize;
+        prev = x;
+        for j in 0..wc { let add = rq[b * wc + j]; for i in 0..4 { q[j][i] ^= add[i]; } }
+        pv.clear();
+        kern.clear();
+        for j in 0..wc {
+            let (mut v, mut m) = (q[j], 1u32 << j);
+            loop {
+                let l = wide_lead(&v);
+                if l < 0 { kern.push(m); break; }
+                match pv.iter().find(|p| p.0 == l) {
+                    Some(&(_, e, em)) => { for i in 0..4 { v[i] ^= e[i]; } m ^= em; }
+                    None => { pv.push((l, v, m)); break; }
+                }
+            }
+        }
+        if kern.is_empty() { continue; }
+        if kern.len() > 20 { complete = false; break 'outer; }
+        for cmb in 1u32..(1u32 << kern.len()) {
+            let mut y = 0u32;
+            for (i, &kv) in kern.iter().enumerate() { if (cmb >> i) & 1 == 1 { y ^= kv; } }
+            let j = red(kron(x, y, wc)).expect("a kernel vector gives an element of G");
+            found.push((x, y, j));
+            if found.len() > cap { complete = false; break 'outer; }
+        }
+    }
+    DirCensus { dim, deps, found, complete }
+}
+
+/// The census of the three directions, as used by the walk.  Direction d is USABLE when its r Kronecker
+/// products are independent (so an element of G_d has one index set) and the list of rank-one elements is
+/// complete; then for an index set I the rank-one elements of U_I = span{K_t : t in I} are the |I| products
+/// themselves plus the extras whose index set lies inside I.  With no extra inside I:
+///   * a candidate whose direction-d flattening rank is |I| has slice space U_I with exactly |I| rank-one
+///     elements, so its decomposition is unique (no call of the decider);
+///   * a slice space S of dimension |I| - 1 inside U_I is spanned by rank-one elements iff it holds |I| - 1 of
+///     the products;
+///   * U_I never has "more than |I|" rank-one elements (the last test of the deficient alternative case).
+struct Census {
+    full: [bool; 3],       // dim G_d = r
+    usable: [bool; 3],
+    extras: [Vec<u64>; 3], // index sets of the rank-one elements of G_d other than the r products
+    any_usable: bool,
+}
+
+impl Census {
+    fn none() -> Self { Census { full: [false; 3], usable: [false; 3], extras: [Vec::new(), Vec::new(), Vec::new()], any_usable: false } }
+    /// kron index (a(x)b, a(x)c, b(x)c) of direction d
+    fn kidx(d: usize) -> usize { 2 - d }
+    /// the three direction censuses (None where the sizes do not fit)
+    fn raw(prods: &[Prod], krons: &[[Wide; 3]], w: [usize; 3]) -> [Option<DirCensus>; 3] {
+        let mut out: [Option<DirCensus>; 3] = [None, None, None];
+        for d in 0..3 {
+            let (r, c) = match d { 0 => (1usize, 2usize), 1 => (0, 2), _ => (0, 1) };
+            if w[r] * w[c] > 256 || w[r] > 20 || prods.len() > 64 { continue; }
+            let kr: Vec<Wide> = krons.iter().map(|x| x[Self::kidx(d)]).collect();
+            out[d] = Some(census_dir(&kr, w[r], w[c], 1 << 20));
+        }
+        out
+    }
+    fn build(prods: &[Prod], krons: &[[Wide; 3]], w: [usize; 3], verbose: bool) -> Self {
+        let mut c = Census::none();
+        let raw = Self::raw(prods, krons, w);
+        for d in 0..3 {
+            let Some(dc) = &raw[d] else { if verbose { println!("c census d={d}: skipped (sizes)"); } continue; };
+            let r = prods.len();
+            c.full[d] = dc.dim == r;
+            let orig = dc.found.iter().filter(|f| f.2.count_ones() == 1).count();
+            c.usable[d] = c.full[d] && dc.complete && orig == r;
+            c.extras[d] = dc.found.iter().filter(|f| f.2.count_ones() != 1).map(|f| f.2).collect();
+            if verbose {
+                let mut sizes: Vec<u32> = c.extras[d].iter().map(|j| j.count_ones()).collect();
+                sizes.sort_unstable();
+                println!("c census d={d}: dim G {} of {r}, rank-one elements {} (extra {}{}){}", dc.dim, dc.found.len(), c.extras[d].len(),
+                    if sizes.is_empty() { String::new() } else { format!(", index-set sizes {:?}", &sizes[..sizes.len().min(12)]) },
+                    if c.usable[d] { "" } else { " -- not usable" });
+            }
+        }
+        c.any_usable = c.usable.iter().any(|&u| u);
+        c
+    }
+    /// per direction: Some(an extra rank-one element lies inside the index set), None when the direction is not usable
+    #[inline]
+    fn hint(&self, mask: u64) -> [Option<bool>; 3] {
+        let mut h = [None; 3];
+        for d in 0..3 { if self.usable[d] { h[d] = Some(self.extras[d].iter().any(|&j| j & !mask == 0)); } }
+        h
+    }
+}
+
 enum Verdict { No, Yes(Vec<Prod>, bool), Open }
 
 /// Decide a candidate.  target = k-1 (reduce) or k (alt).  Yes carries the new products (fewer than k, or k
 /// different ones) and whether their tensor equals the dropped products'.  Open: delta beyond maxdelta.
-fn decide(prods: &[Prod], target: usize, maxdelta: usize, n: [usize; 3]) -> Verdict {
+/// hint[d] = Some(false) says (from the census) that the original space of direction d has no rank-one
+/// element besides the k Kronecker matrices of the products; it only replaces enumerations whose outcome it fixes.
+fn decide(prods: &[Prod], target: usize, maxdelta: usize, n: [usize; 3], hint: &[Option<bool>; 3]) -> Verdict {
     let k = prods.len();
     let (co, _dims, dirs) = directions(prods);
     if dirs.is_empty() { return Verdict::Open; }
@@ -566,6 +723,12 @@ fn decide(prods: &[Prod], target: usize, maxdelta: usize, n: [usize; 3]) -> Verd
         Verdict::Yes(ps, ok)
     };
     if let Some(dir) = dirs.iter().find(|x| x.ech.len() == target) {
+        if hint[dir.d] == Some(false) {
+            // S lies in the original space, whose rank-one elements are the k Kronecker matrices
+            if target == k { return Verdict::No; }
+            let inside = dir.kr.iter().filter(|&&m| reduce128(&dir.ech, m) == 0).count();
+            if inside < target { return Verdict::No; }
+        }
         let sp = analyze(dir.ech.clone(), dir.nr, dir.nc);
         let yes = if target == k { sp.r1.len() > k } else { sp.spanned };
         return if yes { finish(dir, &dir.ech) } else { Verdict::No };
@@ -586,7 +749,7 @@ fn decide(prods: &[Prod], target: usize, maxdelta: usize, n: [usize; 3]) -> Verd
         };
         search_w(&sp, dir.nr, dir.nc, delta, &mut visit);
     }
-    if found.is_none() && target == k {
+    if found.is_none() && target == k && hint[dir.d] != Some(false) {
         let su = analyze(u.clone(), dir.nr, dir.nc);
         if su.r1.len() > k { found = Some(u.clone()); }
     }
@@ -596,6 +759,8 @@ fn decide(prods: &[Prod], target: usize, maxdelta: usize, n: [usize; 3]) -> Verd
 struct Walk<'a> {
     prods: &'a [Prod],
     krons: &'a [[Wide; 3]], // per product: a(x)b, a(x)c, b(x)c
+    census: &'a Census,
+    fast: bool,             // the Kronecker products are independent in all three directions: no Kronecker bases
     k: usize,
     both: bool,
     decide: bool,
@@ -608,8 +773,8 @@ struct Walk<'a> {
     counts: [u64; 6], // R candidates, A candidates, refuted, reducible, unique, alternatives (decide mode)
 }
 
-fn line_plain(tag: &str, k: usize, bases: &[Basis; 3], idx: &[String]) -> String {
-    format!("{} k={} dims={},{},{} idx={}", tag, k, bases[0].dim(), bases[1].dim(), bases[2].dim(), idx.join(","))
+fn line_plain(tag: &str, k: usize, dims: [usize; 3], idx: &[usize]) -> String {
+    format!("{} k={} dims={},{},{} idx={}", tag, k, dims[0], dims[1], dims[2], idx.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","))
 }
 
 fn yes_line(head: &str, ps: &[Prod], ok: bool, n: [usize; 3]) -> String {
@@ -617,47 +782,63 @@ fn yes_line(head: &str, ps: &[Prod], ok: bool, n: [usize; 3]) -> String {
 }
 
 impl<'a> Walk<'a> {
+    /// one complete subset (self.chosen): dims of the factor spans, dependent slots, dependent Kronecker products
+    fn leaf(&mut self, dims: [usize; 3], dep: [bool; 3], kdep: [bool; 3]) {
+        self.visited += 1;
+        let ndep = dep.iter().filter(|&&d| d).count();
+        // flattening rank of slot c drops when the c-factors or the a(x)b products are dependent, etc.
+        let flat = [dep[0] || kdep[2], dep[1] || kdep[1], dep[2] || kdep[0]];
+        let reducible = flat.iter().all(|&d| d);
+        if !(reducible || (self.both && ndep >= 2)) { return; }
+        if reducible { self.counts[0] += 1; } else { self.counts[1] += 1; }
+        if !self.decide {
+            self.out.push(line_plain(if reducible { "R" } else { "A" }, self.k, dims, &self.chosen));
+            return;
+        }
+        let mut hint: [Option<bool>; 3] = [None; 3];
+        if self.census.any_usable {
+            let mut mask = 0u64;
+            for &i in &self.chosen { mask |= 1u64 << i; }
+            hint = self.census.hint(mask);
+        }
+        if !reducible && (0..3).any(|s| !flat[s] && hint[s] == Some(false)) {
+            // a slot of full flattening rank whose slice space is the original space, with no rank-one element
+            // besides the k Kronecker matrices: the decomposition is unique
+            self.counts[4] += 1;
+            return;
+        }
+        let ps: Vec<Prod> = self.chosen.iter().map(|&i| self.prods[i]).collect();
+        let (k, idx) = (self.k, self.chosen.clone());
+        let line = move |t: &str| line_plain(t, k, dims, &idx);
+        let mut reduced = false;
+        if reducible {
+            match decide(&ps, self.k - 1, self.maxdelta, self.n, &hint) {
+                Verdict::No => self.counts[2] += 1,
+                Verdict::Yes(np, ok) => { self.counts[3] += 1; reduced = true; self.out.push(yes_line(&line("RED"), &np, ok, self.n)); }
+                Verdict::Open => self.out.push(line("R")),
+            }
+        }
+        if self.both && ndep >= 2 && !reduced {
+            match decide(&ps, self.k, self.maxdelta_alt, self.n, &hint) {
+                Verdict::No => self.counts[4] += 1,
+                Verdict::Yes(np, ok) => {
+                    if np.len() < self.k { self.counts[3] += 1; self.out.push(yes_line(&line("RED"), &np, ok, self.n)); }
+                    else { self.counts[5] += 1; self.out.push(yes_line(&line("ALT"), &np, ok, self.n)); }
+                }
+                Verdict::Open => self.out.push(line("A")),
+            }
+        }
+    }
+
+    /// the general walk: factor bases and Kronecker bases
     fn dfs(&mut self, start: usize, bases: &[Basis; 3], wb: &[WBasis; 3], dep: [bool; 3], kdep: [bool; 3]) {
         if self.chosen.len() == self.k {
-            self.visited += 1;
-            let ndep = dep.iter().filter(|&&d| d).count();
-            // flattening rank of slot c drops when the c-factors or the a(x)b products are dependent, etc.
-            let flat = [dep[0] || kdep[2], dep[1] || kdep[1], dep[2] || kdep[0]];
-            let reducible = flat.iter().all(|&d| d);
-            if reducible || (self.both && ndep >= 2) {
-                let tag = if reducible { "R" } else { "A" };
-                if reducible { self.counts[0] += 1; } else { self.counts[1] += 1; }
-                let idx: Vec<String> = self.chosen.iter().map(|i| i.to_string()).collect();
-                if self.decide {
-                    let ps: Vec<Prod> = self.chosen.iter().map(|&i| self.prods[i]).collect();
-                    let line = |t: &str| format!("{} k={} dims={},{},{} idx={}", t, self.k, bases[0].dim(), bases[1].dim(), bases[2].dim(), idx.join(","));
-                    let mut reduced = false;
-                    if reducible {
-                        match decide(&ps, self.k - 1, self.maxdelta, self.n) {
-                            Verdict::No => self.counts[2] += 1,
-                            Verdict::Yes(np, ok) => { self.counts[3] += 1; reduced = true; self.out.push(yes_line(&line("RED"), &np, ok, self.n)); }
-                            Verdict::Open => self.out.push(line("R")),
-                        }
-                    }
-                    if self.both && ndep >= 2 && !reduced {
-                        match decide(&ps, self.k, self.maxdelta_alt, self.n) {
-                            Verdict::No => self.counts[4] += 1,
-                            Verdict::Yes(np, ok) => {
-                                if np.len() < self.k { self.counts[3] += 1; self.out.push(yes_line(&line("RED"), &np, ok, self.n)); }
-                                else { self.counts[5] += 1; self.out.push(yes_line(&line("ALT"), &np, ok, self.n)); }
-                            }
-                            Verdict::Open => self.out.push(line("A")),
-                        }
-                    }
-                } else {
-                    self.out.push(line_plain(tag, self.k, bases, &idx));
-                }
-            }
+            self.leaf([bases[0].dim(), bases[1].dim(), bases[2].dim()], dep, kdep);
             return;
         }
         let need = self.k - self.chosen.len();
         for i in start..=(self.prods.len() - need) {
-            let mut nb = bases.clone();
+            let mut nb = *bases;
             let mut nd = dep;
             for s in 0..3 {
                 let r = nb[s].reduce(self.prods[i][s]);
@@ -674,6 +855,81 @@ impl<'a> Walk<'a> {
             self.chosen.pop();
         }
     }
+
+    /// the walk when no Kronecker products are dependent anywhere (census: dim G_d = r in all three directions):
+    /// factor bases only, and the last level without copying a basis
+    fn dfs_fast(&mut self, start: usize, bases: &[Basis; 3], dep: [bool; 3]) {
+        let need = self.k - self.chosen.len(); // at least 1
+        let hi = self.prods.len() - need;
+        if need == 1 {
+            let dims0 = [bases[0].dim(), bases[1].dim(), bases[2].dim()];
+            let ndep0 = dep.iter().filter(|&&d| d).count();
+            for i in start..=hi {
+                let p = self.prods[i];
+                let (mut nd, mut dims, mut ndep) = (dep, dims0, ndep0);
+                for s in 0..3 {
+                    if bases[s].reduce(p[s]) != 0 { dims[s] += 1; } else if !nd[s] { nd[s] = true; ndep += 1; }
+                }
+                if ndep < 2 { self.visited += 1; continue; } // no candidate has fewer than two dependent slots here
+                self.chosen.push(i);
+                self.leaf(dims, nd, [false; 3]);
+                self.chosen.pop();
+            }
+            return;
+        }
+        for i in start..=hi {
+            let mut nb = *bases;
+            let mut nd = dep;
+            for s in 0..3 {
+                let r = nb[s].reduce(self.prods[i][s]);
+                if r == 0 { nd[s] = true; } else { nb[s].insert(r); }
+            }
+            self.chosen.push(i);
+            self.dfs_fast(i + 1, &nb, nd);
+            self.chosen.pop();
+        }
+    }
+
+    /// one work unit: every k-subset that starts with `prefix`
+    fn run_unit(&mut self, prefix: &[usize]) {
+        let mut b = [Basis::new(); 3];
+        let mut wbs = [WBasis::new(), WBasis::new(), WBasis::new()];
+        let (mut dep, mut kdep) = ([false; 3], [false; 3]);
+        self.chosen.clear();
+        for &i in prefix {
+            for s in 0..3 {
+                let r = b[s].reduce(self.prods[i][s]);
+                if r == 0 { dep[s] = true; } else { b[s].insert(r); }
+            }
+            if !self.fast {
+                for s in 0..3 {
+                    let r = wbs[s].reduce(self.krons[i][s]);
+                    if r == [0; 4] { kdep[s] = true; } else { wbs[s].insert(r); }
+                }
+            }
+            self.chosen.push(i);
+        }
+        if self.chosen.len() == self.k {
+            self.leaf([b[0].dim(), b[1].dim(), b[2].dim()], dep, kdep);
+            return;
+        }
+        let start = prefix[prefix.len() - 1] + 1;
+        if start + (self.k - self.chosen.len()) > self.prods.len() { return; }
+        if self.fast { self.dfs_fast(start, &b, dep); } else { self.dfs(start, &b, &wbs, dep, kdep); }
+    }
+}
+
+/// the increasing index prefixes of length plen of the k-subsets of 0..r, in the order of the walk
+fn prefixes(r: usize, k: usize, plen: usize) -> Vec<Vec<usize>> {
+    fn rec(r: usize, k: usize, plen: usize, start: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+        if cur.len() == plen { out.push(cur.clone()); return; }
+        let need = k - cur.len();
+        if r < need { return; }
+        for i in start..=(r - need) { cur.push(i); rec(r, k, plen, i + 1, cur, out); cur.pop(); }
+    }
+    let mut out = Vec::new();
+    rec(r, k, plen, 0, &mut Vec::new(), &mut out);
+    out
 }
 
 fn parse_idx(line: &str) -> Option<Vec<usize>> {
@@ -684,7 +940,7 @@ fn parse_idx(line: &str) -> Option<Vec<usize>> {
 }
 
 /// decide the candidates of a file (R / A lines); returns the output lines and counts per k
-fn decide_lines(prods: &[Prod], lines: &[String], mode: &str, threads: usize, maxdelta: usize, maxdelta_alt: usize, n: [usize; 3]) -> Vec<String> {
+fn decide_lines(prods: &[Prod], lines: &[String], mode: &str, threads: usize, maxdelta: usize, maxdelta_alt: usize, n: [usize; 3], census: &Census) -> Vec<String> {
     let next = AtomicUsize::new(0);
     let results: Mutex<Vec<(usize, Vec<String>, std::collections::BTreeMap<(usize, &'static str), u64>)>> = Mutex::new(Vec::new());
     std::thread::scope(|sc| {
@@ -704,16 +960,22 @@ fn decide_lines(prods: &[Prod], lines: &[String], mode: &str, threads: usize, ma
                     let (_co, dims, _dirs) = directions(&ps);
                     let head = |t: &str| format!("{} k={} dims={},{},{} idx={}", t, k, dims[0], dims[1], dims[2], idx.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","));
                     let is_r = line.starts_with('R');
+                    let mut hint: [Option<bool>; 3] = [None; 3];
+                    if census.any_usable {
+                        let mut mask = 0u64;
+                        for &j in &idx { mask |= 1u64 << j; }
+                        hint = census.hint(mask);
+                    }
                     let mut reduced = false;
                     if (mode == "reduce" || mode == "both") && is_r {
-                        match decide(&ps, k - 1, maxdelta, n) {
+                        match decide(&ps, k - 1, maxdelta, n, &hint) {
                             Verdict::No => *counts.entry((k, "refuted")).or_insert(0) += 1,
                             Verdict::Yes(np, ok) => { *counts.entry((k, "REDUCIBLE")).or_insert(0) += 1; reduced = true; out.push((i, yes_line(&head("RED"), &np, ok, n))); }
                             Verdict::Open => { *counts.entry((k, "reduce-open")).or_insert(0) += 1; out.push((i, head("R"))); }
                         }
                     }
                     if (mode == "alt" || mode == "both") && !reduced {
-                        match decide(&ps, k, maxdelta_alt, n) {
+                        match decide(&ps, k, maxdelta_alt, n, &hint) {
                             Verdict::No => *counts.entry((k, "unique")).or_insert(0) += 1,
                             Verdict::Yes(np, ok) => {
                                 if np.len() < k { *counts.entry((k, "REDUCIBLE")).or_insert(0) += 1; out.push((i, yes_line(&head("RED"), &np, ok, n))); }
@@ -758,6 +1020,49 @@ fn main() {
     let out_path: Option<String> = arg_val(&args, "--out");
     let r = prods.len();
     let t0 = std::time::Instant::now();
+    let (wb_, wc_) = (n2 * n3, n1 * n3);
+    let krons: Vec<[Wide; 3]> = if n1 * n2 * wb_ <= 256 && n1 * n2 * wc_ <= 256 && wb_ * wc_ <= 256 {
+        prods.iter().map(|p| [kron(p[0], p[1], wb_), kron(p[0], p[2], wc_), kron(p[1], p[2], wc_)]).collect()
+    } else { Vec::new() };
+    let widths = [n1 * n2, wb_, wc_];
+    if args.iter().any(|a| a == "--census") {
+        // the global rank-one census, in the format of proj/census.py
+        assert!(!krons.is_empty(), "the Kronecker products do not fit 256 bits");
+        let label = args[3].rsplit('/').next().unwrap().to_string();
+        let raw = Census::raw(&prods, &krons, widths);
+        let mut clean_all = true;
+        for d in 0..3 {
+            let Some(dc) = &raw[d] else { println!("{label} d={d}: skipped (sizes)"); clean_all = false; continue; };
+            let wr = widths[match d { 0 => 1, _ => 0 }];
+            let wcc = widths[match d { 2 => 1, _ => 2 }];
+            let orig = dc.found.iter().filter(|f| f.2.count_ones() == 1).count();
+            let mut extra: Vec<&(u32, u32, u64)> = dc.found.iter().filter(|f| f.2.count_ones() != 1).collect();
+            let clean = dc.dim == r && extra.is_empty() && orig == r && dc.complete;
+            clean_all &= clean;
+            println!("{label} d={d}: products {r}, dim G {}, dependencies {}, rank-one elements {} (originals {orig}, extra {}) -> {}{}",
+                dc.dim, dc.deps.len(), dc.found.len(), extra.len(), if clean { "CLEAN" } else { "NOT CLEAN" }, if dc.complete { "" } else { " (list capped)" });
+            let set = |m: u64| -> String { format!("[{}]", (0..r).filter(|t| (m >> t) & 1 == 1).map(|t| t.to_string()).collect::<Vec<_>>().join(", ")) };
+            for &m in &dc.deps { println!("   DEPENDENCY J={}", set(m)); }
+            let n_extra = extra.len();
+            extra.sort_by_key(|f| f.2.count_ones());
+            for f in extra.iter().take(40) { println!("   EXTRA |J|={} x={:0wr$b} y={:0wcc$b} J={}", f.2.count_ones(), f.0, f.1, set(f.2)); }
+            if n_extra > 40 {
+                let mut sizes: std::collections::BTreeMap<u32, usize> = std::collections::BTreeMap::new();
+                for f in &extra { *sizes.entry(f.2.count_ones()).or_insert(0) += 1; }
+                println!("   ... {n_extra} extras, sizes [{}]", sizes.iter().map(|(s, c)| format!("({s}, {c})")).collect::<Vec<_>>().join(", "));
+            }
+        }
+        println!("{label}: {}", if clean_all { "CLEAN in all three directions" } else { "NOT CLEAN" });
+        return;
+    }
+    let no_census = args.iter().any(|a| a == "--no-census") || krons.is_empty();
+    let census = if no_census { Census::none() } else { Census::build(&prods, &krons, widths, true) };
+    let subset_hint = |idx: &[usize]| -> [Option<bool>; 3] {
+        if !census.any_usable { return [None; 3]; }
+        let mut mask = 0u64;
+        for &i in idx { mask |= 1u64 << i; }
+        census.hint(mask)
+    };
     if let Some(sub) = arg_val::<String>(&args, "--subset") {
         let idx: Vec<usize> = sub.split(',').map(|s| s.parse().unwrap()).collect();
         let ps: Vec<Prod> = idx.iter().map(|&j| prods[j]).collect();
@@ -768,7 +1073,7 @@ fn main() {
         for (name, target, md) in [("reduce", k - 1, maxdelta), ("alt", k, maxdelta_alt)] {
             let best = dirs.iter().map(|x| x.ech.len()).max().unwrap_or(0);
             let t1 = std::time::Instant::now();
-            let v = decide(&ps, target, md, n);
+            let v = decide(&ps, target, md, n, &subset_hint(&idx));
             let path = if dirs.iter().any(|x| x.ech.len() == target) { "exact (a direction has flattening rank == target)".to_string() } else { format!("deficient, delta = {}", target as i64 - best as i64) };
             match v {
                 Verdict::No => println!("  {name}: NO ({path}) {:.3} s", t1.elapsed().as_secs_f64()),
@@ -783,7 +1088,7 @@ fn main() {
         let txt = std::fs::read_to_string(&lf).expect("read lines");
         let lines: Vec<String> = txt.lines().filter(|l| l.starts_with("R ") || l.starts_with("A ")).map(|l| l.to_string()).collect();
         println!("c kres --lines: <{n1},{n2},{n3}> rank {r} from {}; {} candidate lines from {lf}; mode {mode}; maxdelta {maxdelta} / alt {maxdelta_alt}", args[3], lines.len());
-        let all = decide_lines(&prods, &lines, &mode, threads, maxdelta, maxdelta_alt, n);
+        let all = decide_lines(&prods, &lines, &mode, threads, maxdelta, maxdelta_alt, n, &census);
         println!("c {:.1} s", t0.elapsed().as_secs_f64());
         if let Some(p) = out_path {
             let mut f = std::fs::File::create(&p).unwrap();
@@ -798,8 +1103,9 @@ fn main() {
     let kmax: usize = arg_val(&args, "--kmax").unwrap_or(8);
     let both = args.iter().any(|a| a == "--both");
     let decide_flag = args.iter().any(|a| a == "--decide");
-    let (wb_, wc_) = (n2 * n3, n1 * n3);
-    let krons: Vec<[Wide; 3]> = prods.iter().map(|p| [kron(p[0], p[1], wb_), kron(p[0], p[2], wc_), kron(p[1], p[2], wc_)]).collect();
+    assert!(!krons.is_empty(), "the Kronecker products do not fit 256 bits");
+    // no Kronecker dependencies anywhere: the walk needs the factor bases only
+    let fast = !no_census && census.full.iter().all(|&f| f);
     // whole-scheme span dimensions, for the record
     let mut full = [Basis::new(), Basis::new(), Basis::new()];
     for p in &prods { for s in 0..3 { let x = full[s].reduce(p[s]); if x != 0 { full[s].insert(x); } } }
@@ -810,20 +1116,19 @@ fn main() {
     for k in kmin..=kmax {
         let t0 = std::time::Instant::now();
         let next = AtomicUsize::new(0);
+        // work units: the index prefixes of length min(3, k-1) in the order of the walk, handed out one at a
+        // time (the first index alone carries k/r of the subsets, so a split by first index leaves most threads idle)
+        let units = prefixes(r, k, k.saturating_sub(1).clamp(1, 3));
         let results: Mutex<Vec<(usize, Vec<String>, u64, [u64; 6])>> = Mutex::new(Vec::new());
         std::thread::scope(|sc| {
             for _ in 0..threads {
                 sc.spawn(|| {
                     loop {
-                        let i0 = next.fetch_add(1, Ordering::Relaxed);
-                        if i0 + k > r { break; }
-                        let mut w = Walk { prods: &prods, krons: &krons, k, both, decide: decide_flag, maxdelta, maxdelta_alt, n, chosen: vec![i0], out: Vec::new(), visited: 0, counts: [0; 6] };
-                        let mut b = [Basis::new(), Basis::new(), Basis::new()];
-                        for s in 0..3 { b[s].insert(prods[i0][s]); }
-                        let mut wbs = [WBasis::new(), WBasis::new(), WBasis::new()];
-                        for s in 0..3 { wbs[s].insert(krons[i0][s]); }
-                        w.dfs(i0 + 1, &b, &wbs, [false; 3], [false; 3]);
-                        results.lock().unwrap().push((i0, w.out, w.visited, w.counts));
+                        let u = next.fetch_add(1, Ordering::Relaxed);
+                        if u >= units.len() { break; }
+                        let mut w = Walk { prods: &prods, krons: &krons, census: &census, fast, k, both, decide: decide_flag, maxdelta, maxdelta_alt, n, chosen: Vec::with_capacity(k), out: Vec::new(), visited: 0, counts: [0; 6] };
+                        w.run_unit(&units[u]);
+                        results.lock().unwrap().push((u, w.out, w.visited, w.counts));
                     }
                 });
             }
@@ -930,6 +1235,68 @@ mod tests {
         }
         println!("depth search vs brute force: {n_total} random spaces, positives delta=1: {n_pos1}, delta=2: {n_pos2}");
         assert!(n_pos2 > 50 && n_pos2 < n_total * 2, "the test needs both outcomes");
+    }
+
+    /// the census against direct enumeration of every x (x) y, on random small spaces and on the planted case:
+    /// six of the seven nonzero u of a 3-dimensional space with products u (x) u, whose sum is the seventh's
+    #[test]
+    fn census_matches_brute_force() {
+        let mut rng = Rng(0x2545F4914F6CDD1D);
+        let (wr, wc) = (4usize, 5usize);
+        let mut with_extra = 0;
+        for trial in 0..400 {
+            let r = 2 + rng.below(9) as usize;
+            let kr: Vec<Wide> = (0..r).map(|_| kron(1 + rng.below(15) as u32, 1 + rng.below(31) as u32, wc)).collect();
+            let dc = census_dir(&kr, wr, wc, 1 << 20);
+            assert!(dc.complete);
+            // brute force: Gaussian elimination with coordinates, then every pair
+            let mut ech: Vec<(Wide, u64)> = Vec::new();
+            for (t, &v) in kr.iter().enumerate() {
+                let (mut x, mut m) = (v, 1u64 << t);
+                for &(e, em) in &ech { let l = wide_lead(&e); if (x[(l / 64) as usize] >> (l % 64)) & 1 == 1 { for q in 0..4 { x[q] ^= e[q]; } m ^= em; } }
+                if x != [0; 4] { let l = wide_lead(&x); let pos = ech.iter().position(|b| wide_lead(&b.0) < l).unwrap_or(ech.len()); ech.insert(pos, (x, m)); }
+            }
+            assert_eq!(ech.len(), dc.dim, "trial {trial}");
+            let mut want: Vec<(u32, u32)> = Vec::new();
+            for x in 1u32..(1 << wr) { for y in 1u32..(1 << wc) {
+                let mut v = kron(x, y, wc);
+                for &(e, _) in &ech { let l = wide_lead(&e); if (v[(l / 64) as usize] >> (l % 64)) & 1 == 1 { for q in 0..4 { v[q] ^= e[q]; } } }
+                if v == [0; 4] { want.push((x, y)); }
+            } }
+            let mut got: Vec<(u32, u32)> = dc.found.iter().map(|f| (f.0, f.1)).collect();
+            got.sort_unstable();
+            want.sort_unstable();
+            assert_eq!(got, want, "trial {trial}");
+            for &(x, y, j) in &dc.found {
+                let mut s = [0u64; 4];
+                for t in 0..r { if (j >> t) & 1 == 1 { for q in 0..4 { s[q] ^= kr[t][q]; } } }
+                assert_eq!(s, kron(x, y, wc), "the index set sums to the element");
+            }
+            if dc.dim == r && dc.found.len() > r { with_extra += 1; }
+        }
+        assert!(with_extra > 5, "the test needs independent products with extra rank-one elements ({with_extra})");
+        let us: Vec<u32> = (1..8).collect();
+        let six: Vec<Wide> = us[..6].iter().map(|&u| kron(u, u, 3)).collect();
+        let dc = census_dir(&six, 3, 3, 1 << 20);
+        assert_eq!(dc.dim, 6);
+        let extra: Vec<&(u32, u32, u64)> = dc.found.iter().filter(|f| f.2.count_ones() != 1).collect();
+        assert_eq!(extra.len(), 1);
+        assert_eq!(*extra[0], (7, 7, 0b111111));
+    }
+
+    /// the work units cover every k-subset once, in the order of the walk
+    #[test]
+    fn prefixes_cover_the_subsets() {
+        fn binom(n: u64, k: u64) -> u64 { if k > n { 0 } else { (0..k).fold(1u64, |a, i| a * (n - i) / (i + 1)) } }
+        for &(r, k) in &[(9usize, 4usize), (10, 2), (7, 7), (12, 5), (6, 1)] {
+            let plen = k.saturating_sub(1).clamp(1, 3);
+            let us = prefixes(r, k, plen);
+            let mut sorted = us.clone();
+            sorted.sort();
+            assert_eq!(us, sorted, "lexicographic order");
+            let total: u64 = us.iter().map(|p| binom((r - 1 - p[p.len() - 1]) as u64, (k - plen) as u64)).sum();
+            assert_eq!(total, binom(r as u64, k as u64), "r={r} k={k}");
+        }
     }
 
     #[test]

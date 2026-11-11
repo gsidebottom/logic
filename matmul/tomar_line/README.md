@@ -899,7 +899,8 @@ starts), so the comparison is by type.
     1565).
   * 13x13x13 m1379, all 39 single deletions: 30 reach 1275, 6 reach 1276
     and index 6 of each slot stops at 1340.  The catalog's 12x13x13 is
-    1274 (from Sedoglavic's tensor file): one short.  The deleted index
+    1274 (from Sedoglavic's tensor file): one short.  Index 0 verified exactly over Q on 2026-11-11
+    (kron_reduced/12x13x13_m1275_Q.*; 15 dependencies, 85 gone; denominator primes 2, 3, 13).  The deleted index
     matters, the slot does not (the same pattern in I, J and K).
   * 15x15x15 m1977, sample single deletions: indices 0 and 14 of every
     slot give 1842, I1 gives 1843, the middle index 7 of each slot only

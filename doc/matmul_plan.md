@@ -2969,6 +2969,19 @@ the two source papers for this track):
   over Q, NOT dyadic (denominator primes {2,5}, {2,5,17} x3, {2,3,5}); with each product rescaled so that L and R
   are primitive integer vectors, every entry of C needs one division by a constant (182 / 195 / 210 / 210 / 240,
   2-3 distinct constants per scheme).
+  2026-11-11 afternoon: PUBLIC REPOSITORY github.com/gsidebottom/mat_mul (Greg: a new public repo with the record
+  and near-record schemes, PLinOpt files, the Lean proofs, a README index).  13 scheme folders in PLinOpt format: the
+  55, KS-51 (ALT/CoB plus the composed scheme, generated from Ring51.lean; 12 + 13 + 26 and 4 + 4 + 3), the 201, the
+  balanced 201, the 166 and 166b, the 167, the five Q records, 13x14x16 1805 ternary (MerlijnW70's catalog 1806 less
+  one product: a record among integer schemes only, Q has 1796) and 12x13x13 1275 (near record, 1274; verified
+  exactly over Q today, proj/kron_reduced/12x13x13_m1275_Q.*, denominator primes 2, 3, 13, 156 divisions after
+  rescaling).  lean/ is a standalone Lake project with the five proof modules (lake build passes; built offline from
+  an APFS clone of proof/.lake/packages); tools/check_scheme.py (exact Brent equations for 3x3 and 4x4, exact random
+  evaluation for the rest, corrupted-coefficient control) and check_all.sh: 14 of 14 triples pass, PLinOpt's
+  SLPchecker 51 / MMchecker 42 / ALTchecker 3 runs all SUCCESS; checks/discovery holds the exact-verification logs.
+  The 4x4 files are our submitted originals: Dumas later compacted the 201 and 167-L programs and sign-normalized
+  the balanced 201 inside PLinOpt.  PLinOpt's data/3x3x3_23_55 (Dumas, 2026-08-13) is NOT our 55: it shares 12 of
+  its 23 products with ours and is no S3 image of it.  The KS-51 paper is now arXiv:2611.12907.
   NOTE: target/release/kres is still the old build; kres_census (scratchpad kres/build/) is this source; rebuild after
   the k = 11 chain ends (touch src/bin/kres.rs first).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):

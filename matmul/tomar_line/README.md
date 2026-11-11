@@ -855,19 +855,40 @@ starts), so the comparison is by type.
   singles) and verified 2026-11-11; they are the records for those shapes:
 
     shape     LITA source      alive  ranks after the deletion  step                   rank  catalog Q  [S]
-    13x14x14  14x14x14 m1594   1594   [1580, 1594, 1580]        d2: 14 dep,  29 gone   1565  1582       1614
-    13x14x14  14x14x14 m1594   1594   row 7 deleted             d0: 14 dep,  30 gone   1564  1582       1614
-    15x16x16  16x16x16 m2237   2237   [2221, 2237, 2221]        d2: 16 dep,  34 gone   2203  2223       2262
-    15x16x16  16x16x16 m2237   2237   row 9 deleted             d0: 16 dep,  35 gone   2202  2223       2262
-    14x15x15  15x15x15 m1977   1955   [1938, 1955, 1948]        d0: 17 dep, 113 gone   1842  1848       1890
-    14x14x15  15x15x15 m1977   1827   second deletion           d1: 17 dep, 112 gone   1715  1790       1798
-    13x15x15  15x15x15 m1977   1797   second deletion           d0: 21 dep,  34 gone   1763  1776       1797
+    13x14x14  14x14x14 m1594   1594   [1580, 1594, 1580]        d2: 14 dep,  29 gone   1565  1582       1579
+    13x14x14  14x14x14 m1594   1594   row 7 deleted             d0: 14 dep,  30 gone   1564  1582       1579
+    15x16x16  16x16x16 m2237   2237   [2221, 2237, 2221]        d2: 16 dep,  34 gone   2203  2223       2220
+    15x16x16  16x16x16 m2237   2237   row 9 deleted             d0: 16 dep,  35 gone   2202  2223       2220
+    14x15x15  15x15x15 m1977   1955   [1938, 1955, 1948]        d0: 17 dep, 113 gone   1842  1848       1848
+    14x14x15  15x15x15 m1977   1827   second deletion           d1: 17 dep, 112 gone   1715  1790       1789
+    13x15x15  15x15x15 m1977   1797   second deletion           d0: 21 dep,  34 gone   1763  1776       1776
 
-  ([S] = the rank on Sedoglavic's page fmm.univ-lille.fr for the shape,
-  which lags the catalog.)  All five outputs have full Kronecker rank in
-  all three directions.  Coefficients are rational with denominators up
-  to 400, 720, 1088, 1088 and 1088 (the 14x15x15 scheme: 62,867 + 35,592 + 31,539
-  nonzeros; the projected input's common denominators are 5440, 40, 40).
+  ([S] = the rank in Sedoglavic's table fmm_sota.json of 2026-11-09 from
+  fmm.univ-lille.fr; the per-shape pages read on 2026-11-10 showed older
+  values, 1614 / 2262 / 1890 / 1798 / 1797, and the table is ahead of the
+  catalog on three shapes.)  All outputs have full Kronecker rank in all
+  three directions.  Coefficients are rational and NOT dyadic
+  (proj/kron_coeff_stats.py): denominators up to 400 and 200 (13x14x14
+  m1565, m1564; primes 2, 5), 720 (15x16x16; primes 2, 3, 5) and 1088 (the
+  three 15x15x15 descendants; primes 2, 5, 17).  The 14x15x15 scheme has
+  62,867 + 35,592 + 31,539 nonzeros; the projected input's common
+  denominators are 5440, 40, 40.  Rescaling every product so that its L
+  and R rows are primitive integer vectors leaves one division by a
+  constant per entry of C (182 / 195 / 210 / 210 / 240 for the five
+  records, two or three distinct constants each).
+  All five are non-commutative: proj/scheme_noncomm_check.py runs them on
+  matrices whose entries are random 2x2 integer matrices (exact A B), and
+  the control with every product's factors swapped fails on every entry.
+  They need 2, 5 and 17 (13x14x14: 2, 5; 15x16x16: 2, 3, 5) invertible.
+  PLinOpt: proj/json2sms.py writes them as data/<shape>_<rank>_rational_
+  {L,R,P}.sms; optimizer -O 1 -s 1 programs; make check passes for all
+  five; branch data-rank-records-q, commit 04db52b in the worktree
+  matmul/dps48/plinopt_pr/records (not pushed; PR text
+  doc/plinopt_pr_rank_records_2026-11-11.md).  Programs, additions +
+  scalings (divisions; proj/slp_div_count.py): 13x14x14 32,015 + 12,945
+  (11,422), 13x15x15 16,335 + 3,666 (2,495), 14x14x15 16,825 + 3,890
+  (2,680), 14x15x15 17,598 + 3,933 (2,741), 15x16x16 43,925 + 15,699
+  (13,636); 11-31% of the divisions are by powers of two.
   One product per dependency would have given 1580, 2221 and 1938: a
   first sweep that screened by that count reported NO candidate for the
   15x15x15 file.  Screen with the pivot search, not with the rank.

@@ -2963,6 +2963,12 @@ the two source papers for this track):
   lost its output (kres --lines writes at the end), so the rest runs in 500-line chunks (p9.zsh, about 18 h for
   ref47 / proj47_5 / at47 / projkm47_7).  The session scratch directory is mirrored (gitignored) in
   matmul/session_data/2026-11_fde6fc44/ (README there maps "scratchpad X" references).
+  CORRECTION (2026-11-11): the Sedoglavic values above came from his per-shape pages, which are out of date; his
+  table fmm_sota.json of 2026-11-09 (Greg's download) gives 13x14x14 1579, 13x15x15 1776, 14x14x15 1789, 14x15x15
+  1848, 15x16x16 2220: all five records still stand (by 15, 13, 74, 6, 18).  Coefficients (proj/kron_coeff_stats.py):
+  over Q, NOT dyadic (denominator primes {2,5}, {2,5,17} x3, {2,3,5}); with each product rescaled so that L and R
+  are primitive integer vectors, every entry of C needs one division by a constant (182 / 195 / 210 / 210 / 240,
+  2-3 distinct constants per scheme).
   NOTE: target/release/kres is still the old build; kres_census (scratchpad kres/build/) is this source; rebuild after
   the k = 11 chain ends (touch src/bin/kres.rs first).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):

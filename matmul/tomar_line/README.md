@@ -850,11 +850,15 @@ starts), so the comparison is by type.
   corrupted-copy control, then scheme_semantic_check.py).  The last two
   rows delete a second index from the verified 14x15x15 scheme: inner
   index 0, column 0 of A and row 0 of B (14x14x15), or row 7 of its A,
-  the source's row 8 (13x15x15):
+  the source's row 8 (13x15x15).  The rows marked "row 7/9 deleted" were
+  found by the second deletion batch (2026-11-10 23:00, kron_proj_multi.py
+  singles) and verified 2026-11-11; they are the records for those shapes:
 
     shape     LITA source      alive  ranks after the deletion  step                   rank  catalog Q  [S]
     13x14x14  14x14x14 m1594   1594   [1580, 1594, 1580]        d2: 14 dep,  29 gone   1565  1582       1614
+    13x14x14  14x14x14 m1594   1594   row 7 deleted             d0: 14 dep,  30 gone   1564  1582       1614
     15x16x16  16x16x16 m2237   2237   [2221, 2237, 2221]        d2: 16 dep,  34 gone   2203  2223       2262
+    15x16x16  16x16x16 m2237   2237   row 9 deleted             d0: 16 dep,  35 gone   2202  2223       2262
     14x15x15  15x15x15 m1977   1955   [1938, 1955, 1948]        d0: 17 dep, 113 gone   1842  1848       1890
     14x14x15  15x15x15 m1977   1827   second deletion           d1: 17 dep, 112 gone   1715  1790       1798
     13x15x15  15x15x15 m1977   1797   second deletion           d0: 21 dep,  34 gone   1763  1776       1797
@@ -900,7 +904,8 @@ starts), so the comparison is by type.
   Stored: proj/kron_reduced/<shape>_m<rank>_Q.json.gz (the catalog's JSON
   convention) with .deps.json (the exact dependencies), .path.json
   (deletion, direction, pivots), .reduce.log and .semantic.log, for
-  13x14x14 m1565, 15x16x16 m2203, 14x15x15 m1842, 14x14x15 m1715 and
+  13x14x14 m1564 and m1565, 15x16x16 m2202 and m2203, 14x15x15 m1842,
+  14x14x15 m1715 and
   13x15x15 m1763 (the last two hold the second stage; the first stage is
   the 14x15x15 file); the direct
   reductions 13x14x14 m1580, 15x16x16 m2221 and 13x14x16 m1805 (ZT) are

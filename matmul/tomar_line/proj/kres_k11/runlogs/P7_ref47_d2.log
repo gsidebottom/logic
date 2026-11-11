@@ -1,0 +1,4 @@
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/ref47.bits; 3107355 candidate lines from $S/kres/deep/P6_ref47_k11.txt; mode both; maxdelta 3 / alt 2
+c k=11: 9267 alt-open, 3098088 unique
+c 141.0 s
+c wrote 9267 lines to $S/kres/deep/P7_ref47_d2.txt

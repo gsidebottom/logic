@@ -1,0 +1,45 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT
+15x15x15_m1977_Q.json,"I0,I1",13x15x15,1790,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I1: 1819 alive, d0:17dep:28gone, d1:1dep:1gone -> 1790",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I0",13x15x15,1792,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I0: 1821 alive, d0:17dep:28gone, d1:1dep:1gone -> 1792",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I2",13x15x15,1790,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I2: 1819 alive, d0:17dep:28gone, d1:1dep:1gone -> 1790",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I3",13x15x15,1790,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I3: 1819 alive, d0:17dep:28gone, d1:1dep:1gone -> 1790",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I5",13x15x15,1791,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I5: 1819 alive, d0:17dep:28gone -> 1791",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I4",13x15x15,1791,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I4: 1819 alive, d0:17dep:28gone -> 1791",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I7",13x15x15,1763,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I7: 1797 alive, d0:21dep:34gone -> 1763",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I6",13x15x15,1796,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I6: 1812 alive, d2:8dep:15gone, d1:1dep:1gone -> 1796",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I8",13x15x15,1787,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I8: 1825 alive, d0:22dep:37gone, d1:1dep:1gone -> 1787",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I9",13x15x15,1788,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I9: 1825 alive, d0:22dep:37gone -> 1788",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I11",13x15x15,1788,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I11: 1825 alive, d0:22dep:37gone -> 1788",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I10",13x15x15,1786,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I10: 1825 alive, d0:22dep:38gone, d1:1dep:1gone -> 1786",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I12",13x15x15,1788,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I12: 1825 alive, d0:22dep:37gone -> 1788",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,I13",13x15x15,1788,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | I13: 1825 alive, d0:22dep:36gone, d1:1dep:1gone -> 1788",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,J0",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J0: 1827 alive, d1:17dep:112gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J1",14x14x15,1716,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J1: 1828 alive, d1:17dep:112gone -> 1716",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J2",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J2: 1827 alive, d1:17dep:112gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J3",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J3: 1827 alive, d1:17dep:112gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J4",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J4: 1827 alive, d1:17dep:112gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J5",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J5: 1827 alive, d1:17dep:112gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J6",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J6: 1827 alive, d1:17dep:112gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J8",14x14x15,1718,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J8: 1834 alive, d1:21dep:116gone -> 1718",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J7",14x14x15,1804,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J7: 1819 alive, d0:8dep:14gone, d2:1dep:1gone -> 1804",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J9",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J9: 1833 alive, d1:23dep:118gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J10",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J10: 1833 alive, d1:23dep:118gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J11",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J11: 1833 alive, d1:23dep:118gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J12",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J12: 1833 alive, d1:23dep:118gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J13",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J13: 1833 alive, d1:23dep:118gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J14",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | J14: 1833 alive, d1:23dep:118gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K0",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K0: 1820 alive, d2:15dep:105gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K1",14x14x15,1716,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K1: 1821 alive, d2:15dep:105gone -> 1716",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K2",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K2: 1820 alive, d2:15dep:105gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K3",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K3: 1820 alive, d2:15dep:105gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K4",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K4: 1820 alive, d2:15dep:105gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K5",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K5: 1820 alive, d2:15dep:105gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K6",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K6: 1820 alive, d2:15dep:105gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K7",14x14x15,1798,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K7: 1813 alive, d1:8dep:14gone, d0:1dep:1gone -> 1798",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K8",14x14x15,1722,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K8: 1825 alive, d2:19dep:103gone -> 1722",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K9",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K9: 1826 alive, d2:21dep:111gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K10",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K10: 1826 alive, d2:21dep:111gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K11",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K11: 1826 alive, d2:21dep:111gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K12",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K12: 1826 alive, d2:21dep:111gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K13",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K13: 1826 alive, d2:21dep:111gone -> 1715",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K14",14x14x15,1715,0,"I0: 1955 alive, d0:17dep:113gone -> 1842 | K14: 1826 alive, d2:21dep:111gone -> 1715",1790,1798,1798

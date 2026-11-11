@@ -1,0 +1,8 @@
+c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+c census d=1: dim G 47 of 47, rank-one elements 47 (extra 0)
+c census d=2: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+c kres: <4,4,4> rank 47 from $S/wp/reps/proj47_5.bits; factor span dims 16,16,16; k = 8..10; R and A candidates; decided, maxdelta 2 / alt 1
+c k=8: 314457495 subsets; reduce: 613598 candidates, 613598 refuted, 0 REDUCIBLE, 0 open; alt: 8759297 candidates (+ the reduce candidates), 9372787 unique, 0 with ALTERNATIVES, 108 open; 1.1 s
+c k=9: 1362649145 subsets; reduce: 8487646 candidates, 8487646 refuted, 0 REDUCIBLE, 0 open; alt: 79875713 candidates (+ the reduce candidates), 88355634 unique, 0 with ALTERNATIVES, 7725 open; 12.4 s
+c k=10: 5178066751 subsets; reduce: 89441970 candidates, 89441970 refuted, 0 REDUCIBLE, 0 open; alt: 568655467 candidates (+ the reduce candidates), 657844135 unique, 0 with ALTERNATIVES, 253302 open; 149.2 s
+c wrote 261135 candidates to $S/kres/deep/P6_proj47_5_k8-10.txt

@@ -1,0 +1,5 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT
+13x13x13_m1379_Q.json,I0,12x13x13,1275,0,"I0: 1360 alive, d0:15dep:85gone -> 1275",1274,1298,1298
+13x13x13_m1379_Q.json,I8,12x13x13,1275,0,"I8: 1365 alive, d0:20dep:90gone -> 1275",1274,1298,1298
+13x13x13_m1379_Q.json,I2,12x13x13,1275,0,"I2: 1360 alive, d0:15dep:85gone -> 1275",1274,1298,1298
+13x13x13_m1379_Q.json,I1,12x13x13,1276,0,"I1: 1361 alive, d0:15dep:85gone -> 1276",1274,1298,1298

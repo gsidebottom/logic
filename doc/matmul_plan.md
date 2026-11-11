@@ -2952,6 +2952,17 @@ the two source papers for this track):
   2026-11-10 22:30-22:41: TWO-DELETION CHAINS from 15x15x15 m1977 add 14x14x15 Q 1715 (catalog 1790, Sedoglavic 1798;
   I0 then the inner index 0) and 13x15x15 Q 1763 (catalog 1776, Sedoglavic 1797; I0 then row 7 of the 14x15x15
   scheme), each verified exactly twice: FIVE verified rank records, stored in proj/kron_reduced/.
+  2026-11-11: the second deletion batch (LITA's 13/14/16 squares, singles and next:I0) does one better on two shapes:
+  13x14x14 Q 1564 (14x14x14 m1594 less row 7, d0: 14 dep, 30 gone) and 15x16x16 Q 2202 (16x16x16 m2237 less row 9,
+  d0: 16 dep, 35 gone), both verified exactly twice and from the stored files; the other targets (12x13x13 1275,
+  12x14x14 1516, 13x13x14 1531, 14x16x16 2154, 15x15x16 2168) stay above the catalog.  Records now: 13x14x14 1564,
+  13x15x15 1763, 14x14x15 1715, 14x15x15 1842, 15x16x16 2202.  Converted to PLinOpt's L/R/P (proj/json2sms.py, own
+  exact check + corrupted copy; MMchecker -b 64 SUCCESS x3) for a data PR (worktree matmul/dps48/plinopt_pr/records,
+  branch data-rank-records-q; not pushed).  kres depth 3 at k = 11: km47's 9,109 open lines ALL UNIQUE (13,945 s,
+  1.5 s per line, 3x the k <= 10 rate) -> no other 47 within 11 products of km47 (exact); at47 hit P8's 4 h cap and
+  lost its output (kres --lines writes at the end), so the rest runs in 500-line chunks (p9.zsh, about 18 h for
+  ref47 / proj47_5 / at47 / projkm47_7).  The session scratch directory is mirrored (gitignored) in
+  matmul/session_data/2026-11_fde6fc44/ (README there maps "scratchpad X" references).
   NOTE: target/release/kres is still the old build; kres_census (scratchpad kres/build/) is this source; rebuild after
   the k = 11 chain ends (touch src/bin/kres.rs first).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):

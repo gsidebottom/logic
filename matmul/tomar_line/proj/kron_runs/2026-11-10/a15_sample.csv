@@ -1,0 +1,10 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT
+15x15x15_m1977_Q.json,I1,14x15x15,1843,0,"I1: 1956 alive, d0:17dep:113gone -> 1843",1842,1892,1894
+15x15x15_m1977_Q.json,I7,14x15x15,1932,0,"I7: 1947 alive, d2:8dep:14gone, d1:1dep:1gone -> 1932",1842,1892,1894
+15x15x15_m1977_Q.json,I14,14x15x15,1842,0,"I14: 1961 alive, d0:23dep:119gone -> 1842",1842,1892,1894
+15x15x15_m1977_Q.json,J0,14x15x15,1842,0,"J0: 1955 alive, d1:17dep:113gone -> 1842",1842,1892,1894
+15x15x15_m1977_Q.json,J7,14x15x15,1932,0,"J7: 1947 alive, d0:8dep:14gone, d2:1dep:1gone -> 1932",1842,1892,1894
+15x15x15_m1977_Q.json,J14,14x15x15,1842,0,"J14: 1961 alive, d1:23dep:119gone -> 1842",1842,1892,1894
+15x15x15_m1977_Q.json,K0,14x15x15,1842,0,"K0: 1955 alive, d2:17dep:113gone -> 1842",1842,1892,1894
+15x15x15_m1977_Q.json,K7,14x15x15,1932,0,"K7: 1947 alive, d1:8dep:14gone, d0:1dep:1gone -> 1932",1842,1892,1894
+15x15x15_m1977_Q.json,K14,14x15x15,1842,0,"K14: 1961 alive, d2:23dep:119gone -> 1842",1842,1892,1894

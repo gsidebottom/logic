@@ -1,0 +1,7 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT
+15x15x15_m1977_Q.json,"I1,I0",13x15x15,1793,0,"I1: 1956 alive -> 1956 | I0: 1932 alive, d0:34dep:139gone -> 1793",1776,1797,1797
+15x15x15_m1977_Q.json,"I14,I0",13x15x15,1788,0,"I14: 1961 alive -> 1961 | I0: 1938 alive, d0:39dep:150gone -> 1788",1776,1797,1797
+15x15x15_m1977_Q.json,"I0,J0",14x14x15,1811,0,"I0: 1955 alive -> 1955 | J0: 1933 alive, d0:23dep:121gone, d1:1dep:1gone -> 1811",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K0",14x14x15,1811,0,"I0: 1955 alive -> 1955 | K0: 1933 alive, d2:23dep:121gone, d0:1dep:1gone -> 1811",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,K14",14x14x15,1811,0,"I0: 1955 alive -> 1955 | K14: 1939 alive, d2:29dep:127gone, d0:1dep:1gone -> 1811",1790,1798,1798
+15x15x15_m1977_Q.json,"I0,J14",14x14x15,1811,0,"I0: 1955 alive -> 1955 | J14: 1939 alive, d0:23dep:121gone, d1:7dep:7gone -> 1811",1790,1798,1798

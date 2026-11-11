@@ -431,3 +431,244 @@ replaying step 1 of 1 steps, direction 1, best 1715
 reduce exit 0 22:41:30
 14x14x15_delI0_J0_Q.json: shape (14, 14, 15), 1715 products; 2 random products with entries up to 1e9: wrong entries per trial [0, 0] -> ALL EXACT; one coefficient changed: 1 wrong entries -> REJECTED (0.9 s)
 semantic exit 0 22:41:31
+
+##### kronscan/multi/run2.log
+start 22:43:17
+13x13x13_m1379_Q.json: 4 deletion sequences (I0;I8;I2;I1), mode each, walk 400, restarts 4, 2 workers
+I0: 12x13x13 I0: 1360 alive, d0:15dep:85gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (22 s)
+I8: 12x13x13 I8: 1365 alive, d0:20dep:90gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (22 s)
+I2: 12x13x13 I2: 1360 alive, d0:15dep:85gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (20 s)
+I1: 12x13x13 I1: 1361 alive, d0:15dep:85gone -> 1276; catalog Q 1274 Z 1298 ZT 1298 (20 s)
+  12x13x13: best 1275, worst 1276 over 4 sequences; catalog {'Q': 1274, 'ZT': 1298, 'Z': 1298}
+done: 4 sequences, 0 below the catalog's Q rank, 42 s
+exit 0 22:43:59
+14x14x14_m1594_Q.json: 14 deletion sequences (I0;I1;I2;I3;I4;I5;I6;I7;I8;I9;I10;I11;I12;I13), mode each, walk 100, restarts 1, 2 workers
+I0: 13x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (29 s)
+I1: 13x14x14 I1: 1594 alive, d2:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (30 s)
+I2: 13x14x14 I2: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (30 s)
+I3: 13x14x14 I3: 1594 alive, d0:14dep:28gone -> 1566; catalog Q 1565 Z 1614 ZT 1614 (30 s)
+I4: 13x14x14 I4: 1594 alive, d2:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (31 s)
+I5: 13x14x14 I5: 1594 alive, d2:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (31 s)
+I7: 13x14x14 I7: 1594 alive, d0:14dep:30gone -> 1564; catalog Q 1565 Z 1614 ZT 1614   <<< BELOW Q 1565 (30 s)
+I6: 13x14x14 I6: 1594 alive, d2:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (30 s)
+I9: 13x14x14 I9: 1594 alive, d0:14dep:28gone -> 1566; catalog Q 1565 Z 1614 ZT 1614 (30 s)
+I8: 13x14x14 I8: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (30 s)
+I10: 13x14x14 I10: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (31 s)
+I11: 13x14x14 I11: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (31 s)
+I12: 13x14x14 I12: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (30 s)
+I13: 13x14x14 I13: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1565 Z 1614 ZT 1614   (ties Q 1565) (30 s)
+  13x14x14: best 1564, worst 1566 over 14 sequences; catalog {'Z': 1614, 'Q': 1565, 'ZT': 1614}
+done: 14 sequences, 1 below the catalog's Q rank, 213 s
+exit 0 22:47:32
+14x14x14_m1594_Q.json: 41 deletion sequences (next:I0), mode each, walk 100, restarts 1, 2 workers
+I0,I1: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I1: 1549 alive, d0:15dep:24gone -> 1525; catalog Q 1449 Z 1470 ZT 1484 (58 s)
+I0,I0: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I0: 1550 alive, d0:15dep:26gone, d1:1dep:1gone -> 1523; catalog Q 1449 Z 1470 ZT 1484 (68 s)
+I0,I2: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I2: 1551 alive, d0:15dep:24gone -> 1527; catalog Q 1449 Z 1470 ZT 1484 (28 s)
+I0,I3: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I3: 1550 alive, d0:15dep:24gone -> 1526; catalog Q 1449 Z 1470 ZT 1484 (25 s)
+I0,I4: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I4: 1550 alive, d0:15dep:24gone -> 1526; catalog Q 1449 Z 1470 ZT 1484 (27 s)
+I0,I5: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I5: 1550 alive, d0:15dep:24gone -> 1526; catalog Q 1449 Z 1470 ZT 1484 (29 s)
+I0,I6: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I6: 1542 alive, d0:21dep:26gone -> 1516; catalog Q 1449 Z 1470 ZT 1484 (28 s)
+I0,I7: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I7: 1558 alive, d0:14dep:33gone, d1:1dep:1gone -> 1524; catalog Q 1449 Z 1470 ZT 1484 (38 s)
+I0,I8: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I8: 1555 alive, d0:19dep:28gone -> 1527; catalog Q 1449 Z 1470 ZT 1484 (29 s)
+I0,I9: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I9: 1555 alive, d0:20dep:33gone -> 1522; catalog Q 1449 Z 1470 ZT 1484 (29 s)
+I0,I10: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I10: 1555 alive, d0:20dep:29gone -> 1526; catalog Q 1449 Z 1470 ZT 1484 (29 s)
+I0,I11: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I11: 1555 alive, d0:20dep:32gone -> 1523; catalog Q 1449 Z 1470 ZT 1484 (28 s)
+I0,I12: 12x14x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | I12: 1555 alive, d0:20dep:32gone -> 1523; catalog Q 1449 Z 1470 ZT 1484 (28 s)
+I0,J0: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J0: 1565 alive, d1:14dep:27gone -> 1538; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,J1: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J1: 1565 alive, d0:13dep:28gone -> 1537; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,J2: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J2: 1565 alive, d0:13dep:28gone -> 1537; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,J3: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J3: 1565 alive, d1:14dep:27gone -> 1538; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,J4: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J4: 1565 alive, d0:13dep:28gone -> 1537; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,J5: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J5: 1565 alive, d0:13dep:28gone -> 1537; catalog Q 1511 Z 1511 ZT 1511 (30 s)
+I0,J6: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J6: 1565 alive, d0:13dep:28gone -> 1537; catalog Q 1511 Z 1511 ZT 1511 (30 s)
+I0,J7: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J7: 1565 alive, d0:13dep:30gone, d2:2dep:3gone, d1:1dep:1gone -> 1531; catalog Q 1511 Z 1511 ZT 1511 (50 s)
+I0,J8: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J8: 1565 alive, d1:14dep:30gone, d0:1dep:2gone -> 1533; catalog Q 1511 Z 1511 ZT 1511 (40 s)
+I0,J9: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J9: 1565 alive, d1:14dep:28gone, d0:1dep:2gone -> 1535; catalog Q 1511 Z 1511 ZT 1511 (41 s)
+I0,J10: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J10: 1565 alive, d1:14dep:28gone, d0:1dep:2gone -> 1535; catalog Q 1511 Z 1511 ZT 1511 (40 s)
+I0,J12: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J12: 1565 alive, d1:14dep:29gone, d0:1dep:2gone -> 1534; catalog Q 1511 Z 1511 ZT 1511 (40 s)
+I0,J11: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J11: 1565 alive, d0:13dep:29gone, d2:2dep:3gone, d1:1dep:1gone -> 1532; catalog Q 1511 Z 1511 ZT 1511 (50 s)
+I0,J13: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | J13: 1565 alive, d1:14dep:29gone, d0:1dep:2gone -> 1534; catalog Q 1511 Z 1511 ZT 1511 (39 s)
+I0,K0: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K0: 1565 alive, d1:14dep:29gone, d2:1dep:1gone -> 1535; catalog Q 1511 Z 1511 ZT 1511 (39 s)
+I0,K1: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K1: 1565 alive, d2:14dep:29gone -> 1536; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,K2: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K2: 1565 alive, d1:14dep:28gone, d2:1dep:2gone -> 1535; catalog Q 1511 Z 1511 ZT 1511 (40 s)
+I0,K3: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K3: 1565 alive, d2:14dep:28gone -> 1537; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,K4: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K4: 1565 alive, d2:14dep:29gone -> 1536; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,K5: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K5: 1565 alive, d1:14dep:28gone, d2:1dep:2gone -> 1535; catalog Q 1511 Z 1511 ZT 1511 (39 s)
+I0,K6: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K6: 1565 alive, d2:14dep:28gone -> 1537; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,K7: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K7: 1565 alive, d2:14dep:28gone -> 1537; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,K8: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K8: 1565 alive, d2:14dep:29gone -> 1536; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,K9: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K9: 1565 alive, d2:14dep:28gone -> 1537; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,K10: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K10: 1565 alive, d2:14dep:29gone -> 1536; catalog Q 1511 Z 1511 ZT 1511 (30 s)
+I0,K11: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K11: 1565 alive, d2:14dep:29gone -> 1536; catalog Q 1511 Z 1511 ZT 1511 (29 s)
+I0,K12: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K12: 1565 alive, d2:14dep:29gone -> 1536; catalog Q 1511 Z 1511 ZT 1511 (30 s)
+I0,K13: 13x13x14 I0: 1594 alive, d0:14dep:29gone -> 1565 | K13: 1565 alive, d2:14dep:29gone -> 1536; catalog Q 1511 Z 1511 ZT 1511 (28 s)
+  12x14x14: best 1516, worst 1527 over 13 sequences; catalog {'Q': 1449, 'ZT': 1484, 'Z': 1470}
+  13x13x14: best 1531, worst 1538 over 28 sequences; catalog {'Z': 1511, 'Q': 1511, 'ZT': 1511}
+done: 41 sequences, 0 below the catalog's Q rank, 706 s
+exit 0 22:59:18
+16x16x16_m2237_Q.json: 16 deletion sequences (I0;I1;I2;I3;I4;I5;I6;I7;I8;I9;I10;I11;I12;I13;I14;I15), mode each, walk 100, restarts 1, 2 workers
+I1: 15x16x16 I1: 2237 alive, d0:16dep:32gone -> 2205; catalog Q 2203 Z 2265 ZT 2302 (75 s)
+I0: 15x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (76 s)
+I3: 15x16x16 I3: 2237 alive, d0:16dep:32gone -> 2205; catalog Q 2203 Z 2265 ZT 2302 (72 s)
+I2: 15x16x16 I2: 2237 alive, d2:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (72 s)
+I4: 15x16x16 I4: 2237 alive, d2:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (61 s)
+I5: 15x16x16 I5: 2237 alive, d2:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (61 s)
+I7: 15x16x16 I7: 2237 alive, d2:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (66 s)
+I6: 15x16x16 I6: 2237 alive, d2:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (67 s)
+I8: 15x16x16 I8: 2237 alive, d0:16dep:34gone -> 2203; catalog Q 2203 Z 2265 ZT 2302   (ties Q 2203) (79 s)
+I9: 15x16x16 I9: 2237 alive, d0:16dep:35gone -> 2202; catalog Q 2203 Z 2265 ZT 2302   <<< BELOW Q 2203 (79 s)
+I11: 15x16x16 I11: 2237 alive, d0:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (79 s)
+I10: 15x16x16 I10: 2237 alive, d0:16dep:32gone -> 2205; catalog Q 2203 Z 2265 ZT 2302 (80 s)
+I12: 15x16x16 I12: 2237 alive, d0:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (101 s)
+I13: 15x16x16 I13: 2237 alive, d0:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (102 s)
+I15: 15x16x16 I15: 2237 alive, d0:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (77 s)
+I14: 15x16x16 I14: 2237 alive, d0:16dep:33gone -> 2204; catalog Q 2203 Z 2265 ZT 2302 (79 s)
+  15x16x16: best 2202, worst 2205 over 16 sequences; catalog {'Q': 2203, 'ZT': 2302, 'Z': 2265}
+done: 16 sequences, 1 below the catalog's Q rank, 615 s
+exit 0 23:09:33
+16x16x16_m2237_Q.json: 47 deletion sequences (next:I0), mode each, walk 100, restarts 1, 2 workers
+I0,I1: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I1: 2204 alive, d2:16dep:34gone -> 2170; catalog Q 2128 Z 2163 ZT 2170 (146 s)
+I0,I0: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I0: 2204 alive, d2:16dep:33gone -> 2171; catalog Q 2128 Z 2163 ZT 2170 (146 s)
+I0,I2: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I2: 2204 alive, d2:16dep:32gone -> 2172; catalog Q 2128 Z 2163 ZT 2170 (72 s)
+I0,I3: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I3: 2204 alive, d2:16dep:35gone -> 2169; catalog Q 2128 Z 2163 ZT 2170 (72 s)
+I0,I4: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I4: 2204 alive, d2:16dep:34gone -> 2170; catalog Q 2128 Z 2163 ZT 2170 (73 s)
+I0,I5: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I5: 2204 alive, d2:16dep:34gone -> 2170; catalog Q 2128 Z 2163 ZT 2170 (73 s)
+I0,I7: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I7: 2189 alive, d2:16dep:35gone -> 2154; catalog Q 2128 Z 2163 ZT 2170 (72 s)
+I0,I6: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I6: 2204 alive, d2:16dep:34gone -> 2170; catalog Q 2128 Z 2163 ZT 2170 (74 s)
+I0,I8: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I8: 2197 alive, d2:16dep:32gone -> 2165; catalog Q 2128 Z 2163 ZT 2170 (72 s)
+I0,I9: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I9: 2204 alive, d2:16dep:33gone -> 2171; catalog Q 2128 Z 2163 ZT 2170 (73 s)
+I0,I10: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I10: 2204 alive, d2:16dep:34gone -> 2170; catalog Q 2128 Z 2163 ZT 2170 (73 s)
+I0,I11: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I11: 2204 alive, d2:16dep:35gone, d0:1dep:1gone -> 2168; catalog Q 2128 Z 2163 ZT 2170 (100 s)
+I0,I12: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I12: 2204 alive, d2:16dep:36gone -> 2168; catalog Q 2128 Z 2163 ZT 2170 (74 s)
+I0,I13: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I13: 2204 alive, d2:16dep:35gone -> 2169; catalog Q 2128 Z 2163 ZT 2170 (74 s)
+I0,I14: 14x16x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | I14: 2204 alive, d2:16dep:36gone -> 2168; catalog Q 2128 Z 2163 ZT 2170 (74 s)
+I0,J0: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J0: 2204 alive, d0:16dep:35gone -> 2169; catalog Q 2132 Z 2132 ZT 2132 (74 s)
+I0,J1: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J1: 2204 alive, d0:16dep:34gone, d1:2dep:2gone -> 2168; catalog Q 2132 Z 2132 ZT 2132 (98 s)
+I0,J2: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J2: 2204 alive, d0:16dep:33gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,J3: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J3: 2204 alive, d0:16dep:31gone -> 2173; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,J4: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J4: 2204 alive, d0:16dep:33gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,J5: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J5: 2204 alive, d1:16dep:31gone -> 2173; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,J6: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J6: 2204 alive, d0:16dep:33gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,J7: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J7: 2204 alive, d0:16dep:31gone -> 2173; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,J8: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J8: 2204 alive, d1:16dep:31gone -> 2173; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,J10: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J10: 2204 alive, d1:16dep:31gone -> 2173; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,J9: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J9: 2204 alive, d1:16dep:34gone, d0:1dep:2gone -> 2168; catalog Q 2132 Z 2132 ZT 2132 (96 s)
+I0,J11: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J11: 2204 alive, d1:16dep:32gone, d0:1dep:2gone -> 2170; catalog Q 2132 Z 2132 ZT 2132 (98 s)
+I0,J12: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J12: 2204 alive, d1:16dep:33gone, d0:1dep:2gone -> 2169; catalog Q 2132 Z 2132 ZT 2132 (98 s)
+I0,J13: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J13: 2204 alive, d1:16dep:31gone -> 2173; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,J14: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J14: 2204 alive, d1:16dep:33gone, d0:1dep:1gone -> 2170; catalog Q 2132 Z 2132 ZT 2132 (98 s)
+I0,J15: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | J15: 2204 alive, d1:16dep:31gone, d0:1dep:2gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (98 s)
+I0,K0: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K0: 2204 alive, d1:16dep:33gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,K1: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K1: 2204 alive, d1:16dep:33gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K2: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K2: 2204 alive, d2:15dep:33gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K3: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K3: 2204 alive, d2:15dep:31gone -> 2173; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K4: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K4: 2204 alive, d1:16dep:32gone -> 2172; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K5: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K5: 2204 alive, d2:15dep:31gone -> 2173; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,K6: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K6: 2204 alive, d1:16dep:33gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K7: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K7: 2204 alive, d1:16dep:32gone -> 2172; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K8: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K8: 2204 alive, d2:15dep:34gone, d0:1dep:1gone -> 2169; catalog Q 2132 Z 2132 ZT 2132 (97 s)
+I0,K9: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K9: 2204 alive, d2:15dep:32gone -> 2172; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K10: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K10: 2204 alive, d1:16dep:31gone -> 2173; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K11: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K11: 2204 alive, d2:15dep:33gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,K12: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K12: 2204 alive, d2:15dep:33gone -> 2171; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K13: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K13: 2204 alive, d2:15dep:32gone -> 2172; catalog Q 2132 Z 2132 ZT 2132 (72 s)
+I0,K14: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K14: 2204 alive, d2:15dep:32gone -> 2172; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+I0,K15: 15x15x16 I0: 2237 alive, d2:16dep:33gone -> 2204 | K15: 2204 alive, d2:15dep:32gone -> 2172; catalog Q 2132 Z 2132 ZT 2132 (71 s)
+  14x16x16: best 2154, worst 2172 over 15 sequences; catalog {'Q': 2128, 'ZT': 2170, 'Z': 2163}
+  15x15x16: best 2168, worst 2173 over 32 sequences; catalog {'Q': 2132, 'Z': 2132, 'ZT': 2132}
+done: 47 sequences, 0 below the catalog's Q rank, 1885 s
+exit 0 23:40:59
+
+##### kronscan/proj/red2/verify.log
+start 13x14x14_delI7 06:58:37
+14x14x14_m1594_Q.json: 14x14x14 with 1594 products; deleted I[7] J[] K[] -> 13x14x14 with 1594 products; written $S/kronscan/proj/red2/13x14x14_delI7_proj.json
+13x14x14_delI7_proj.json: shape (13, 14, 14), 1594 products; Brent modulo 1048573: 0 wrong entries
+    1594 products: direction 0, 14 dependencies, 30 products gone (407 exchange steps); [nullity, gone] per direction {'0': [14, 30], '2': [14, 28]} -> 1564
+  trial 0: 1594 -> 1564 products by directions 0; Brent modulo 1048573: 0 wrong entries (24 s)
+    1594 products: direction 0, 14 dependencies, 30 products gone (462 exchange steps); [nullity, gone] per direction {'0': [14, 30], '2': [14, 28]} -> 1564
+  trial 1: 1594 -> 1564 products by directions 0; Brent modulo 1048573: 0 wrong entries (25 s)
+    1594 products: direction 0, 14 dependencies, 30 products gone (763 exchange steps); [nullity, gone] per direction {'0': [14, 30], '2': [14, 28]} -> 1564
+  trial 2: 1594 -> 1564 products by directions 0; Brent modulo 1048573: 0 wrong entries (25 s)
+BEST 1564 products from 1594 (76 s)
+path: 1 step(s), best 1564, first direction 0 06:59:54
+13x14x14_delI7_proj.json: shape (13, 14, 14), m = 1594, direction 0 (Kronecker products of slots 1, 2)
+  [input] m = 1594; common denominators [800, 200, 200]; bound B on every entry: 40 bits (below 2^53)
+  [input] slot-2 index convention ik: modular route: contraction 1 FAILS modulo 1048573 (0.1 s); direct route: float64 contraction FAILS (5040 entries differ) (0.1 s)
+  [input] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 3 + 3 primes (each product above 2 (B + DD), 41 bits) (3.6 s); direct route: float64 and int64 contractions EXACT MATCH (2.5 s)
+  Gram rank modulo 2147483647: 1580 of 1594; 14 dependencies; pivots [2, 6, 5, 66, 35, 36, 20, 65, 21, 50, 51, 1, 75, 76] (23.3 s)
+  prescribed pivots [902, 1447, 1354, 1540, 1419, 1475, 1559, 1512, 909, 969, 891, 949, 929, 989]
+  supports [561, 132, 144, 132, 567, 132, 132, 132, 118, 118, 118, 118, 118, 118], union 860 products
+    prime 2147483629: 2 primes, modulus of 62 bits (4.3 s)
+    prime 2147483587: 3 primes, modulus of 93 bits (4.6 s)
+  dependency with pivot 902: 561 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.5 s); common denominator of 22 bits; 46 distinct coefficients, largest numerator or denominator 14815; products [1, 2, 4, 7, 10, 13, 14, 16, 17, 19, 22, 25, 28, 29, 31, 32]...
+  dependency with pivot 1447: 132 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 1 bits; 16 distinct coefficients, largest numerator or denominator 100000; products [5, 6, 13, 14, 93, 94, 100, 101, 109, 110, 116, 117, 125, 126, 132, 133]...
+  dependency with pivot 1354: 144 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 17 bits; 26 distinct coefficients, largest numerator or denominator 11825; products [75, 78, 80, 83, 85, 89, 155, 158, 160, 163, 165, 169, 219, 222, 224, 227]...
+  dependency with pivot 1540: 132 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 3 bits; 16 distinct coefficients, largest numerator or denominator 20000; products [50, 51, 58, 59, 128, 129, 137, 138, 192, 193, 201, 202, 240, 241, 249, 250]...
+  dependency with pivot 1419: 567 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.6 s); common denominator of 7 bits; 41 distinct coefficients, largest numerator or denominator 9600000; products [5, 6, 13, 14, 20, 21, 28, 29, 35, 36, 43, 44, 50, 51, 58, 59]...
+  dependency with pivot 1475: 132 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 1 bits; 16 distinct coefficients, largest numerator or denominator 100000; products [20, 21, 28, 29, 96, 97, 105, 106, 173, 174, 180, 181, 189, 190, 196, 197]...
+  dependency with pivot 1559: 132 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 1 bits; 16 distinct coefficients, largest numerator or denominator 100000; products [65, 66, 73, 74, 144, 145, 153, 154, 208, 209, 217, 218, 256, 257, 265, 266]...
+  dependency with pivot 1512: 132 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 3 bits; 16 distinct coefficients, largest numerator or denominator 20000; products [35, 36, 43, 44, 112, 113, 121, 122, 176, 177, 185, 186, 237, 238, 244, 245]...
+  dependency with pivot 909: 118 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 17 bits; 25 distinct coefficients, largest numerator or denominator 11825; products [5, 13, 80, 89, 93, 94, 109, 110, 125, 126, 141, 142, 157, 158, 160, 161]...
+  dependency with pivot 969: 118 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 17 bits; 25 distinct coefficients, largest numerator or denominator 11825; products [50, 58, 80, 89, 128, 137, 160, 169, 192, 201, 224, 233, 240, 249, 272, 281]...
+  dependency with pivot 891: 118 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 17 bits; 25 distinct coefficients, largest numerator or denominator 11825; products [2, 3, 17, 18, 32, 33, 47, 48, 62, 63, 77, 78, 80, 81, 89, 90]...
+  dependency with pivot 949: 118 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 17 bits; 25 distinct coefficients, largest numerator or denominator 11825; products [35, 43, 80, 89, 112, 121, 160, 169, 176, 185, 224, 233, 237, 238, 253, 254]...
+  dependency with pivot 929: 118 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 17 bits; 25 distinct coefficients, largest numerator or denominator 11825; products [20, 28, 80, 89, 96, 105, 160, 169, 173, 174, 189, 190, 205, 206, 221, 222]...
+  dependency with pivot 989: 118 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.1 s); common denominator of 17 bits; 25 distinct coefficients, largest numerator or denominator 11825; products [65, 73, 80, 89, 144, 153, 160, 169, 208, 217, 224, 233, 256, 265, 272, 281]...
+  16 further products are left with a zero slot-0 factor and are removed: [893, 899, 912, 932, 952, 972, 992, 1353, 1404, 1428, 1431, 1456, 1484, 1503, 1531, 1568]
+  folded: 1594 -> 1564 products (14 by the dependencies, 16 left with a zero factor)
+  [output] m = 1564; common denominators [1600, 200, 200]; bound B on every entry: 43 bits (below 2^53)
+  [output] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 3 + 3 primes (each product above 2 (B + DD), 44 bits) (3.0 s); direct route: float64 and int64 contractions EXACT MATCH (2.7 s)
+  [negative control: one entry of the output changed] m = 1564; common denominators [1600, 200, 200]; bound B on every entry: 43 bits (below 2^53)
+  [negative control: one entry of the output changed] slot-2 index convention ki: modular route: contraction 1 FAILS modulo 1048573 (0.1 s); direct route: float64 contraction FAILS (144 entries differ) (0.1 s)
+  RESULT: input verifies (ki); output with 1564 products VERIFIES EXACTLY; corrupted copy REJECTED
+  written $S/kronscan/proj/red2/13x14x14_delI7_m1564_Q.json
+13x14x14_delI7_m1564_Q.json: shape (13, 14, 14), 1564 products; 2 random products with entries up to 1e9: wrong entries per trial [0, 0] -> ALL EXACT; one coefficient changed: 1 wrong entries -> REJECTED (2.1 s)
+end 13x14x14_delI7 07:00:49
+exit 0
+start 15x16x16_delI9 07:00:49
+16x16x16_m2237_Q.json: 16x16x16 with 2237 products; deleted I[9] J[] K[] -> 15x16x16 with 2237 products; written $S/kronscan/proj/red2/15x16x16_delI9_proj.json
+15x16x16_delI9_proj.json: shape (15, 16, 16), 2237 products; Brent modulo 1048573: 0 wrong entries
+    2237 products: direction 0, 16 dependencies, 35 products gone (777 exchange steps); [nullity, gone] per direction {'0': [16, 35], '2': [16, 32]} -> 2202
+  trial 0: 2237 -> 2202 products by directions 0; Brent modulo 1048573: 0 wrong entries (66 s)
+    2237 products: direction 0, 16 dependencies, 33 products gone (401 exchange steps); [nullity, gone] per direction {'0': [16, 33], '2': [16, 32]} -> 2204
+  trial 1: 2237 -> 2204 products by directions 0; Brent modulo 1048573: 0 wrong entries (64 s)
+    2237 products: direction 0, 16 dependencies, 35 products gone (402 exchange steps); [nullity, gone] per direction {'0': [16, 35], '2': [16, 32]} -> 2202
+  trial 2: 2237 -> 2202 products by directions 0; Brent modulo 1048573: 0 wrong entries (58 s)
+BEST 2202 products from 2237 (192 s)
+path: 1 step(s), best 2202, first direction 0 07:04:01
+15x16x16_delI9_proj.json: shape (15, 16, 16), m = 2237, direction 0 (Kronecker products of slots 1, 2)
+  [input] m = 2237; common denominators [720, 720, 720]; bound B on every entry: 44 bits (below 2^53)
+  [input] slot-2 index convention ik: modular route: contraction 1 FAILS modulo 1048573 (0.1 s); direct route: float64 contraction FAILS (7616 entries differ) (0.3 s)
+  [input] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 3 + 3 primes (each product above 2 (B + DD), 45 bits) (7.5 s); direct route: float64 and int64 contractions EXACT MATCH (9.4 s)
+  Gram rank modulo 2147483647: 2221 of 2237; 16 dependencies; pivots [1, 5, 17, 16, 47, 46, 2, 3, 62, 76, 61, 32, 31, 7, 77, 90] (66.6 s)
+  prescribed pivots [1346, 559, 1536, 589, 509, 1580, 1341, 1602, 653, 2034, 1558, 687, 1492, 1514, 591, 22]
+  supports [757, 149, 667, 149, 149, 667, 739, 667, 149, 721, 667, 149, 665, 665, 149, 780], union 1858 products
+    prime 2147483629: 2 primes, modulus of 62 bits (35.7 s)
+    prime 2147483587: 3 primes, modulus of 93 bits (35.0 s)
+  dependency with pivot 1346: 757 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.2 s); common denominator of 18 bits; 50 distinct coefficients, largest numerator or denominator 61416; products [2, 3, 6, 8, 10, 12, 13, 14, 17, 18, 21, 23, 25, 27, 28, 29]...
+  dependency with pivot 559: 149 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.2 s); common denominator of 18 bits; 16 distinct coefficients, largest numerator or denominator 24; products [46, 47, 55, 382, 383, 384, 385, 390, 391, 392, 393, 479, 480, 488, 489, 559]...
+  dependency with pivot 1536: 667 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.1 s); common denominator of 18 bits; 43 distinct coefficients, largest numerator or denominator 51192; products [32, 34, 35, 38, 39, 40, 42, 44, 92, 94, 95, 98, 100, 101, 103, 105]...
+  dependency with pivot 589: 149 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.2 s); common denominator of 18 bits; 16 distinct coefficients, largest numerator or denominator 24; products [16, 17, 25, 270, 271, 272, 273, 278, 279, 280, 281, 447, 448, 456, 457, 540]...
+  dependency with pivot 509: 149 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.2 s); common denominator of 18 bits; 16 distinct coefficients, largest numerator or denominator 24; products [1, 2, 10, 190, 191, 192, 193, 198, 199, 200, 201, 444, 445, 451, 452, 460]...
+  dependency with pivot 1580: 667 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.2 s); common denominator of 18 bits; 43 distinct coefficients, largest numerator or denominator 51192; products [62, 64, 65, 68, 69, 70, 72, 74, 92, 94, 95, 98, 100, 101, 103, 105]...
+  dependency with pivot 1341: 739 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.2 s); common denominator of 23 bits; 48 distinct coefficients, largest numerator or denominator 15489; products [2, 3, 5, 6, 8, 10, 13, 14, 17, 18, 20, 21, 23, 25, 28, 29]...
+  dependency with pivot 1602: 667 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.2 s); common denominator of 18 bits; 43 distinct coefficients, largest numerator or denominator 51192; products [77, 79, 80, 83, 84, 85, 87, 89, 92, 94, 95, 98, 100, 101, 103, 105]...
+  dependency with pivot 653: 149 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.2 s); common denominator of 18 bits; 16 distinct coefficients, largest numerator or denominator 24; products [31, 32, 40, 334, 335, 336, 337, 342, 343, 344, 345, 463, 464, 472, 473, 543]...
+  dependency with pivot 2034: 721 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.3 s); common denominator of 7 bits; 29 distinct coefficients, largest numerator or denominator 35334144; products [90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105]...
+  dependency with pivot 1558: 667 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.2 s); common denominator of 18 bits; 43 distinct coefficients, largest numerator or denominator 51192; products [47, 49, 50, 53, 54, 55, 57, 59, 92, 94, 95, 98, 100, 101, 103, 105]...
+  dependency with pivot 687: 149 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.2 s); common denominator of 18 bits; 16 distinct coefficients, largest numerator or denominator 24; products [61, 62, 70, 414, 415, 416, 417, 422, 423, 424, 425, 495, 496, 504, 505, 575]...
+  dependency with pivot 1492: 665 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.2 s); common denominator of 18 bits; 43 distinct coefficients, largest numerator or denominator 51192; products [2, 4, 5, 8, 9, 10, 12, 14, 92, 94, 95, 98, 100, 101, 103, 105]...
+  dependency with pivot 1514: 665 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.2 s); common denominator of 18 bits; 43 distinct coefficients, largest numerator or denominator 51192; products [17, 19, 20, 23, 24, 25, 27, 29, 92, 94, 95, 98, 100, 101, 103, 105]...
+  dependency with pivot 591: 149 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (0.2 s); common denominator of 18 bits; 16 distinct coefficients, largest numerator or denominator 24; products [76, 77, 85, 430, 431, 432, 433, 438, 439, 440, 441, 511, 512, 520, 521, 591]...
+  dependency with pivot 22: 780 products, lifted from 3 primes, EXACT over Q on the Kronecker products: True (1.3 s); common denominator of 23 bits; 64 distinct coefficients, largest numerator or denominator 15489; products [2, 3, 6, 7, 8, 10, 12, 14, 17, 18, 21, 22, 23, 25, 27, 29]...
+  19 further products are left with a zero slot-0 factor and are removed: [27, 516, 560, 592, 596, 660, 688, 1345, 1349, 1495, 1517, 1539, 1561, 1583, 1605, 2039, 2043, 2046, 2058]
+  folded: 2237 -> 2202 products (16 by the dependencies, 19 left with a zero factor)
+  [output] m = 2202; common denominators [360, 720, 720]; bound B on every entry: 45 bits (below 2^53)
+  [output] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 3 + 3 primes (each product above 2 (B + DD), 46 bits) (5.8 s); direct route: float64 and int64 contractions EXACT MATCH (9.2 s)
+  [negative control: one entry of the output changed] m = 2202; common denominators [360, 720, 720]; bound B on every entry: 45 bits (below 2^53)
+  [negative control: one entry of the output changed] slot-2 index convention ki: modular route: contraction 1 FAILS modulo 1048573 (0.1 s); direct route: float64 contraction FAILS (61440 entries differ) (0.1 s)
+  RESULT: input verifies (ki); output with 2202 products VERIFIES EXACTLY; corrupted copy REJECTED
+  written $S/kronscan/proj/red2/15x16x16_delI9_m2202_Q.json
+15x16x16_delI9_m2202_Q.json: shape (15, 16, 16), 2202 products; 2 random products with entries up to 1e9: wrong entries per trial [0, 0] -> ALL EXACT; one coefficient changed: 1 wrong entries -> REJECTED (3.3 s)
+end 15x16x16_delI9 07:07:21
+exit 0

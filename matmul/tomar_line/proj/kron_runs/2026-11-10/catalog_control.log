@@ -1,0 +1,12 @@
+start 22:04:45
+4 scheme files under $P/schemes/known/lita (0 done before); 2 workers; walk 100
+14x14x14_m1594_Q.json (31 s):
+  13x14x14 del I[0]: 1594 alive, ranks [1580, 1594, 1580], d2:14dep:29gone -> 1565; catalog Q 1582 Z 1614 ZT 1614   <<< BELOW Q
+14x14x14_m1603_Q.json (30 s):
+  13x14x14 del I[0]: 1602 alive, ranks [1588, 1602, 1589], d0:14dep:28gone -> 1574; catalog Q 1582 Z 1614 ZT 1614   <<< BELOW Q
+16x16x16_m2237_Q.json (76 s):
+  15x16x16 del I[0]: 2237 alive, ranks [2221, 2237, 2221], d2:16dep:34gone -> 2203; catalog Q 2223 Z 2265 ZT 2302   <<< BELOW Q
+15x15x15_m1977_Q.json (44 s):
+  14x15x15 del I[0]: 1955 alive, ranks [1938, 1955, 1948], d0:17dep:113gone -> 1842; catalog Q 1848 Z 1892 ZT 1894   <<< BELOW Q
+done: 4 files, 4 deficient projections, 4 below a catalog rank, 104 s
+exit 0 22:06:29

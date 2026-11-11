@@ -162,3 +162,9 @@ matmul/found47walk/
 
 # matmul/out: scratch output of orbit-representative dumps (e.g. matmul/out/reps/*.bits); regenerable
 matmul/out/
+# Session scratch mirrors (Claude Code scratchpad copies, several GB, regenerable or archival): the README is
+# tracked and maps "scratchpad X" in committed notes to matmul/session_data/<session>/X on Greg's machine.
+matmul/session_data/*
+!matmul/session_data/README.md
+# PLinOpt worktrees for data PRs (branches of the matmul/dps48/plinopt clone)
+matmul/dps48/plinopt_pr/

@@ -1510,3 +1510,18 @@ the requirements (Apple silicon, clang, Accelerate, Python with numpy, a PLinOpt
 4x4 programs), the build and bench_fmm usage with its methods and the FMM_* variables, the library's entry points, the
 files, and which logs the mm444 paper's numbers come from (orig315_2026-10-25, accuracy_campaign_2026-10-25,
 altbasis_sim_2026-10-31, the report's results table).  The Rust crate keeps its own README.  Not pushed.
+
+**2026-11-11 evening: the mixed-levels report goes final.**  Greg: drop the "since November 2" history and write the
+report with the final best results.  The dyadic SW programs and the November 2 recalibration changed the planner's
+picks at all five points the report shows (13824 f64 R336+3/R363/G3, 13824 f32 R363+4/R336/G6, 6912 f64
+R336+2/R363/G6, 6912 f32 R363+4/R633/G6, 3456 f64 SW+3/R363/G6 by the default budget), and some SW rows were never
+measured with the dyadic programs, so the campaigns are re-run: run_final.sh (cd016fe; fresh calibration at 13824
+both precisions with exact error factors, installed for the library; square 3456/6912/13824 x f32/f64 with the
+GEMM, auto, auto:none and the compared fixed plans, exact errors; the ternary trial; test_fmm, Rust tests,
+crosscheck, Rust vs C).  Greg chose to run it after the depth-3 kres check ends (~4 am 11-12), started by a waiter;
+output results/final_campaign_2026-11-12.txt.  Then every table and number in doc/matmul_mixed_levels.tex is
+rewritten from it, the Winograd programs kept only as Section 4.4's comparison (the 11-02 A/B).  Done before the
+run: the SW citation fixed ([1, Eq. (38)], arXiv:2402.05630v2 in the bib), "40 products of 54" in Figure 1, the
+notation as Table 1 with a source column (Strassen69, DPS24, DPS25/26a, PLinOpt, S26b, Smirnov13, DPS26b,
+Perminov, Accelerate, logic), the introduction pointing to it.  bench_fmm silently keeps only the first 16
+methods of -m.

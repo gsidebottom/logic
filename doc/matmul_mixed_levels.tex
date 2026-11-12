@@ -117,6 +117,55 @@ therefore apply one to three levels on top of a tuned GEMM and stop
 what cost in accuracy, are the questions this report answers for one machine,
 Apple's M4~Pro with Accelerate's GEMM, by measurement.
 
+\begin{table}[t]
+\centering\footnotesize
+\begin{tabular}{@{}l p{0.70\textwidth}@{}}
+\toprule
+code & meaning\\
+\midrule
+\lv{a/b/c} & a plan: level \lv{a} on the whole problem, level \lv{b} on each of
+  \lv{a}'s block products, and so on down to the leaf \lv{c}\\
+\addlinespace
+\lv{SW} & a $2\times2$ level, $\mm{2\times2\times2:7}$: $A$, $B$, $C$ cut into
+  $2\times2$ grids of blocks, $7$ block products instead of $8$;
+  Strassen--Winograd's programs in the campaigns, since November~2 the dyadic
+  accurate point of \cite[Eq.~(38)]{DPS24} (Section~\ref{sec:sw})\\
+\lv{D48} & a $4\times4$ level of the accurate $\mm{4\times4\times4:48}$
+  algorithm of Dumas, Pernet and Sedoglavic in its $262$-operation form:
+  $4\times4$ grids, $48$ products instead of $64$ (\lv{D} for the authors,
+  $48$ for the rank)\\
+\lv{R336}, \lv{R363}, \lv{R633} & a level of their accurate
+  $\mm{3\times3\times6:40}$ algorithm in one of its three orientations, named
+  by the grids $g_1\times g_2\times g_3$ it cuts $A$ ($g_1\times g_2$) and $B$
+  ($g_2\times g_3$) into; $40$ products instead of $54$ (\lv{R} for
+  rectangular)\\
+\lv{T336}, \lv{T363}, \lv{T633} & the same three orientations of a ternary
+  $\mm{3\times3\times6:42}$ scheme from Perminov's catalogue, $42$ products
+  instead of $54$ (Section~\ref{sec:ternary}); \lv{X} stands for \lv{R} or
+  \lv{T} in Table~\ref{tab:ternary}\\
+\addlinespace
+\lv{+p} & after a level, as in \lv{R363+3}: the level's passes run on $p$
+  threads overlapped with the products below (Section~\ref{sec:machine})\\
+\addlinespace
+\lv{G} & the leaf: Accelerate's GEMM on the block products that remain, one
+  call at a time with Accelerate's own threading\\
+\lv{G3}, \lv{G4}, \lv{G6} & the leaf as three, four or six concurrent
+  single-threaded GEMM calls taking the block products in turn
+  (Section~\ref{sec:machine})\\
+\lv{B2} & the classical $2\times2$ blocked product as a level, $8$ products,
+  the calibration's reference\\
+\addlinespace
+\lv{auto:}$b$ & the benchmark's planner with error budget $b$; \lv{auto:none}
+  for no budget (Section~\ref{sec:planner})\\
+\bottomrule
+\end{tabular}
+\caption{The notation for plans.  Example: \lv{SW/R363+3/R633/G6} is a
+$2\times2$ level, then a $3\times6\times3$ level whose passes run on three
+threads, then a $6\times3\times3$ level, then six concurrent GEMM calls at the
+leaf (Figure~\ref{fig:plan}).}
+\label{tab:notation}
+\end{table}
+
 The approach is to mix.  A \emph{plan} is a sequence of \emph{levels} from the
 top of the problem down to a GEMM leaf, and every level may come from a
 different scheme: a $\mm{2\times2\times2:7}$ scheme (\lv{SW}: Strassen--Winograd's
@@ -131,11 +180,9 @@ divide a square problem by $54$ and leave it square, where three $4\times4$
 levels divide by $64$.  A plan such as \lv{SW/R363+3/R633/G6} is one
 $2\times2$ level, then a $3\times6\times3$ level whose passes run on three
 threads overlapped with the products below (\lv{+3}), then a
-$6\times3\times3$ level, then the leaf \lv{G6}: \lv{G} for GEMM, Accelerate's
-matrix product, which multiplies the blocks that remain, and $6$ for six
-concurrent single-threaded GEMM calls, each taking block products in turn
-(a bare \lv{G} is one GEMM call at a time with Accelerate's own threading);
-Figure~\ref{fig:plan} draws
+$6\times3\times3$ level, then the leaf \lv{G6}: Accelerate's GEMM (\lv{G})
+on the blocks that remain, as six concurrent single-threaded calls.
+Table~\ref{tab:notation} collects the notation, and Figure~\ref{fig:plan} draws
 it at $n=13824$, from the problem at the top to its $11{,}200$ leaf GEMMs at
 the bottom.  Mixing pays for three reasons that the measurements separate:
 
@@ -285,22 +332,8 @@ software and as a GPU or TPU feature (Section~\ref{sec:value}).  Code,
 programs, calibrations and raw results are in the repository \cite{logic}.
 
 \paragraph{The result in three tables.}
-Plans are written from the top of the problem down to the leaves, the levels
-separated by slashes.  \lv{D48} is a level of the accurate
-$\mm{4\times4\times4:48}$ scheme (\lv{D} for its authors, Dumas, Pernet and
-Sedoglavic, $48$ for its rank): it cuts $A$, $B$ and $C$ into $4\times4$
-grids of blocks and forms the product with $48$ block products instead of
-$64$.  \lv{R336}, \lv{R363} and \lv{R633} are levels of the accurate
-$\mm{3\times3\times6:40}$ scheme in its three orientations (\lv{R} for
-rectangular), named by the grids they cut $A$ and $B$ into: \lv{R363} cuts
-$A$ $3\times6$ and $B$ $6\times3$
-and uses $40$ block products instead of $54$.  \lv{SW} is a $2\times2$
-level ($2\times2$ grids, $7$ products instead of $8$; Strassen--Winograd's
-programs in the campaigns of this report, Section~\ref{sec:sw}).  \lv{G} is the leaf,
-Accelerate's GEMM on the block products that remain, and \lv{G6} runs those
-products as six concurrent single-threaded GEMM streams.  \lv{+p} after a
-level runs its passes -- the sums that form the operands and accumulate the
-outputs -- on $p$ threads overlapped with the products below.  So
+Plans are written in the notation of Table~\ref{tab:notation}, from the top of
+the problem down to the leaves, the levels separated by slashes.  So
 \lv{R363+4/D48/G6} at $n=13824$ is a $3\times6\times3$ level with four pass
 threads, whose $40$ products of $4608\times2304$ by $2304\times4608$ each get
 a $4\times4$ level, whose $40\times48 = 1920$ leaf products of $1152\times576$
@@ -1550,7 +1583,7 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   the current problem, executed as three fused passes ($L$, $R$, $P$;
   Figure~\ref{fig:lrp}) around
   its products; a plan is the sequence of levels from the top down to the
-  leaf, the GEMM; the notation is in Section~\ref{sec:intro}.
+  leaf, the GEMM; the notation is in Table~\ref{tab:notation}.
 \item[\lv{D48}, \lv{R336}, \lv{R363}, \lv{R633}, \lv{SW}, \lv{T336},
   \lv{T363}, \lv{T633}, \lv{X}.]  The levels of the menu (Table~\ref{tab:levels}):
   the accurate $4\times4$ scheme (\lv{D} for its authors, Dumas, Pernet and
@@ -1624,7 +1657,7 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
 
 \section{Data and code}\label{sec:data}
 
-Everything is in the repository \cite{logic}, directory
+{\sloppy Everything is in the repository \cite{logic}, directory
 \path{matmul/fastmm/}: the library (\path{fmm.c}, \path{fmm_impl.h},
 \path{fmm.h}), the kernel generator (\path{gen_kernels.py}), the programs
 of the $3\times3\times6$ levels (\path{schemes/opt/r*}, PLinOpt-optimized;
@@ -1654,7 +1687,7 @@ $4\times4$ programs).  The menu screen is \path{matmul/levels/}
 \path{cost_rect.py}, README).  The accuracy study of the $4\times4$ class
 is \path{doc/matmul_4x4_rank48_accurate262.pdf} \cite{S26b}.  The running
 log of the track, with every measurement in the order it was made, is
-\path{doc/fastmm_plan.md}.
+\path{doc/fastmm_plan.md}.\par}
 
 {\small
 \begin{thebibliography}{99}

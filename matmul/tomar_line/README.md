@@ -983,17 +983,44 @@ starts), so the comparison is by type.
   So NO RANK-46 SCHEME SHARES 36 OR MORE PRODUCTS with a scheme of the
   five classes (exact, k <= 11), and no alternative rank-47 decomposition
   shows up at depth 1; the open lines (candidates two or more short of a
-  spanning set) go to the depth-2 pass as at k <= 10.  Depth 2 (105 to
-  191 s per class) refutes projkm47_7's 6 open reduce lines and leaves
+  spanning set) go to the depth-2 pass as at k <= 10.  The depth-2 pass
+  (105 to 191 s per class; alternatives to depth 2, reduce lines to
+  depth 3) refutes projkm47_7's 6 open reduce lines and leaves
   9,109 / 10,518 / 9,267 / 9,783 / 12,297 alternative lines open (km47 /
   at47 / ref47 / proj47_5 / projkm47_7; slice dimensions mostly 8,8,8),
-  none positive.  The 50,974 lines left go to a depth-3 pass, running at
-  this commit (proj/kres_census_k11_alt3.zsh; at k <= 10 depth 3 took
-  0.5 to 0.7 s per line at 12 threads).
+  none positive.
+  Depth 3 on those lines (2026-11-10 23:03 to 2026-11-12 02:48; 1.3 to
+  2.5 s per line at 12 threads, 2 to 4 times the k <= 10 rate; km47 in one call,
+  the other four in 500-line chunks after at47's single call hit its
+  4 h cap and wrote nothing):
+
+      class        lines open at depth 2   unique at depth 3   open at depth 3
+      km47           9,109                   9,109               0
+      at47          10,518                  10,518               0
+      ref47          9,267                   9,267               0
+      proj47_5       9,783                   9,783               0
+      projkm47_7    12,291 distinct         12,285               6
+
+  (projkm47_7's 12,297 lines hold each of its six R lines twice, once
+  from the R question and once as an A line.)  So NO OTHER RANK-47
+  SCHEME SHARES 36 OR MORE PRODUCTS with a scheme of the classes km47,
+  at47, ref47 and proj47_5 (exact, k <= 11).  For projkm47_7 the
+  statement holds except for six 11-subsets, the same six as its reduce
+  lines: their factors span only 7 dimensions in every slot, so their
+  slice spaces sit four short of the 11 an alternative needs, beyond
+  depth 3.  Their reduce question is settled (refuted above); the
+  alternative question needs depth 4:
+  0,4,6,13,14,18,23,27,33,36,44 / 1,3,4,12,13,14,18,27,32,38,41 /
+  1,3,4,12,13,14,32,34,38,40,41 / 1,4,12,22,26,30,33,34,37,40,43 /
+  3,7,9,11,14,18,21,23,27,32,45 / 5,12,30,31,32,34,35,40,41,45,46.
   Drivers as run: proj/kres_census_k11.zsh (the sweep with its
   regressions), proj/kres_census_k11_alt2.zsh (the depth-2 pass),
-  proj/kres_census_k11_chain.zsh; log
-  proj/logs/kres_census_k11_2026-11-10.txt.
+  proj/kres_census_k11_chain.zsh, proj/kres_census_k11_alt3.zsh,
+  kres_census_k11_alt3c.zsh and kres_census_k11_alt3d.zsh (depth 3: one
+  call per class, then the chunked run and its resume after the full
+  disk of 2026-11-11 08:17); logs
+  proj/logs/kres_census_k11_2026-11-10.txt and
+  proj/logs/kres_census_k11_alt3_2026-11-12.txt.
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

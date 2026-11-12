@@ -1,0 +1,175 @@
+# k = 11 alternative lines, depth 2 and depth 3, all five rank-47 classes (2026-11-10 22:49 to 2026-11-12 02:48)
+# drivers: proj/kres_census_k11_alt2.zsh (P7, depth 2), kres_census_k11_alt3.zsh (P8, depth 3, one call per class),
+# kres_census_k11_alt3c.zsh (P9, 500-line chunks; stopped by the full disk 2026-11-11 08:17), kres_census_k11_alt3d.zsh (P10, the resume).
+# kres_fast4 = commit 8df5b76's build of src/bin/kres.rs; --mode alt --maxdelta-alt 3 --threads 12, nice 15, 3600 s cap per chunk.
+
+## P7 (depth 2)
+=== P7 start 22:49:06
+--- km47 depth 2 (reduce to depth 3, alt to depth 2) on 3708935 lines: 3708935 A  22:49:07
+    exit 0 ; c k=11: 9109 alt-open, 3699826 unique; c 105.3 s
+    written: 9109 A 
+    open at depth 2: 9109 lines (7259 dims=8,8,8  784 dims=8,8,7  690 dims=7,8,8  260 dims=8,7,8 ) 22:50:53
+--- at47 depth 2 (reduce to depth 3, alt to depth 2) on 5863323 lines: 5863323 A  22:50:55
+    exit 0 ; c k=11: 10518 alt-open, 5852805 unique; c 191.1 s
+    written: 10518 A 
+    open at depth 2: 10518 lines (8613 dims=8,8,8  597 dims=8,8,7  561 dims=8,7,8  561 dims=7,8,8 ) 22:54:06
+--- ref47 depth 2 (reduce to depth 3, alt to depth 2) on 3107355 lines: 3107355 A  22:54:07
+    exit 0 ; c k=11: 9267 alt-open, 3098088 unique; c 141.0 s
+    written: 9267 A 
+    open at depth 2: 9267 lines (7233 dims=8,8,8  882 dims=8,7,8  882 dims=7,8,8  150 dims=8,8,7 ) 22:56:28
+--- proj47_5 depth 2 (reduce to depth 3, alt to depth 2) on 5318037 lines: 5318037 A  22:56:29
+    exit 0 ; c k=11: 9783 alt-open, 5308254 unique; c 170.1 s
+    written: 9783 A 
+    open at depth 2: 9783 lines (7989 dims=8,8,8  594 dims=8,8,7  507 dims=8,7,8  507 dims=7,8,8 ) 22:59:20
+--- projkm47_7 depth 2 (reduce to depth 3, alt to depth 2) on 4534871 lines: 4534865 A  6 R  22:59:21
+    exit 0 ; c k=11: 12297 alt-open, 6 refuted, 4522574 unique; c 130.3 s
+    written: 12297 A 
+    open at depth 2: 12297 lines (10023 dims=8,8,8  933 dims=8,8,7  933 dims=7,8,8  264 dims=8,7,8 ) 23:01:31
+=== P7 done 23:01:31
+
+## P8 (depth 3, km47 complete; at47 hit the 4 h cap, nothing written)
+=== P8 start 23:03:32
+--- km47 depth 3 on 9109 lines left open at depth 2 23:03:32
+    exit 0 ; c k=11: 9109 unique; c 13945.3 s
+    written: 
+--- at47 depth 3 on 10518 lines left open at depth 2 02:55:57
+    exit 124 ;  
+    written: 
+--- ref47 depth 3 on 9267 lines left open at depth 2 06:55:57
+
+## P9 (depth 3 in chunks; chunks ad.. lost to the full disk)
+=== P9 start 2026-11-11 06:58:04
+--- ref47 depth 3 on 9267 lines in 19 chunks 06:58:04
+    aa exit 0 ; c k=11: 500 unique; c 1274.2 s 07:19:19
+    ab exit 0 ; c k=11: 500 unique; c 1203.1 s 07:39:22
+    ac exit 0 ; c k=11: 500 unique; c 1132.6 s 07:58:14
+    ad exit 101 ; c k=11: 500 unique; c 1151.7 s 08:17:26
+    ae exit 1 ;   08:17:26
+    af exit 1 ;   08:17:26
+    ag exit 1 ;   08:17:26
+    ah exit 1 ;   08:17:26
+    ai exit 1 ;   08:17:26
+    aj exit 1 ;   08:17:26
+    ak exit 1 ;   08:17:26
+    al exit 1 ;   08:17:26
+    am exit 1 ;   08:17:26
+    an exit 1 ;   08:17:26
+    ao exit 1 ;   08:17:26
+    ap exit 1 ;   08:17:26
+    aq exit 1 ;   08:17:26
+    ar exit 1 ;   08:17:26
+    as exit 1 ;   08:17:26
+    ref47 written: 
+--- proj47_5 depth 3 on 9783 lines in 0 chunks 08:17:26
+    proj47_5 written: 
+--- at47 depth 3 on 10518 lines in 0 chunks 08:17:26
+    at47 written: 
+--- projkm47_7 depth 3 on 12297 lines in 0 chunks 08:17:26
+    projkm47_7 written: 
+=== P9 done 2026-11-11 08:17:26
+
+## P10 (depth 3, resume)
+=== P10 start 2026-11-11 08:20:12
+--- ref47 depth 3 on 9267 lines in 19 chunks 08:20:12
+    aa done before: c k=11: 500 unique;
+    ab done before: c k=11: 500 unique;
+    ac done before: c k=11: 500 unique;
+    ad exit 0 ; c k=11: 500 unique; c 1124.4 s 08:38:56
+    ae exit 0 ; c k=11: 500 unique; c 1077.5 s 08:56:54
+    af exit 0 ; c k=11: 500 unique; c 1076.5 s 09:14:50
+    ag exit 0 ; c k=11: 500 unique; c 1111.4 s 09:33:22
+    ah exit 0 ; c k=11: 500 unique; c 1108.3 s 09:51:50
+    ai exit 0 ; c k=11: 500 unique; c 1066.0 s 10:09:36
+    aj exit 0 ; c k=11: 500 unique; c 1054.2 s 10:27:10
+    ak exit 0 ; c k=11: 500 unique; c 1062.2 s 10:44:53
+    al exit 0 ; c k=11: 500 unique; c 1049.4 s 11:02:22
+    am exit 0 ; c k=11: 500 unique; c 1024.5 s 11:19:27
+    an exit 0 ; c k=11: 500 unique; c 1051.9 s 11:36:58
+    ao exit 0 ; c k=11: 500 unique; c 1105.2 s 11:55:24
+    ap exit 0 ; c k=11: 500 unique; c 1075.2 s 12:13:19
+    aq exit 0 ; c k=11: 500 unique; c 1061.2 s 12:31:00
+    ar exit 0 ; c k=11: 500 unique; c 1042.2 s 12:48:22
+    as exit 0 ; c k=11: 267 unique; c 570.0 s 12:57:52
+    ref47 written: 
+--- proj47_5 depth 3 on 9783 lines in 20 chunks 12:57:52
+    aa exit 0 ; c k=11: 500 unique; c 748.7 s 13:10:21
+    ab exit 0 ; c k=11: 500 unique; c 797.0 s 13:23:38
+    ac exit 0 ; c k=11: 500 unique; c 749.6 s 13:36:08
+    ad exit 0 ; c k=11: 500 unique; c 810.3 s 13:49:38
+    ae exit 0 ; c k=11: 500 unique; c 795.7 s 14:02:54
+    af exit 0 ; c k=11: 500 unique; c 765.4 s 14:15:39
+    ag exit 0 ; c k=11: 500 unique; c 788.2 s 14:28:47
+    ah exit 0 ; c k=11: 500 unique; c 780.6 s 14:41:48
+    ai exit 0 ; c k=11: 500 unique; c 742.7 s 14:54:10
+    aj exit 0 ; c k=11: 500 unique; c 787.6 s 15:07:18
+    ak exit 0 ; c k=11: 500 unique; c 772.6 s 15:20:11
+    al exit 0 ; c k=11: 500 unique; c 776.4 s 15:33:07
+    am exit 0 ; c k=11: 500 unique; c 787.3 s 15:46:14
+    an exit 0 ; c k=11: 500 unique; c 739.8 s 15:58:34
+    ao exit 0 ; c k=11: 500 unique; c 788.1 s 16:11:42
+    ap exit 0 ; c k=11: 500 unique; c 747.9 s 16:24:10
+    aq exit 0 ; c k=11: 500 unique; c 741.3 s 16:36:32
+    ar exit 0 ; c k=11: 500 unique; c 811.3 s 16:50:03
+    as exit 0 ; c k=11: 500 unique; c 753.9 s 17:02:37
+    at exit 0 ; c k=11: 283 unique; c 432.0 s 17:09:49
+    proj47_5 written: 
+--- at47 depth 3 on 10518 lines in 22 chunks 17:09:49
+    aa exit 0 ; c k=11: 500 unique; c 932.0 s 17:25:21
+    ab exit 0 ; c k=11: 500 unique; c 685.5 s 17:36:46
+    ac exit 0 ; c k=11: 500 unique; c 782.0 s 17:49:48
+    ad exit 0 ; c k=11: 500 unique; c 774.0 s 18:02:42
+    ae exit 0 ; c k=11: 500 unique; c 768.0 s 18:15:31
+    af exit 0 ; c k=11: 500 unique; c 880.3 s 18:30:11
+    ag exit 0 ; c k=11: 500 unique; c 671.8 s 18:41:23
+    ah exit 0 ; c k=11: 500 unique; c 906.6 s 18:56:29
+    ai exit 0 ; c k=11: 500 unique; c 647.5 s 19:07:17
+    aj exit 0 ; c k=11: 500 unique; c 838.2 s 19:21:15
+    ak exit 0 ; c k=11: 500 unique; c 778.8 s 19:34:14
+    al exit 0 ; c k=11: 500 unique; c 773.8 s 19:47:08
+    am exit 0 ; c k=11: 500 unique; c 823.3 s 20:00:51
+    an exit 0 ; c k=11: 500 unique; c 692.5 s 20:12:24
+    ao exit 0 ; c k=11: 500 unique; c 906.6 s 20:27:30
+    ap exit 0 ; c k=11: 500 unique; c 656.8 s 20:38:27
+    aq exit 0 ; c k=11: 500 unique; c 877.8 s 20:53:05
+    ar exit 0 ; c k=11: 500 unique; c 986.3 s 21:09:31
+    as exit 0 ; c k=11: 500 unique; c 841.3 s 21:23:32
+    at exit 0 ; c k=11: 500 unique; c 897.5 s 21:38:30
+    au exit 0 ; c k=11: 500 unique; c 678.2 s 21:49:48
+    av exit 0 ; c k=11: 18 unique; c 35.7 s 21:50:24
+    at47 written: 
+--- projkm47_7 depth 3 on 12297 lines in 25 chunks 21:50:24
+    aa exit 0 ; c k=11: 1 alt-open, 499 unique; c 726.5 s 22:02:30
+    ab exit 0 ; c k=11: 2 alt-open, 498 unique; c 769.6 s 22:15:20
+    ac exit 0 ; c k=11: 1 alt-open, 499 unique; c 719.3 s 22:27:19
+    ad exit 0 ; c k=11: 500 unique; c 783.7 s 22:40:23
+    ae exit 0 ; c k=11: 500 unique; c 717.9 s 22:52:21
+    af exit 0 ; c k=11: 1 alt-open, 499 unique; c 748.5 s 23:04:49
+    ag exit 0 ; c k=11: 1 alt-open, 499 unique; c 706.4 s 23:16:36
+    ah exit 0 ; c k=11: 500 unique; c 755.8 s 23:29:12
+    ai exit 0 ; c k=11: 500 unique; c 669.8 s 23:40:21
+    aj exit 0 ; c k=11: 500 unique; c 756.0 s 23:52:57
+    ak exit 0 ; c k=11: 1 alt-open, 499 unique; c 669.7 s 00:04:07
+    al exit 0 ; c k=11: 500 unique; c 762.5 s 00:16:50
+    am exit 0 ; c k=11: 500 unique; c 723.0 s 00:28:53
+    an exit 0 ; c k=11: 500 unique; c 699.9 s 00:40:33
+    ao exit 0 ; c k=11: 500 unique; c 705.8 s 00:52:18
+    ap exit 0 ; c k=11: 1 alt-open, 499 unique; c 748.8 s 01:04:47
+    aq exit 0 ; c k=11: 1 alt-open, 499 unique; c 720.6 s 01:16:48
+    ar exit 0 ; c k=11: 1 alt-open, 499 unique; c 738.0 s 01:29:06
+    as exit 0 ; c k=11: 1 alt-open, 499 unique; c 680.7 s 01:40:27
+    at exit 0 ; c k=11: 500 unique; c 738.5 s 01:52:45
+    au exit 0 ; c k=11: 500 unique; c 709.1 s 02:04:34
+    av exit 0 ; c k=11: 1 alt-open, 499 unique; c 741.9 s 02:16:56
+    aw exit 0 ; c k=11: 500 unique; c 694.6 s 02:28:31
+    ax exit 0 ; c k=11: 500 unique; c 734.2 s 02:40:45
+    ay exit 0 ; c k=11: 297 unique; c 469.0 s 02:48:34
+    projkm47_7 written:  12 A 
+=== P10 done 2026-11-12 02:48:34
+
+## the projkm47_7 lines still open at depth 3 (each appears twice in P7's output: as an alt line and as one of the six R lines; 12,297 lines = 12,291 distinct)
+   2 A k=11 dims=7,7,7 idx=0,4,6,13,14,18,23,27,33,36,44
+   2 A k=11 dims=7,7,7 idx=1,3,4,12,13,14,18,27,32,38,41
+   2 A k=11 dims=7,7,7 idx=1,3,4,12,13,14,32,34,38,40,41
+   2 A k=11 dims=7,7,7 idx=1,4,12,22,26,30,33,34,37,40,43
+   2 A k=11 dims=7,7,7 idx=3,7,9,11,14,18,21,23,27,32,45
+   2 A k=11 dims=7,7,7 idx=5,12,30,31,32,34,35,40,41,45,46

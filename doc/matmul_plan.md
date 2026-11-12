@@ -2996,6 +2996,13 @@ the two source papers for this track):
   its 23 products with ours and is no S3 image of it.  The KS-51 paper is now arXiv:2611.12907.
   NOTE: target/release/kres is still the old build; kres_census (scratchpad kres/build/) is this source; rebuild after
   the k = 11 chain ends (touch src/bin/kres.rs first).
+  2026-11-12 02:48: kres DEPTH 3 AT k = 11 DONE (P8 km47 in one call, P9/P10 the other four in 500-line chunks; drivers
+  proj/kres_census_k11_alt3{,c,d}.zsh, log proj/logs/kres_census_k11_alt3_2026-11-12.txt): of the lines open at depth 2,
+  km47 9,109 / at47 10,518 / ref47 9,267 / proj47_5 9,783 ALL UNIQUE, projkm47_7 12,285 of 12,291 distinct unique and
+  6 OPEN (1.3-2.5 s per line).  -> NO OTHER 47 WITHIN 11 PRODUCTS of km47, at47, ref47, proj47_5 (exact); projkm47_7
+  the same except six 11-subsets, exactly its six R lines (refuted for reduction: no 46 there): factors span 7 dims in
+  every slot, slice spaces four short of 11, so the alternative question needs depth 4 (not run; cost per line about
+  127^2 depth-3 searches of a coset).  The 12,297 input lines held each of the six twice (R line + A line).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/letters/reply_alexandre_2026-11-09_short.md, 675 words).

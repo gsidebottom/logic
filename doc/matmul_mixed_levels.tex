@@ -179,7 +179,7 @@ the bottom.  Mixing pays for three reasons that the measurements separate:
 \node[anchor=west,align=left] at (11.75,-2.42) {$P$ pass: $C$'s $4$ blocks\\ from the $7$ products $M_i$};
 % band 2: the 3x6x3 level
 \node[anchor=east,align=right] at (3.4,-4.1)
-  {Level 2: \lv{R363+3}\\ $\mm{3\times6\times3:40}$\\ $40$ of $54$};
+  {Level 2: \lv{R363+3}\\ $\mm{3\times6\times3:40}$\\ $40$ products of $54$};
 \matbox{4.9}{-3.3}{1.6}{1.6}{3}{6}{$S_i$}{$3\times6$ grid\\ $2304\times1152$}
 \node at (6.25,-4.1) {$\times$};
 \matbox{7.6}{-3.3}{1.6}{1.6}{6}{3}{$T_i$}{$6\times3$ grid\\ $1152\times2304$}
@@ -193,7 +193,7 @@ the bottom.  Mixing pays for three reasons that the measurements separate:
 \node[anchor=west,align=left] at (11.75,-5.72) {$P$ pass: $M_i$'s $9$ blocks\\ from the $40$ products $M_{ij}$};
 % band 3: the 6x3x3 level, on rectangular operands
 \node[anchor=east,align=right] at (3.4,-7.4)
-  {Level 3: \lv{R633}\\ $\mm{6\times3\times3:40}$\\ $40$ of $54$};
+  {Level 3: \lv{R633}\\ $\mm{6\times3\times3:40}$\\ $40$ products of $54$};
 \matbox{4.9}{-6.6}{0.8}{1.6}{6}{3}{$S_{ij}$}{$6\times3$ grid\\ blocks $384^2$}
 \node at (6.25,-7.4) {$\times$};
 \matbox{7.6}{-6.6}{1.6}{0.8}{3}{3}{$T_{ij}$}{$3\times3$ grid\\ $384\times768$}
@@ -217,7 +217,10 @@ the bottom.  Mixing pays for three reasons that the measurements separate:
   {$280\cdot40=11{,}200$ GEMMs\\ ($8\cdot54\cdot54=23{,}328$ classical)\\ 85--95\% of the time};
 \end{tikzpicture}
 \caption{The plan \lv{SW/R363+3/R633/G6} at $n=13824$ in f64, from the
-problem at the top to the GEMM leaves at the bottom.  Each level cuts its
+problem at the top to the GEMM leaves at the bottom.  Under each level's
+scheme, ``$7$ products of $8$'' and ``$40$ products of $54$'' count its block
+products against the classical algorithm's on the same grids, $2\cdot2\cdot2=8$
+and $3\cdot6\cdot3=6\cdot3\cdot3=54$.  Each level cuts its
 operands into the grids shown and runs its scheme's three programs
 (Figure~\ref{fig:lrp}).  Going down, its $L$ and $R$ passes write the
 factors of the level below, linear combinations of those blocks with a block's

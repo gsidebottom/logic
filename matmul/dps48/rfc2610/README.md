@@ -145,6 +145,41 @@ scheme is maximally mixed with respect to its own symmetry planes.  Same picture
 **Question 2, does the family behave the same?**  The rank structure does (`../q48_structure.py`, `../q48_structure_2026-11-09.txt`):
 every rank-48 scheme we hold has 32 terms of type [1,1,1] and 16 of type [2,2,2], Agrawal's excepted in the 16 (4 x [2,2,2],
 8 x [2,2,3], 4 x [2,3,3]).  The stabilizer does not (`../stabilizer48.py`, `results_stab_family_2026-11-09.txt`): the Li-Wang-Hu
-points s(1), s(2), s(1/2) have order 32 (16 with trivial slot map, 16 with the slot map `cyc+rev` in that file's orientation), no
-signed-permutation element of order 4 and nothing carrying L onto R; Agrawal's has order 8 (4 + 4).  The order 64 with its 32 + 32
+points s(1), s(2), s(1/2) have order 32 (16 with trivial slot map, 16 with the slot map `cyc+rev` in that file's orientation) and
+no signed-permutation element of order 4 in those coordinates; Agarwal's has order 8 (4 + 4).  **Corrected 2026-11-11:** this
+section also said 'nothing carrying L onto R', which is an artifact of orientation: `cyc+rev` exchanges B and C in Li-Wang-Hu's
+coordinates, and conjugated into the DPS class's orientation it is the L<->R exchange (`cyc2+rev`), the type of 32 of
+accurate_262's 64 (see the 2026-11-11 section).  The order 64 with its 32 + 32
 split is special to the DPS class (rational, accurate, accurate_262, and the 201 points, checked 2026-10-24).
+
+## 2026-11-11: the stabilizer of the Li-Wang-Hu family and of Agarwal's decomposition
+
+His question: can we obtain the stabilizer of the family and of Agarwal's decompositions?  Yes (`stab_family.py`,
+`fit_family.py`, `iso_between.py`, `stab_matrices.py`; `results_stab_lwh_2026-11-11.txt`; elements in `stab_lwh/`).
+
+- **The family's stabilizer is one group of order 32 over Q[t, 1/t].**  Stab(s(t)) has order 32 at the eleven values
+  t = 1/5, 1/3, 1/2, 2/3, 1, 3/2, 2, 3, 4, 5, 8, always with the same 32 slot maps and layer permutations (members
+  written from s(t) rebuilt entrywise as a/t + b + c t from the six class files, which it reproduces exactly).  In every
+  element X and Y (Lemma 2.1: U and V) are constant and only the third matrix depends on t; only 2 elements are constant
+  altogether, which is why the first pass (`stab_family.py`, intersection of constant matrices) found order 2.  Fitted
+  entrywise as Laurent polynomials on five values of t (W(t) in Lemma 2.1 form: exponents -1..1), checked on the other
+  six, then checked on s(t) itself at 34 values of t; each condition is a polynomial identity of degree at most 22 after
+  clearing t, so this proves them.  16 elements have the trivial slot map and form C2 x D4; 16 use `cyc+rev`
+  ([L K; P^T; R^T], B <-> C here, L <-> R in the DPS class's orientation).  Orbits: the 32 [1,1,1] components 16 + 16,
+  the 16 [2,2,2] components 8 + 8.  Group: element orders 1:1, 2:19, 4:12, centre C2^2, derived order 4,
+  abelianization C2^3, 14 classes.
+- **The curve's symmetry group has order 128.**  s(t) is isotropic to s(1/(16t)) and to s(-t), 32 isotropies each (7
+  and 9 values of t, same fit and checks; U, V constant, W(t) exponents -1..2 and -2..1), so phi's invariance under both
+  maps is realized by isotropies.  With G they generate 128 elements acting on the curve through t -> +-t, +-1/(16t)
+  (element orders 1:1, 2:43, 4:68, 8:16, centre C2, derived 16, 20 classes).
+- **Why 64 at the DPS class:** s(1/4) is the fixed point of t -> 1/(16t); the 32 isotropies onto s(1/(16t)) evaluated
+  at t = 1/4 are exactly the 32 elements of Stab(s(1/4)) outside G (checked element by element), so Stab(s(1/4)) =
+  G with them, order 64, same invariants as Stab(accurate_262) (orders 1:1, 2:27, 4:36, centre C2, derived 8, 16
+  classes); the orbits merge into 32 + 16.
+- **Agarwal's:** order 8, abelian C4 x C2 (4 trivial-slot: identity + 3 involutions; 4 `cyc+rev` of order 4).  All 8 are
+  isotropies in Stab(s(2)) (same slot map and X, Y, Z up to scale): a normal subgroup of index 4 containing Stab(s(2))'s
+  centre (order 4); the 16 elements of Stab(s(2)) preserving the 12 replaced components contain it with index 2.
+  Our agarwal file numbers the 36 kept components of s(2) first, the 12 new ones last.
+- Letter draft and attachment (git-ignored): `doc/letters/reply_alexandre_stabilizers_2026-11-11.md`,
+  `doc/letters/stabilizers_lwh_agarwal_2026-11-11.tgz` (text and JSON of all three Q(t) sets, Stab(s(1/4)), Agarwal's,
+  GAP generators for IdGroup; no GAP here).

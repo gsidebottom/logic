@@ -1,0 +1,21 @@
+# The groups as permutation groups on the 48 components, 1-based: G, Gamma and Full in Li-Wang-Hu's numbering
+# (files s_*), Agarwal in the numbering of agarwal_{L,R,P}.sms (see README.txt).
+# Each permutation group is isomorphic to the group of isotropies (the action is faithful).
+# Invariants we computed (no GAP here):
+#   G      = Stab(s(t)), any t other than 1/4 (computed at 11 values):  order 32; element orders 1:1, 2:19, 4:12;
+#            centre C2 x C2; derived subgroup of order 4; abelianization C2^3; 14 conjugacy classes; 3 generators;
+#            the 16 elements with the trivial map on [L; R; P] form C2 x D4; orbits 16 + 16 ([1,1,1]) and 8 + 8 ([2,2,2]).
+#   Gamma  = Stab(s(1/4)) = G with the isotropies s(t) -> s(1/(16t)) at t = 1/4:  order 64; element orders 1:1, 2:27,
+#            4:36; centre C2; derived subgroup of order 8; abelianization C2^3; 16 conjugacy classes; orbits 32 + 16.
+#            Same invariants as Stab(accurate_262) in its own coordinates.
+#   Full   = G with the isotropies s(t) -> s(1/(16t)) and s(t) -> s(-t): order 128, acting on the curve through
+#            t -> t, 1/(16t), -t, -1/(16t); element orders 1:1, 2:43, 4:68, 8:16; centre C2; derived subgroup of order 16;
+#            abelianization C2^3; 20 conjugacy classes; orbits 32 + 16.
+#   Agarwal = Stab of Agarwal's decomposition: order 8, abelian, C4 x C2; orbits of sizes 8, 8, 8, 8, 4, 4, 4, 4.
+#            As isotropies all 8 are symmetries of s(2): a normal subgroup of Stab(s(2)) of index 4 containing its
+#            centre (order 4), and half of the 16 elements of Stab(s(2)) that preserve the 12 replaced components.
+G := Group((1,2,5,30)(3,20,37,16)(4,28,40,25)(6,13,36,39)(7,18,10,8)(9,17,35,34)(11,23,41,43)(12,15,32,38)(14,26,31,33)(19,44,22,48)(21,24,27,45)(29,47,46,42), (1,2,26,31)(3,13,23,7)(4,25)(5,30,33,14)(6,20,8,41)(9,34)(10,37,39,43)(11,36,16,18)(12,19,32,22)(15,44,38,48)(17,35)(21,24,42,29)(27,45,47,46)(28,40), (1,24,33,46)(2,47,14,21)(3,11,43,20)(4,34,40,17)(5,45,26,29)(6,10,18,13)(7,8,39,36)(9,25,35,28)(12,38)(15,32)(16,37,41,23)(19,44)(22,48)(27,30,42,31));
+Gamma := Group((1,2,5,30)(3,20,37,16)(4,28,40,25)(6,13,36,39)(7,18,10,8)(9,17,35,34)(11,23,41,43)(12,15,32,38)(14,26,31,33)(19,44,22,48)(21,24,27,45)(29,47,46,42), (1,2,26,31)(3,13,23,7)(4,25)(5,30,33,14)(6,20,8,41)(9,34)(10,37,39,43)(11,36,16,18)(12,19,32,22)(15,44,38,48)(17,35)(21,24,42,29)(27,45,47,46)(28,40), (1,3,42,36)(2,11,46,10)(4,12,9,48)(5,37,47,6)(7,30,41,29)(8,26,43,21)(13,31,20,45)(14,16,24,39)(15,34,22,28)(17,19,25,38)(18,33,23,27)(32,35,44,40));
+Full := Group((1,3,30,16,5,37,2,20)(4,12,25,38,40,32,28,15)(6,24,39,21,36,45,13,27)(7,42,8,46,10,47,18,29)(9,48,34,22,35,44,17,19)(11,26,43,14,41,33,23,31), (1,6,31,7,5,36,14,10)(2,39,33,8,30,13,26,18)(3,46,41,21,37,29,11,27)(4,44,28,19,40,48,25,22)(9,32,17,15,35,12,34,38)(16,42,23,24,20,47,43,45), (1,2,26,31)(3,13,23,7)(4,25)(5,30,33,14)(6,20,8,41)(9,34)(10,37,39,43)(11,36,16,18)(12,19,32,22)(15,44,38,48)(17,35)(21,24,42,29)(27,45,47,46)(28,40), (1,2,33,14)(3,18,43,6)(4,28,40,25)(5,30,26,31)(7,20,39,11)(8,23,36,37)(9,17,35,34)(10,16,13,41)(12,44)(15,19)(21,29,47,45)(22,38)(24,27,46,42)(32,48));
+Agarwal := Group((1,2,19,23)(3,10,17,6)(4,22,24,11)(5,15,7,29)(8,26,28,31)(9,25,13,14)(12,32,27,36)(16,18,30,21)(20,33,35,34)(37,47)(38,45)(39,48)(40,46)(41,42,44,43), (1,11,19,22)(2,4,23,24)(3,8,17,28)(5,9,7,13)(6,31,10,26)(12,32,27,36)(14,15,25,29)(16,34,30,33)(18,20,21,35)(37,46)(38,48)(39,45)(40,47)(41,42,44,43));
+List([G, Gamma, Full, Agarwal], IdGroup);

@@ -2793,11 +2793,23 @@ the two source papers for this track):
   blocks in all three factors and only 8 factors per side are 2x2 Kronecker products: no Laderman-from-Strassen-style derivation
   appears, the scheme is maximally mixed w.r.t. its symmetry planes (q3_invariant.py, q3_reps.py).
   Question 2 (stabilizer48.py on classes/): the Li-Wang-Hu points s(1), s(2), s(1/2) have stabilizer order 32 (16 + 16), Agrawal's 8
-  (4 + 4), neither with an L<->R element or an order-4 signed permutation; the order 64 is special to the DPS class.  Rank structure
+  (4 + 4), neither with an order-4 signed permutation in the family's coordinates (CORRECTED 2026-11-11: 'no L<->R element' was
+  an artifact of orientation -- the 16 (Agarwal: 4) non-trivial-slot elements exchange B and C in Li-Wang-Hu's coordinates, which
+  is the L<->R exchange in the DPS class's orientation, the same type as the 32 of accurate_262); the order 64 is special to the
+  DPS class (explained 2026-11-11: s(1/4) is the fixed point of the curve symmetry t -> 1/(16t)).  Rank structure
   (32 x [1,1,1] + 16 x [2,2,2]) is uniform; the symmetry is not (results_stab_family_2026-11-09.txt).  His Gram-matrix
   remark checked exactly (21:05, rfc2610/gram_modes.py): the three modes' sixteen-line configurations have identical Gram
   multisets and 128 W(F4) isometries carry each onto each -- congruent, as he expected; the configuration's symmetry group
   (128) exceeds the scheme's per-mode stabilizer image (32), but the extra elements are not isotropies of the decomposition.
+
+  2026-11-11 evening, his follow-up 'the stabilizer of the family and of Agrawal's [Agarwal's] decompositions' (rfc2610 README,
+  results_stab_lwh_2026-11-11.txt, stab_lwh/, fit_family.py): Stab(s(t)) is ONE group of order 32 over Q[t, 1/t] (same
+  32 layer permutations at 11 values of t; U, V constant, W(t) Laurent of degree 1; fitted and proved on s(t) at 34
+  values); s(t) ~ s(1/(16t)) and s(t) ~ s(-t) by 32 isotropies each, so the curve's symmetry group has order 128
+  (t -> +-t, +-1/(16t)); the DPS class s(1/4) is the fixed point of t -> 1/(16t) and its 32 extra elements are exactly
+  those isotropies at t = 1/4 -- the 64 is explained.  Agarwal's: C4 x C2, a normal index-4 subgroup of Stab(s(2)).
+  Draft + attachment in doc/letters/ (Greg sends).  Also corrected: 'no L<->R element' at the LWH points was an
+  orientation artifact (their B<->C elements are L<->R in the DPS orientation).
 
 - **Symmetry-prescribed search started (2026-11-09 ~09:30, Greg: 'start the symmetry-prescribed search').**  The route that
   found new 3x3 classes (Burichenko; Ballard-Ikenmeyer-Landsberg-Ryder): impose a symmetry group and solve for the invariant

@@ -1,0 +1,171 @@
+# 2026-11-11: stabilizers of the Li-Wang-Hu family and of Agarwal's decomposition (Sedoglavic's question)
+# 1. stab_matrices.py on classes/s_{1o4,1o2,1,2,4,8} and classes/agarwal (stabilizer orders):
+s_1o4: stabilizer order 64, slot maps {'id': 32, 'cyc+rev': 32}
+s_1o2: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+s_1: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+s_2: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+s_4: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+s_8: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+agarwal: stabilizer order 8, slot maps {'id': 4, 'cyc+rev': 4}
+# 2. stab_family.py ../classes STABDIR STABDIR/stab_agarwal.json stab_accurate_262.json (constant-matrix test):
+s(t) rebuilt: every entry a/t + b + c t, fitted on t = 1/2, 1, 2 and exact at 1/4, 4, 8
+  control: phi(s(t)) = 64 + 4/t^2 + 1024 t^2 at t = 1/3, 3, -1/2
+  s_1o4: stabilizer order 64, slot maps {'id': 32, 'cyc+rev': 32}
+  s_1o2: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+  s_1: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+  s_2: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+  s_4: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+  s_8: stabilizer order 32, slot maps {'id': 16, 'cyc+rev': 16}
+common to the five generic members t = 1/2, 1, 2, 4, 8 (same slot map, layer permutation, X, Y, Z up to scale): 2
+  s_1o2: 2 of 32 common
+  s_1: 2 of 32 common
+  s_2: 2 of 32 common
+  s_4: 2 of 32 common
+  s_8: 2 of 32 common
+  inside Stab(s(1/4)): 2 of 64
+  each common element fixes s(t) at all 14 test values of t (7 nonzero values prove it): 2 of 2
+the 62 elements of Stab(s(1/4)) outside the common group: carry s(t) onto s(1/(16t)) for every test t: 0;  onto s(-t): 0
+  common elements carrying s(t) onto s(-t): 0
+--- pointwise stabilizer of the family (common group): order 2, distinct layer permutations 2 (faithful on the 48 components: True)
+  closed under composition: yes;  slot maps {'id': 1, 'cyc+rev': 1}
+  element orders: {1: 1, 2: 1}
+    slot map cyc+rev: orders {2: 1}
+    slot map id: orders {1: 1}
+  centre order 2 (orders {1: 1, 2: 1}); derived subgroup order 1; abelian: True
+  abelianization order 2, element orders there {1: 1, 2: 1}; Frattini order 1, minimal number of generators 1; conjugacy classes 2
+  orbits on the 48 components: sizes [1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  1 generators suffice (greedy): orders [2]
+  signed permutations in all three modes: 1; orthogonal up to scale in all three: 2; per mode X/Y/Z signed permutations [1, 1, 2], orthogonal [2, 2, 2]
+--- Stab(s(1/4)) = curve-map extension: order 64, distinct layer permutations 64 (faithful on the 48 components: True)
+  closed under composition: yes;  slot maps {'id': 32, 'cyc+rev': 32}
+  element orders: {1: 1, 2: 27, 4: 36}
+    slot map cyc+rev: orders {2: 8, 4: 24}
+    slot map id: orders {1: 1, 2: 19, 4: 12}
+  centre order 2 (orders {1: 1, 2: 1}); derived subgroup order 8; abelian: False
+  abelianization order 8, element orders there {1: 1, 2: 7}; Frattini order 8, minimal number of generators 3; conjugacy classes 16
+  orbits on the 48 components: sizes [16, 32]
+  3 generators suffice (greedy): orders [4, 4, 4]
+  signed permutations in all three modes: 4; orthogonal up to scale in all three: 8; per mode X/Y/Z signed permutations [32, 16, 8], orthogonal [64, 64, 8]
+--- stab_agarwal.json: order 8, distinct layer permutations 8 (faithful on the 48 components: True)
+  closed under composition: yes;  slot maps {'id': 4, 'cyc+rev': 4}
+  element orders: {1: 1, 2: 3, 4: 4}
+    slot map cyc+rev: orders {4: 4}
+    slot map id: orders {1: 1, 2: 3}
+  centre order 8 (orders {1: 1, 2: 3, 4: 4}); derived subgroup order 1; abelian: True
+  abelianization order 8, element orders there {1: 1, 2: 3, 4: 4}; Frattini order 2, minimal number of generators 2; conjugacy classes 8
+  orbits on the 48 components: sizes [4, 4, 4, 4, 8, 8, 8, 8]
+  2 generators suffice (greedy): orders [4, 4]
+  signed permutations in all three modes: 1; per mode X/Y/Z signed permutations [4, 4, 1], orthogonal [8, 8, 1]
+--- stab_accurate_262.json: order 64, distinct layer permutations 64 (faithful on the 48 components: True)
+  closed under composition: yes;  slot maps {'id': 32, 'cyc2+rev': 32}
+  element orders: {1: 1, 2: 27, 4: 36}
+    slot map cyc2+rev: orders {2: 8, 4: 24}
+    slot map id: orders {1: 1, 2: 19, 4: 12}
+  centre order 2 (orders {1: 1, 2: 1}); derived subgroup order 8; abelian: False
+  abelianization order 8, element orders there {1: 1, 2: 7}; Frattini order 8, minimal number of generators 3; conjugacy classes 16
+  orbits on the 48 components: sizes [16, 32]
+  3 generators suffice (greedy): orders [4, 4, 4]
+  signed permutations in all three modes: 8; per mode X/Y/Z signed permutations [32, 16, 32], orthogonal [64, 64, 64]
+wrote stab_lwh_family.json (the common group, matrices as at t = 1) and stab_lwh_curve_map.json (Stab(s(1/4)) minus it)
+real 23.87
+user 22.80
+sys 0.14
+# 3. iso_between.py on members written from the rebuilt s(t): stabilizers, s(t) -> s(1/(16t)), s(t) -> s(-t):
+21:04:29 m_8 -> m_8: 32 isotropies
+21:04:29 m_2 -> m_2: 32 isotropies
+21:04:30 m_4 -> m_4: 32 isotropies
+21:04:30 m_1 -> m_1: 32 isotropies
+21:04:30 m_1o2 -> m_1o2: 32 isotropies
+21:04:30 m_3 -> m_3: 32 isotropies
+21:04:30 m_3o2 -> m_3o2: 32 isotropies
+21:04:30 m_1o3 -> m_1o3: 32 isotropies
+21:04:31 m_2o3 -> m_2o3: 32 isotropies
+21:04:34 m_1o4 -> m_1o4: 64 isotropies
+21:05:29 agarwal -> agarwal: 8 isotropies
+21:06:20 m_1o5 -> m_1o5: 32 isotropies
+21:06:22 m_2 -> m_m2: 32 isotropies
+21:06:22 m_5 -> m_5: 32 isotropies
+21:06:22 m_1 -> m_m1: 32 isotropies
+21:06:46 m_1 -> m_1o16: 32 isotropies
+21:06:46 m_1o3 -> m_3o16: 32 isotropies
+21:06:46 m_1o2 -> m_1o8: 32 isotropies
+21:06:46 m_8 -> m_1o128: 32 isotropies
+21:06:46 m_2 -> m_1o32: 32 isotropies
+21:06:47 m_3 -> m_1o48: 32 isotropies
+21:06:47 m_4 -> m_1o64: 32 isotropies
+21:08:25 m_8 -> m_m8: 32 isotropies
+21:08:25 m_4 -> m_m4: 32 isotropies
+21:08:25 m_3o2 -> m_m3o2: 32 isotropies
+21:08:25 m_1o2 -> m_m1o2: 32 isotropies
+21:08:25 m_3 -> m_m3: 32 isotropies
+21:08:25 m_2o3 -> m_m2o3: 32 isotropies
+21:08:26 m_1o3 -> m_m1o3: 32 isotropies
+# 4. fit_family.py ../classes ISODIR ISODIR/stab_agarwal.json (Q(t) fit, checks, group structure):
+stab: sizes [32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32] at t = ['1/2', '1', '2', '4', '8', '1/3', '3', '3/2', '2/3', '5', '1/5']; slot map + layer permutation common to all: 32
+  fitted 32 elements, Laurent degrees used {0: 66, 1: 16, 2: 14}; checked on s(t) at 34 values of t: 1088 pass, failures []
+  elements with X, Y, Z all constant in t: 2; X constant: 32, Y constant: 32, Z constant: 2
+  Lemma 2.1 form (U, V, W) = (X^-T, Y^-T, Z^-T) up to scale: Laurent of degree <= 2 for 32 of 32; checked on s(t) at 34 values: failures []
+curve: sizes [32, 32, 32, 32, 32, 32, 32] at t = ['1/2', '1', '2', '4', '8', '1/3', '3']; slot map + layer permutation common to all: 32
+  fitted 32 elements, Laurent degrees used {0: 64, 1: 24, 2: 8}; checked on s(t) at 34 values of t: 1088 pass, failures []
+  elements with X, Y, Z all constant in t: 0; X constant: 32, Y constant: 32, Z constant: 0
+  Lemma 2.1 form (U, V, W) = (X^-T, Y^-T, Z^-T) up to scale: Laurent of degree <= 2 for 32 of 32; checked on s(t) at 34 values: failures []
+neg: sizes [32, 32, 32, 32, 32, 32, 32, 32, 32] at t = ['1/2', '1', '2', '4', '8', '1/3', '3', '3/2', '2/3']; slot map + layer permutation common to all: 32
+  fitted 32 elements, Laurent degrees used {0: 64, 1: 18, 2: 14}; checked on s(t) at 34 values of t: 1088 pass, failures []
+  elements with X, Y, Z all constant in t: 0; X constant: 32, Y constant: 32, Z constant: 0
+  Lemma 2.1 form (U, V, W) = (X^-T, Y^-T, Z^-T) up to scale: Laurent of degree <= 2 for 32 of 32; checked on s(t) at 34 values: failures []
+at t = 1/4 the fitted stab elements are elements of Stab(s(1/4)): 32 of 32
+at t = 1/4 the fitted curve elements are elements of Stab(s(1/4)): 32 of 32
+stab and curve layer permutations together = those of Stab(s(1/4)): True
+--- generic stabilizer G of s(t) over Q(t): order 32, distinct layer permutations 32 (faithful on the 48 components: True)
+  closed under composition: yes;  slot maps {'cyc+rev': 16, 'id': 16}
+  element orders: {1: 1, 2: 19, 4: 12}
+    slot map cyc+rev: orders {2: 8, 4: 8}
+    slot map id: orders {1: 1, 2: 11, 4: 4}
+  centre order 4 (orders {1: 1, 2: 3}); derived subgroup order 4; abelian: False
+  abelianization order 8, element orders there {1: 1, 2: 7}; Frattini order 4, minimal number of generators 3; conjugacy classes 14
+  orbits on the 48 components: sizes [8, 8, 16, 16]
+  3 generators suffice (greedy): orders [4, 4, 4]
+--- trivial-slot subgroup of G: order 16, distinct layer permutations 16 (faithful on the 48 components: True)
+  closed under composition: yes;  slot maps {'id': 16}
+  element orders: {1: 1, 2: 11, 4: 4}
+    slot map id: orders {1: 1, 2: 11, 4: 4}
+  centre order 4 (orders {1: 1, 2: 3}); derived subgroup order 2; abelian: False
+  abelianization order 8, element orders there {1: 1, 2: 7}; Frattini order 2, minimal number of generators 3; conjugacy classes 10
+  orbits on the 48 components: sizes [8, 8, 16, 16]
+  3 generators suffice (greedy): orders [4, 4, 2]
+--- G with the curve map t -> 1/(16t): order-64 group, = Stab(s(1/4)) at t = 1/4: order 64, distinct layer permutations 64 (faithful on the 48 components: True)
+  closed under composition: yes;  slot maps {'cyc+rev': 32, 'id': 32}
+  element orders: {1: 1, 2: 27, 4: 36}
+    slot map cyc+rev: orders {2: 8, 4: 24}
+    slot map id: orders {1: 1, 2: 19, 4: 12}
+  centre order 2 (orders {1: 1, 2: 1}); derived subgroup order 8; abelian: False
+  abelianization order 8, element orders there {1: 1, 2: 7}; Frattini order 8, minimal number of generators 3; conjugacy classes 16
+  orbits on the 48 components: sizes [16, 32]
+  3 generators suffice (greedy): orders [4, 4, 4]
+group generated by the stabilizer, the t -> 1/(16t) maps and the t -> -t maps: order 128; its elements realize t -> t, 1/(16t), -t, -1/(16t) on the curve
+--- the whole symmetry group of the curve (order 128 expected): order 128, distinct layer permutations 128 (faithful on the 48 components: True)
+  closed under composition: yes;  slot maps {'id': 48, 'cyc+rev': 48, '?': 32}
+  element orders: {1: 1, 2: 43, 4: 68, 8: 16}
+    slot map ?: orders {4: 16, 8: 16}
+    slot map cyc+rev: orders {2: 16, 4: 32}
+    slot map id: orders {1: 1, 2: 27, 4: 20}
+  centre order 2 (orders {1: 1, 2: 1}); derived subgroup order 16; abelian: False
+  abelianization order 8, element orders there {1: 1, 2: 7}; Frattini order 16, minimal number of generators 3; conjugacy classes 20
+  orbits on the 48 components: sizes [16, 32]
+  4 generators suffice (greedy): orders [8, 8, 4, 4]
+GAP: G := Group((1,2,5,30)(3,20,37,16)(4,28,40,25)(6,13,36,39)(7,18,10,8)(9,17,35,34)(11,23,41,43)(12,15,32,38)(14,26,31,33)(19,44,22,48)(21,24,27,45)(29,47,46,42), (1,2,26,31)(3,13,23,7)(4,25)(5,30,33,14)(6,20,8,41)(9,34)(10,37,39,43)(11,36,16,18)(12,19,32,22)(15,44,38,48)(17,35)(21,24,42,29)(27,45,47,46)(28,40), (1,24,33,46)(2,47,14,21)(3,11,43,20)(4,34,40,17)(5,45,26,29)(6,10,18,13)(7,8,39,36)(9,25,35,28)(12,38)(15,32)(16,37,41,23)(19,44)(22,48)(27,30,42,31));
+GAP: Gamma := Group((1,2,5,30)(3,20,37,16)(4,28,40,25)(6,13,36,39)(7,18,10,8)(9,17,35,34)(11,23,41,43)(12,15,32,38)(14,26,31,33)(19,44,22,48)(21,24,27,45)(29,47,46,42), (1,2,26,31)(3,13,23,7)(4,25)(5,30,33,14)(6,20,8,41)(9,34)(10,37,39,43)(11,36,16,18)(12,19,32,22)(15,44,38,48)(17,35)(21,24,42,29)(27,45,47,46)(28,40), (1,3,42,36)(2,11,46,10)(4,12,9,48)(5,37,47,6)(7,30,41,29)(8,26,43,21)(13,31,20,45)(14,16,24,39)(15,34,22,28)(17,19,25,38)(18,33,23,27)(32,35,44,40));
+GAP: Full := Group((1,3,30,16,5,37,2,20)(4,12,25,38,40,32,28,15)(6,24,39,21,36,45,13,27)(7,42,8,46,10,47,18,29)(9,48,34,22,35,44,17,19)(11,26,43,14,41,33,23,31), (1,6,31,7,5,36,14,10)(2,39,33,8,30,13,26,18)(3,46,41,21,37,29,11,27)(4,44,28,19,40,48,25,22)(9,32,17,15,35,12,34,38)(16,42,23,24,20,47,43,45), (1,2,26,31)(3,13,23,7)(4,25)(5,30,33,14)(6,20,8,41)(9,34)(10,37,39,43)(11,36,16,18)(12,19,32,22)(15,44,38,48)(17,35)(21,24,42,29)(27,45,47,46)(28,40), (1,2,33,14)(3,18,43,6)(4,28,40,25)(5,30,26,31)(7,20,39,11)(8,23,36,37)(9,17,35,34)(10,16,13,41)(12,44)(15,19)(21,29,47,45)(22,38)(24,27,46,42)(32,48));
+--- Agarwal: order 8, distinct layer permutations 8 (faithful on the 48 components: True)
+  closed under composition: yes;  slot maps {'id': 4, 'cyc+rev': 4}
+  element orders: {1: 1, 2: 3, 4: 4}
+    slot map cyc+rev: orders {4: 4}
+    slot map id: orders {1: 1, 2: 3}
+  centre order 8 (orders {1: 1, 2: 3, 4: 4}); derived subgroup order 1; abelian: True
+  abelianization order 8, element orders there {1: 1, 2: 3, 4: 4}; Frattini order 2, minimal number of generators 2; conjugacy classes 8
+  orbits on the 48 components: sizes [4, 4, 4, 4, 8, 8, 8, 8]
+  2 generators suffice (greedy): orders [4, 4]
+GAP: Agarwal := Group((1,2,19,23)(3,10,17,6)(4,22,24,11)(5,15,7,29)(8,26,28,31)(9,25,13,14)(12,32,27,36)(16,18,30,21)(20,33,35,34)(37,47)(38,45)(39,48)(40,46)(41,42,44,43), (1,11,19,22)(2,4,23,24)(3,8,17,28)(5,9,7,13)(6,31,10,26)(12,32,27,36)(14,15,25,29)(16,34,30,33)(18,20,21,35)(37,46)(38,48)(39,45)(40,47)(41,42,44,43));
+real 331.63
+user 319.61
+sys 1.61

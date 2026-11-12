@@ -121,7 +121,7 @@ The approach is to mix.  A \emph{plan} is a sequence of \emph{levels} from the
 top of the problem down to a GEMM leaf, and every level may come from a
 different scheme: a $\mm{2\times2\times2:7}$ scheme (\lv{SW}: Strassen--Winograd's
 programs in this report's campaigns, since November~2 the dyadic accurate point
-of \cite{DPS24}, Section~\ref{sec:sw}), the
+of \cite[Eq.~(38)]{DPS24}; see Section~\ref{sec:sw} below), the
 accurate $\mm{4\times4\times4:48}$ algorithm of Dumas, Pernet and Sedoglavic
 \cite{DPS25,DPS26a} in its $262$-operation form \cite{PLinOpt,S26b} (\lv{D48}),
 and their accurate $\mm{3\times3\times6:40}$ algorithm \cite{DPS26b,PLinOpt} in
@@ -1652,7 +1652,10 @@ log of the track, with every measurement in the order it was made, is
 {\small
 \begin{thebibliography}{99}
 \bibitem{DPS24} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{Strassen's
-algorithm is not optimally accurate}, Proc.\ ISSAC 2024, 254--263.
+algorithm is not optimally accurate}, Proc.\ ISSAC 2024, 254--263;
+arXiv:2402.05630v2 (28~June 2024), whose numbering we cite: the dyadic
+point is Eq.~(38) in Remark~22 (Section~6.3), its program Table~4, its
+growth factors the column ``Equation~(38)'' of Table~1.
 \bibitem{DPS25} J.-G.~Dumas, C.~Pernet, A.~Sedoglavic, \emph{A
 non-commutative algorithm for multiplying $4\times4$ matrices using
 $48$ non-complex multiplications}, arXiv:2506.13242 (2025).

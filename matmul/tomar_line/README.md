@@ -880,6 +880,12 @@ starts), so the comparison is by type.
   matrices whose entries are random 2x2 integer matrices (exact A B), and
   the control with every product's factors swapped fails on every entry.
   They need 2, 5 and 17 (13x14x14: 2, 5; 15x16x16: 2, 3, 5) invertible.
+  proj/scheme_modp_check.py reduces a record modulo a prime p and runs it
+  over F_p on random matrices: each record is correct at every tested prime
+  that divides none of its denominators (3 to 19, 23, 65537, 1048573,
+  998244353, 2^31 - 1 and 2^64 - 2^32 + 1) and undefined at the others, and
+  a copy with one changed coefficient fails (kron_runs/2026-11-11/
+  modp_check.log).
   PLinOpt: proj/json2sms.py writes them as data/<shape>_<rank>_rational_
   {L,R,P}.sms; optimizer -O 1 -s 1 programs; make check passes for all
   five; branch data-rank-records-q, commit 04db52b in the worktree

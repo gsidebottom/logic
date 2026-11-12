@@ -50,10 +50,20 @@
 //!        kres N1 N2 N3 scheme.bits --lines FILE [--mode reduce|alt|both] [--threads 12] [--out FILE]
 //!                   decide the R / A lines of FILE (k and idx= are read from each line).
 //!        kres N1 N2 N3 scheme.bits --subset 0,3,17,...   one candidate, verbose.
+//!        [--shard i/n]  decide only the first-level extensions i mod n of the generic search (delta >= 3), for
+//!                   running one line in n processes; [--progress] reports that loop on stderr.
 //! bits layout: all a factors (n1*n2 bits each), then all b (n2*n3), then all c (n1*n3).
 use std::io::Write;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
+
+/// --shard i/n: decide() tries only the first-level extensions N of the generic search (delta >= 3) whose index in
+/// search_w's loop order is i mod n, so the n runs i = 0..n-1 partition that search exactly (a line has an
+/// alternative iff some shard reports one; it is unique iff every shard reports unique).  Default 0/1 = all.
+static SHARD_I: AtomicUsize = AtomicUsize::new(0);
+static SHARD_N: AtomicUsize = AtomicUsize::new(1);
+/// --progress: decide() reports the first-level loop on stderr (about every 1% of it)
+static PROGRESS: AtomicBool = AtomicBool::new(false);
 
 type Prod = [u32; 3];
 type Wide = [u64; 4]; // a Kronecker product of two 16-bit factors, 256 bits
@@ -469,6 +479,46 @@ fn search_w(sp: &Space, nr: usize, nc: usize, delta: usize, visit: &mut dyn FnMu
     false
 }
 
+/// search_w for decide(): the same search, with the first generic level (delta >= 3) restricted to the
+/// candidates of this run's shard (--shard) and reported (--progress).  The first-level loop is search_w's, in
+/// its order, so the shards partition it; a search without a generic level (spanned S, or delta < 3) runs in
+/// shard 0 only.
+fn search_w_top(sp: &Space, nr: usize, nc: usize, delta: usize, visit: &mut dyn FnMut(&[u128]) -> bool) -> bool {
+    let (si, sn) = (SHARD_I.load(Ordering::Relaxed), SHARD_N.load(Ordering::Relaxed));
+    let progress = PROGRESS.load(Ordering::Relaxed);
+    if sn <= 1 && !progress { return search_w(sp, nr, nc, delta, visit); }
+    if sp.spanned || delta < 3 { return if si == 0 { search_w(sp, nr, nc, delta, visit) } else { false }; }
+    let total: u64 = ((1u64 << nr) - 1) * ((1u64 << nc) - 1);
+    let mine: u64 = (0..total).filter(|i| (*i as usize) % sn == si).count() as u64;
+    let step = (mine / 100).max(1);
+    let t0 = std::time::Instant::now();
+    if progress { eprintln!("p shard {si}/{sn}: {mine} of {total} first-level candidates, delta {delta}, {nr}x{nc} slices, dim S {}", sp.ech.len()); }
+    let (mut idx, mut done, mut tried) = (0u64, 0u64, 0u64);
+    for x in 1..(1u32 << nr) {
+        for y in 1..(1u32 << nc) {
+            let i = idx;
+            idx += 1;
+            if (i as usize) % sn != si { continue; }
+            done += 1;
+            let n = kron_small(x, y, nc);
+            if reduce128(&sp.ech, n) != 0 {
+                tried += 1;
+                let sp1 = extend(sp, n, nr, nc);
+                if search_w(&sp1, nr, nc, delta - 1, visit) {
+                    if progress { eprintln!("p shard {si}/{sn}: FOUND at candidate {i} (x={x}, y={y}) after {done} of {mine}, {:.1} s", t0.elapsed().as_secs_f64()); }
+                    return true;
+                }
+            }
+            if progress && done % step == 0 {
+                let el = t0.elapsed().as_secs_f64();
+                eprintln!("p shard {si}/{sn}: {done}/{mine} ({tried} outside S) {:.1} s, est. total {:.0} s", el, el * mine as f64 / done as f64);
+            }
+        }
+    }
+    if progress { eprintln!("p shard {si}/{sn}: exhausted {mine} candidates ({tried} outside S) in {:.1} s", t0.elapsed().as_secs_f64()); }
+    false
+}
+
 /// a basis of W made of rank-one elements, preferring elements that are not in `orig` (sorted)
 fn rank1_basis(w: &[u128], nr: usize, nc: usize, orig: &[u128]) -> Vec<u128> {
     let m = w.len();
@@ -747,7 +797,7 @@ fn decide(prods: &[Prod], target: usize, maxdelta: usize, n: [usize; 3], hint: &
             found = Some(w.to_vec());
             true
         };
-        search_w(&sp, dir.nr, dir.nc, delta, &mut visit);
+        search_w_top(&sp, dir.nr, dir.nc, delta, &mut visit);
     }
     if found.is_none() && target == k && hint[dir.d] != Some(false) {
         let su = analyze(u.clone(), dir.nr, dir.nc);
@@ -1018,6 +1068,14 @@ fn main() {
     let maxdelta: usize = arg_val(&args, "--maxdelta").unwrap_or(2);
     let maxdelta_alt: usize = arg_val(&args, "--maxdelta-alt").unwrap_or(1);
     let out_path: Option<String> = arg_val(&args, "--out");
+    if let Some(sh) = arg_val::<String>(&args, "--shard") {
+        let (a, b) = sh.split_once('/').expect("--shard i/n");
+        let (i, nsh): (usize, usize) = (a.parse().expect("--shard i/n"), b.parse().expect("--shard i/n"));
+        assert!(nsh >= 1 && i < nsh, "--shard i/n needs 0 <= i < n");
+        SHARD_I.store(i, Ordering::Relaxed);
+        SHARD_N.store(nsh, Ordering::Relaxed);
+    }
+    if args.iter().any(|a| a == "--progress") { PROGRESS.store(true, Ordering::Relaxed); }
     let r = prods.len();
     let t0 = std::time::Instant::now();
     let (wb_, wc_) = (n2 * n3, n1 * n3);

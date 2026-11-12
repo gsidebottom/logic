@@ -119,71 +119,68 @@ Apple's M4~Pro with Accelerate's GEMM, by measurement.
 
 \begin{table}[t]
 \centering\footnotesize
-\begin{tabular}{@{}l p{0.70\textwidth}@{}}
+\begin{tabular}{@{}l p{0.57\textwidth} >{\raggedright\arraybackslash}p{0.17\textwidth}@{}}
 \toprule
-code & meaning\\
+code & meaning & source\\
 \midrule
 \lv{a/b/c} & a plan: level \lv{a} on the whole problem, level \lv{b} on each of
-  \lv{a}'s block products, and so on down to the leaf \lv{c}\\
+  \lv{a}'s block products, and so on down to the leaf \lv{c} & this report\\
 \addlinespace
 \lv{SW} & a $2\times2$ level, $\mm{2\times2\times2:7}$: $A$, $B$, $C$ cut into
-  $2\times2$ grids of blocks, $7$ block products instead of $8$;
-  Strassen--Winograd's programs in the campaigns, since November~2 the dyadic
-  accurate point of \cite[Eq.~(38)]{DPS24} (Section~\ref{sec:sw})\\
-\lv{D48} & a $4\times4$ level of the accurate $\mm{4\times4\times4:48}$
-  algorithm of Dumas, Pernet and Sedoglavic in its $262$-operation form:
-  $4\times4$ grids, $48$ products instead of $64$ (\lv{D} for the authors,
-  $48$ for the rank)\\
-\lv{R336}, \lv{R363}, \lv{R633} & a level of their accurate
-  $\mm{3\times3\times6:40}$ algorithm in one of its three orientations, named
-  by the grids $g_1\times g_2\times g_3$ it cuts $A$ ($g_1\times g_2$) and $B$
+  $2\times2$ grids of blocks, $7$ block products instead of $8$; Strassen's
+  scheme at the dyadic accurate point of Dumas, Pernet and Sedoglavic,
+  coefficients $\pm1$, $\pm\frac12$, $\pm\frac14$ (Section~\ref{sec:sw})
+  & \cite{Strassen69}; point \cite[Eq.~(38)]{DPS24}\\
+\lv{D48} & a $4\times4$ level of the accurate rational
+  $\mm{4\times4\times4:48}$ algorithm of Dumas, Pernet and Sedoglavic in its
+  $262$-operation form: $4\times4$ grids, $48$ products instead of $64$
+  (\lv{D} for the authors, $48$ for the rank)
+  & \cite{DPS25,DPS26a}; program \cite{PLinOpt,S26b}\\
+\lv{R336}, \lv{R363}, \lv{R633} & a level of the accurate
+  $\mm{3\times3\times6:40}$ algorithm of Dumas, Pernet and Sedoglavic, a point
+  in the class of Smirnov's scheme, in one of its three orientations, named by
+  the grids $g_1\times g_2\times g_3$ it cuts $A$ ($g_1\times g_2$) and $B$
   ($g_2\times g_3$) into; $40$ products instead of $54$ (\lv{R} for
-  rectangular)\\
+  rectangular) & \cite{Smirnov13}; point \cite{DPS26b,PLinOpt}\\
 \lv{T336}, \lv{T363}, \lv{T633} & the same three orientations of a ternary
-  $\mm{3\times3\times6:42}$ scheme from Perminov's catalogue, $42$ products
+  $\mm{3\times3\times6:42}$ scheme, coefficients $-1$, $0$, $1$, $42$ products
   instead of $54$ (Section~\ref{sec:ternary}); \lv{X} stands for \lv{R} or
-  \lv{T} in Table~\ref{tab:ternary}\\
+  \lv{T} in Table~\ref{tab:ternary} & \cite{Perminov,Perminov25}\\
 \addlinespace
 \lv{+p} & after a level, as in \lv{R363+3}: the level's passes run on $p$
-  threads overlapped with the products below (Section~\ref{sec:machine})\\
+  threads overlapped with the products below (Section~\ref{sec:machine})
+  & this report \cite{logic}\\
 \addlinespace
 \lv{G} & the leaf: Accelerate's GEMM on the block products that remain, one
-  call at a time with Accelerate's own threading\\
+  call at a time with Accelerate's own threading & \cite{Accelerate}\\
 \lv{G3}, \lv{G4}, \lv{G6} & the leaf as three, four or six concurrent
   single-threaded GEMM calls taking the block products in turn
-  (Section~\ref{sec:machine})\\
+  (Section~\ref{sec:machine}) & this report \cite{logic}\\
 \lv{B2} & the classical $2\times2$ blocked product as a level, $8$ products,
-  the calibration's reference\\
+  the calibration's reference & this report \cite{logic}\\
 \addlinespace
 \lv{auto:}$b$ & the benchmark's planner with error budget $b$; \lv{auto:none}
-  for no budget (Section~\ref{sec:planner})\\
+  for no budget (Section~\ref{sec:planner}) & this report \cite{logic}\\
 \bottomrule
 \end{tabular}
-\caption{The notation for plans.  Example: \lv{SW/R363+3/R633/G6} is a
-$2\times2$ level, then a $3\times6\times3$ level whose passes run on three
-threads, then a $6\times3\times3$ level, then six concurrent GEMM calls at the
-leaf (Figure~\ref{fig:plan}).}
+\caption{The notation for plans, with the source of each scheme and of each
+piece of the library.  Example: \lv{SW/R363+3/R633/G6} is a $2\times2$ level,
+then a $3\times6\times3$ level whose passes run on three threads, then a
+$6\times3\times3$ level, then six concurrent GEMM calls at the leaf
+(Figure~\ref{fig:plan}).}
 \label{tab:notation}
 \end{table}
 
 The approach is to mix.  A \emph{plan} is a sequence of \emph{levels} from the
 top of the problem down to a GEMM leaf, and every level may come from a
-different scheme: a $\mm{2\times2\times2:7}$ scheme (\lv{SW}: Strassen--Winograd's
-programs in this report's campaigns, since November~2 the dyadic accurate point
-of \cite[Eq.~(38)]{DPS24}; see Section~\ref{sec:sw} below), the
-accurate $\mm{4\times4\times4:48}$ algorithm of Dumas, Pernet and Sedoglavic
-\cite{DPS25,DPS26a} in its $262$-operation form \cite{PLinOpt,S26b} (\lv{D48}),
-and their accurate $\mm{3\times3\times6:40}$ algorithm \cite{DPS26b,PLinOpt} in
-its three orientations $3\times3\times6$, $3\times6\times3$ and $6\times3\times3$
-(\lv{R336}, \lv{R363}, \lv{R633}).  The three orientations applied in turn
-divide a square problem by $54$ and leave it square, where three $4\times4$
-levels divide by $64$.  A plan such as \lv{SW/R363+3/R633/G6} is one
-$2\times2$ level, then a $3\times6\times3$ level whose passes run on three
-threads overlapped with the products below (\lv{+3}), then a
-$6\times3\times3$ level, then the leaf \lv{G6}: Accelerate's GEMM (\lv{G})
-on the blocks that remain, as six concurrent single-threaded calls.
-Table~\ref{tab:notation} collects the notation, and Figure~\ref{fig:plan} draws
-it at $n=13824$, from the problem at the top to its $11{,}200$ leaf GEMMs at
+different scheme: a $2\times2$ level, the accurate $4\times4\times4$ algorithm
+of Dumas, Pernet and Sedoglavic, or their accurate $3\times3\times6$ algorithm
+in any of its three orientations.  Table~\ref{tab:notation} gives the codes
+the plans are written in, with the source of each scheme.  The three
+orientations applied in turn divide a square problem by $54$ and leave it
+square, where three $4\times4$ levels divide by $64$.
+Figure~\ref{fig:plan} draws the plan \lv{SW/R363+3/R633/G6} at $n=13824$,
+from the problem at the top to its $11{,}200$ leaf GEMMs at
 the bottom.  Mixing pays for three reasons that the measurements separate:
 
 \begin{enumerate}
@@ -1751,6 +1748,12 @@ catalogue of fast matrix multiplication schemes,
 \bibitem{Perminov25} A.~I.~Perminov, \emph{Parallel heuristic exploration
 for additive complexity reduction in fast matrix multiplication},
 arXiv:2512.13365 (2025).
+\bibitem{Strassen69} V.~Strassen, \emph{Gaussian elimination is not optimal},
+Numer.\ Math.\ 13 (1969) 354--356.
+\bibitem{Winograd71} S.~Winograd, \emph{On multiplication of $2\times2$
+matrices}, Linear Algebra Appl.\ 4 (1971) 381--388.
+\bibitem{Accelerate} Apple, \emph{Accelerate}, the vector, BLAS and LAPACK
+framework of macOS, \url{https://developer.apple.com/documentation/accelerate}.
 \bibitem{Smirnov13} A.~V.~Smirnov, \emph{The bilinear complexity and
 practical algorithms for matrix multiplication}, Comput.\ Math.\ Math.\
 Phys.\ 53 (2013) 1781--1795.

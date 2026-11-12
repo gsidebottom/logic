@@ -2585,7 +2585,7 @@ the two source papers for this track):
   Oct 24.  Accurate -> 262: all 64 orthogonal as uniqueness forces, the simplest (H x I x H), H = [[1,1],[1,-1]] ⊗ I₂, presumably Ursin's Hadamard
   step.  315 -> accurate: entries 0, ±1 again.  Signed permutations in all three modes: 315 4, accurate 4, 262 8, 204 2, lam01c0_201 1.  The
   8 at 262 are dihedral of order 8, all with trivial slot map; the two of order 4 have cycle type 4^12, the shape of his Oct 24 'wildest dream',
-  with no canonical vectors in L or P here.  Draft doc/reply_alexandre_isotropy_262_2026-11-01.md; the matrices are in
+  with no canonical vectors in L or P here.  Draft doc/letters/reply_alexandre_isotropy_262_2026-11-01.md; the matrices are in
   ~/Downloads/isotropy_315_to_262.txt.
   Same email: he thinks the gamma_inf,2 search should be redone, because a first turn suiting the stabilizer (L and R symmetric) was not applied for accuracy.  Checked: it
   was.  Stab(315) swaps R and P, Stab(accurate) and Stab(262) swap L and R, and all 64 isotropies send the 315's L mode to 262's P.  His ",3" must be (2), Id x Id x Id ∘5, since ∘3 alone is
@@ -2862,7 +2862,7 @@ the two source papers for this track):
   results: all km47 k=5 reductions UNSAT; k<=5 alternatives of km47: none exist (1,267 candidates).  Running: reduce sweep
   k<=7 all classes (phase 1), then k=6 alternatives 12-way parallel (phase 2); option 1b (five 47+16 embeddings descended
   in <4,4,5>) runs 21:06-.  Also 21:05: Alexandre's Gram-matrix point verified (rfc2610/gram_modes.py) and the reply
-  redrafted in his terms (doc/reply_alexandre_2026-11-09_short.md; v1 kept).  Option 1b RESULT 21:47: the five 47+16
+  redrafted in his terms (doc/letters/reply_alexandre_2026-11-09_short.md; v1 kept).  Option 1b RESULT 21:47: the five 47+16
   embeddings (rank 63) descend in <4,4,5> to 60 in 10 s (15,800 distinct 60s in 20 min); 300 of them projected to 3000 seeds
   at 56 give 47 at 0 s, ONE distinct 47 in 20 min, in KM's class (tomar_line/proj/logs/own445b_2026-11-09.txt).  No new
   class.  Also: the kres reduction filter was wrong (factor-span dims instead of flattening ranks: a flattening rank also
@@ -2986,7 +2986,7 @@ the two source papers for this track):
   the k = 11 chain ends (touch src/bin/kres.rs first).
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
-  three answers and the new-families question (doc/reply_alexandre_2026-11-09_short.md, 675 words).
+  three answers and the new-families question (doc/letters/reply_alexandre_2026-11-09_short.md, 675 words).
 
 ## 1. The thesis — why native representation should win
 

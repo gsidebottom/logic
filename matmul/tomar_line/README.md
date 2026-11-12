@@ -884,7 +884,7 @@ starts), so the comparison is by type.
   {L,R,P}.sms; optimizer -O 1 -s 1 programs; make check passes for all
   five; branch data-rank-records-q, commit 04db52b in the worktree
   matmul/dps48/plinopt_pr/records, opened 2026-11-11 as jgdumas/plinopt#40
-  (PR text doc/plinopt_pr_rank_records_2026-11-11.md).  Programs, additions +
+  (PR text doc/letters/plinopt_pr_rank_records_2026-11-11.md).  Programs, additions +
   scalings (divisions; proj/slp_div_count.py): 13x14x14 32,015 + 12,945
   (11,422), 13x15x15 16,335 + 3,666 (2,495), 14x14x15 16,825 + 3,890
   (2,680), 14x15x15 17,598 + 3,933 (2,741), 15x16x16 43,925 + 15,699

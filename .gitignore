@@ -168,3 +168,6 @@ matmul/session_data/*
 !matmul/session_data/README.md
 # PLinOpt worktrees for data PRs (branches of the matmul/dps48/plinopt clone)
 matmul/dps48/plinopt_pr/
+# Drafts of letters, replies, proposals and PR texts to collaborators, with their attachments: semi-private notes
+# (Greg sends paraphrases), kept on Greg's machine for reference and never committed.
+doc/letters/

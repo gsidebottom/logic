@@ -779,7 +779,7 @@ the growthfactor Q0 fix (norm0(L[i]) + norm0(R[i]) instead of the product) as it
 with the explanation of DPS's definition.  Worktrees: the session scratchpad holds plinopt_macos
 (macos-build), plinopt_seed (optimizer-seed) and plinopt_seedtest (test branch), registered in
 matmul/dps48/plinopt (`git worktree prune` once the scratchpad is gone); the PR texts are in the
-PRs themselves.  The letter is doc/letter_dumas_optimizer_speed_2026-10-27.md (untracked).
+PRs themselves.  The letter is doc/letters/letter_dumas_optimizer_speed_2026-10-27.md (git-ignored).
 
 5x5 SCREEN (2026-10-28; `matmul/gamma5/`, README there).  Greg asked whether 5x5 schemes can give
 a fast and more accurate level than accurate_262.  No.  Both known rank-93 classes are on disk

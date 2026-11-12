@@ -129,9 +129,13 @@ its three orientations $3\times3\times6$, $3\times6\times3$ and $6\times3\times3
 (\lv{R336}, \lv{R363}, \lv{R633}).  The three orientations applied in turn
 divide a square problem by $54$ and leave it square, where three $4\times4$
 levels divide by $64$.  A plan such as \lv{SW/R363+3/R633/G6} is one
-$2\times2$ level, then a $3\times6\times3$ level whose products are
-pipelined on three pass threads, then a $6\times3\times3$ level whose $40$
-products run as six single-threaded GEMM streams; Figure~\ref{fig:plan} draws
+$2\times2$ level, then a $3\times6\times3$ level whose passes run on three
+threads overlapped with the products below (\lv{+3}), then a
+$6\times3\times3$ level, then the leaf \lv{G6}: \lv{G} for GEMM, Accelerate's
+matrix product, which multiplies the blocks that remain, and $6$ for six
+concurrent single-threaded GEMM calls, each taking block products in turn
+(a bare \lv{G} is one GEMM call at a time with Accelerate's own threading);
+Figure~\ref{fig:plan} draws
 it at $n=13824$, from the problem at the top to its $11{,}200$ leaf GEMMs at
 the bottom.  Mixing pays for three reasons that the measurements separate:
 

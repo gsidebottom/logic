@@ -1,0 +1,27 @@
+# the final campaign's 3456 runs repeated with times printed to 0.1 ms (bench_impl.h %8.4f; the campaign printed ms); 2026-11-12 03:45; logic 7b41bf8 + that print change; same calibration (results/calib5_*.txt)
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#    68.2 85292    18:52:34 /System/Library/PrivateFrameworks/StorageManagement.framework/PlugIns/ApplicationsStorageExtension.appex/Contents/MacOS/ApplicationsStorageExtension
+#    61.0 85286    18:52:34 /System/Library/PrivateFrameworks/StorageManagement.framework/PlugIns/StorageManagementService
+#    14.4 82390 06-13:39:35 /Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper
+## (2) square n=3456 f  03:45
+# auto n=3456   f32: plan R363/G6, predicted 0.021 s
+# auto:none n=3456   f32: plan R363/G6, predicted 0.021 s
+classical  n=3456   f32  min   0.0246 s  med   0.0248 s   3334.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  pred 0.029 s (+17.7%)  perr 2.78e-06  err64 3.04e-06
+auto       n=3456   f32  min   0.0208 s  med   0.0209 s   3946.1 GFLOP/s(2mkn)  speedup 1.183  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.017 P 0.002  plan R363/G6  pred 0.021 s (+1.4%)  perr 1.25e-06  err64 1.28e-06
+auto:none  n=3456   f32  min   0.0207 s  med   0.0209 s   3952.6 GFLOP/s(2mkn)  speedup 1.185  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.017 P 0.002  plan R363/G6  pred 0.021 s (+1.6%)  perr 1.25e-06  err64 1.28e-06
+plan=R363/G6 n=3456   f32  min   0.0208 s  med   0.0208 s   3966.5 GFLOP/s(2mkn)  speedup 1.189  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.016 P 0.002  plan R363/G6  pred 0.021 s (+1.9%)  perr 1.25e-06  err64 1.28e-06
+plan=D48/G6 n=3456   f32  min   0.0213 s  med   0.0214 s   3862.2 GFLOP/s(2mkn)  speedup 1.158  relerr 3.83e-06  split L 0.001 R 0.002 gemm 0.017 P 0.001  plan D48/G6  pred 0.021 s (+0.0%)  perr 1.72e-06  err64 2.01e-06
+plan=R336/G6 n=3456   f32  min   0.0214 s  med   0.0216 s   3813.6 GFLOP/s(2mkn)  speedup 1.144  relerr 3.10e-06  split L 0.002 R 0.001 gemm 0.017 P 0.001  plan R336/G6  pred 0.022 s (-0.3%)  perr 1.52e-06  err64 1.68e-06
+plan=SW+3/R363/G6 n=3456   f32  min   0.0236 s  med   0.0238 s   3463.3 GFLOP/s(2mkn)  speedup 1.038  relerr 3.10e-06  split L 0.001 R 0.001 gemm 0.023 P 0.001  plan SW+3/R363/G6  pred 0.025 s (+6.2%)  perr 2.85e-06  err64 1.84e-06
+## (2) square n=3456 d  03:45
+# auto n=3456   f64: plan SW+4/R363/G6, predicted 0.071 s
+# auto:none n=3456   f64: plan SW+4/R363/G6, predicted 0.071 s
+classical  n=3456   f64  min   0.0964 s  med   0.0972 s    849.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.100 P 0.000  plan G  pred 0.097 s (-0.6%)  perr 4.70e-15  err64 4.75e-15
+auto       n=3456   f64  min   0.0695 s  med   0.0701 s   1177.2 GFLOP/s(2mkn)  speedup 1.385  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.065 P 0.002  plan SW+4/R363/G6  pred 0.071 s (+1.9%)  perr 3.30e-15  err64 3.47e-15
+auto:none  n=3456   f64  min   0.0690 s  med   0.0692 s   1193.8 GFLOP/s(2mkn)  speedup 1.405  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.064 P 0.002  plan SW+4/R363/G6  pred 0.071 s (+3.4%)  perr 3.30e-15  err64 3.47e-15
+plan=R363/G4 n=3456   f64  min   0.0722 s  med   0.0724 s   1139.5 GFLOP/s(2mkn)  speedup 1.341  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.064 P 0.003  plan R363/G4  pred 0.073 s (+0.3%)  perr 2.22e-15  err64 2.76e-15
+plan=R363/G6 n=3456   f64  min   0.0724 s  med   0.0727 s   1136.1 GFLOP/s(2mkn)  speedup 1.337  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.065 P 0.003  plan R363/G6  pred 0.073 s (+0.4%)  perr 2.22e-15  err64 2.76e-15
+plan=D48/G6 n=3456   f64  min   0.0737 s  med   0.0738 s   1118.0 GFLOP/s(2mkn)  speedup 1.316  relerr 4.75e-15  split L 0.003 R 0.003 gemm 0.065 P 0.002  plan D48/G6  pred 0.075 s (+1.1%)  perr 3.38e-15  err64 3.70e-15
+plan=SW+3/R363/G6 n=3456   f64  min   0.0685 s  med   0.0705 s   1171.2 GFLOP/s(2mkn)  speedup 1.378  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.065 P 0.002  plan SW+3/R363/G6  pred 0.072 s (+1.6%)  perr 3.30e-15  err64 3.47e-15
+# done 03:45

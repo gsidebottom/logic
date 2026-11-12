@@ -1525,3 +1525,32 @@ run: the SW citation fixed ([1, Eq. (38)], arXiv:2402.05630v2 in the bib), "40 p
 notation as Table 1 with a source column (Strassen69, DPS24, DPS25/26a, PLinOpt, S26b, Smirnov13, DPS26b,
 Perminov, Accelerate, logic), the introduction pointing to it.  bench_fmm silently keeps only the first 16
 methods of -m.
+
+**2026-11-12: the final campaign, and the report rewritten from it.**  run_final.sh ran 02:51-03:39 after the depth-3
+check (results/final_campaign_2026-11-12.txt; logic 1168c95, kernels D48 accurate_262, R 1110, SW dps7).  Calibration:
+409 entries per precision, f32 5 min, f64 13 min; factors f32 SW 1.05 D48 0.62 R336 0.55 R363 0.45 R633 0.60, rho
+2.19; f64 0.97 0.72 0.65 0.47 0.64, rho 1.53 (the R/D48 factors identical to before: the errors are deterministic).
+Picks (default budget = no budget at all six points): 3456 f32 R363/G6 0.0208 s 1.18x err 0.42x GEMM; 3456 f64
+SW+4/R363/G6 0.0695 1.39x 0.73x; 6912 f32 R363+4/R633/G6 0.141 1.38x 0.57x; 6912 f64 R363+2/R633/G6 0.441 1.72x
+0.56x; 13824 f32 R336+2/R363/G6 0.925 1.66x 0.52x; 13824 f64 R363+2/R336/G3 3.293 1.90x 0.52x.  Matched time vs
+D48+4/D48/G6: 2.5-9.5% faster, 23-33% less error.  Fastest measured: 13824 f64 SW/R363+3/R633/G6 3.238 s 1.94x 0.70x
+(Figure 1's plan); 13824 f32 R363+3/D48/G6 0.901 (the pick measured 0.914-0.925: its pipelined calibration entry
+predicted 0.891, the largest miss); 6912 f32 SW+4/R363/G6 0.138 (predicted growth 1.02, measured 0.58: outside the
+default budget by the depth factor's over-prediction).  Validation: 69/91 predictions within 2%, 88 within 5.5%
+(misses: the lone GEMM at 3456 f32 16%, at 13824 f64 once 10%, SW/D48+2/D48/G6 13824 f32 8%); the pick within 3% of
+the fastest everywhere, fastest at 2 of 6.  Error model vs exact: plans without SW 0.66-1.12 (growth 0.81-1.23), with
+SW 0.74-1.05 in f64, 1.6-1.8x over in f32.  Ternary: one T level 4-5% slower, two 8-11%, cycle 12-17% (one exception,
+T336/G 13824 f64 0.98 by min, R336/G there 4.80 vs 5.12 s between the two parts of the run); T363/G and
+T363+4/D48/G6 at 13824 f32 sit at 6.2e-6, level with the GEMM's 6.40e-6 (the report had said every T plan is above
+it; corrected).  Rect (test_fmm): f64 estimates within 4.3%, f32 6912x6912x3456 D48/G3 7% high (ran faster).
+Two fixes: the campaign's crosscheck call lacked --features cbench (copied from run_budget.sh, which had the same
+bug), rerun -> results/final_crosscheck_2026-11-12.txt, 26/26 identical (run_final.sh fixed); bench_fmm printed
+times to 1 ms, too coarse at 3456 -> bench_impl.h prints %8.4f, the two 3456 runs repeated
+(final_campaign_3456_2026-11-12.txt; f32 0.0208 vs 0.0246, f64 0.0695 vs 0.0964).  macOS Storage extensions
+(System Settings' storage pane, running since the full disk of 11-11) used about one background core during the run;
+the GEMM baselines match earlier runs (13824 f32 1.540 vs 1.565, f64 6.268 vs 6.22-6.30), no sign of interference.
+Report (doc/matmul_mixed_levels.tex, 26 pages, Draft 2026-11-12): every table and number from this campaign, the
+history removed (no "since November 2", no budget-campaign story; Winograd's programs only as Section 4.4's A/B and
+Table 6's screen row), tab:levels keeps only the library's SW row, tab:budget now predicted-vs-measured growth for
+the picks and the SW-topped plans, tab:results bolds the fastest plan per size and marks auto, the results table may
+take a float page ([tp]: before, it and every later table sat at the end of the document).  Not pushed.

@@ -354,7 +354,7 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
                 if (tj[b] < tj[a]) { double x = tj[a]; tj[a] = tj[b]; tj[b] = x; }
         double med = tj[reps / 2], best = tj[0];
         if (!strcmp(ms[j].name, "classical")) tclass = med;
-        printf("%-10s %s %s  min %8.3f s  med %8.3f s  %7.1f GFLOP/s(2mkn)  speedup %5.3f  "
+        printf("%-10s %s %s  min %8.4f s  med %8.4f s  %7.1f GFLOP/s(2mkn)  speedup %5.3f  "
                "relerr %.2e  split L %.3f R %.3f gemm %.3f P %.3f",
                ms[j].name, shp, f64 ? "f64" : "f32", best, med, 2.0 * s0.m * s0.k * (double)s0.n / med / 1e9,
                tclass > 0 ? tclass / med : 0.0, err[j] / cmax, sp[j].tL / reps, sp[j].tR / reps,

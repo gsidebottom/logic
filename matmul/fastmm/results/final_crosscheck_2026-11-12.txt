@@ -1,0 +1,29 @@
+## (4) crosscheck, Rust against C on the library's cache (rerun with --features cbench; the campaign's call lacked the feature)  03:43
+f32 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.000555 / 0.000555  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048           ld=2048  budget 0    plan rust G                              c G                              predicted 0.005041 / 0.005041  results identical  rel. difference from Accelerate 0.00e+00
+f32 3000           ld=3000  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.014846 / 0.014846  results identical  rel. difference from Accelerate 2.92e-06
+f32 4096           ld=4096  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.035084 / 0.035084  results identical  rel. difference from Accelerate 3.39e-06
+f32 5000           ld=5000  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.062256 / 0.062256  results identical  rel. difference from Accelerate 3.64e-06
+f32 8192           ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.233667 / 0.233667  results identical  rel. difference from Accelerate 5.47e-06
+f32 9000           ld=9000  budget 0    plan rust D48+4/D48/G6 padded to 9008    c D48+4/D48/G6 padded to 9008    predicted 0.325379 / 0.325379  results identical  rel. difference from Accelerate 5.12e-06
+f32 4096           ld=4160  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.035084 / 0.035084  results identical  rel. difference from Accelerate 3.76e-06
+f32 8192           ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.233667 / 0.233667  results identical  rel. difference from Accelerate 4.96e-06
+f32 3456x3456x1728 ld=3464  budget 0    plan rust R363/G6                        c R363/G6                        predicted 0.011510 / 0.011510  results identical  rel. difference from Accelerate 2.50e-06
+f32 1000x3000x2000 ld=3008  budget 0    plan rust G                              c G                              predicted 0.003376 / 0.003376  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048x4096x1024 ld=4104  budget 0    plan rust G                              c G                              predicted 0.005041 / 0.005041  results identical  rel. difference from Accelerate 0.00e+00
+f32 6912x6912x3456 ld=6920  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.081548 / 0.081548  results identical  rel. difference from Accelerate 4.08e-06
+f64 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.002095 / 0.002095  results identical  rel. difference from Accelerate 0.00e+00
+f64 2048           ld=2048  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.017125 / 0.017125  results identical  rel. difference from Accelerate 4.92e-15
+f64 3000           ld=3000  budget 0    plan rust D48/G4                         c D48/G4                         predicted 0.049283 / 0.049283  results identical  rel. difference from Accelerate 5.21e-15
+f64 4096           ld=4096  budget 0    plan rust D48/G4                         c D48/G4                         predicted 0.121693 / 0.121693  results identical  rel. difference from Accelerate 5.50e-15
+f64 5000           ld=5000  budget 0    plan rust D48/G4                         c D48/G4                         predicted 0.223215 / 0.223215  results identical  rel. difference from Accelerate 7.29e-15
+f64 8192           ld=8192  budget 0    plan rust D48+3/D48/G6                   c D48+3/D48/G6                   predicted 0.777331 / 0.777331  results identical  rel. difference from Accelerate 9.28e-15
+f64 9000           ld=9000  budget 0    plan rust D48+3/D48/G6 padded to 9008    c D48+3/D48/G6 padded to 9008    predicted 1.077135 / 1.077135  results identical  rel. difference from Accelerate 9.50e-15
+f64 4096           ld=4160  budget 0    plan rust D48/G4                         c D48/G4                         predicted 0.121693 / 0.121693  results identical  rel. difference from Accelerate 6.46e-15
+f64 8192           ld=8192  budget 4    plan rust D48+3/D48/G6                   c D48+3/D48/G6                   predicted 0.777331 / 0.777331  results identical  rel. difference from Accelerate 9.51e-15
+f64 3456x3456x1728 ld=3464  budget 0    plan rust R363/G6                        c R363/G6                        predicted 0.036528 / 0.036528  results identical  rel. difference from Accelerate 5.02e-15
+f64 1000x3000x2000 ld=3008  budget 0    plan rust SW/G4                          c SW/G4                          predicted 0.013273 / 0.013273  results identical  rel. difference from Accelerate 6.39e-15
+f64 2048x4096x1024 ld=4104  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.017621 / 0.017621  results identical  rel. difference from Accelerate 5.42e-15
+f64 6912x6912x3456 ld=6920  budget 0    plan rust D48+3/R363/G6                  c D48+3/R363/G6                  predicted 0.253511 / 0.253511  results identical  rel. difference from Accelerate 7.39e-15
+all identical
+# exit 0 03:43

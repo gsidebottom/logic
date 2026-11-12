@@ -41,7 +41,7 @@ echo "## (4) test_fmm (the C library, rectangular cases)  $(date '+%H:%M')"
 echo "## (4) the Rust tests  $(date '+%H:%M')"
 (cd rust && cargo test --release 2>&1 | grep -E "^test |test result|FAILED|panicked" | tail -40)
 echo "## (4) crosscheck, Rust against C on the shared cache  $(date '+%H:%M')"
-(cd rust && cargo run --release --bin crosscheck 2>&1 | grep -v "^warning\|^ *Compiling\|^ *Finished\|^ *Running\|^ *-->\|^ *|\|^ *=\|^$")
+(cd rust && cargo run --release --features cbench --bin crosscheck 2>&1 | grep -v "^warning\|^ *Compiling\|^ *Finished\|^ *Running\|^ *-->\|^ *|\|^ *=\|^$")
 echo "## (4) Rust against C, alternately (run_rust_vs_c.sh)  $(date '+%H:%M')"
 ./run_rust_vs_c.sh
 echo "# top CPU users after the run:"; ps -axo pcpu,pid,etime,comm -r | head -6 | sed 's/^/#   /'

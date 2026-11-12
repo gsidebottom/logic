@@ -53,7 +53,7 @@
 fused levels of accurate square and rectangular schemes\\
 over a vendor GEMM, chosen by a calibrated planner}
 \author{Greg Sidebottom}
-\date{Draft --- November 3, 2026}
+\date{Draft --- November 12, 2026}
 
 \begin{document}
 \maketitle
@@ -76,30 +76,29 @@ $4\times4$ and no Kronecker composite can help.  A calibrated dynamic program
 chooses the plan per shape, precision and error budget; it prices GEMM streams
 and pipelined passes that use the whole machine, and prices rectangular
 problems from the square calibration until they are calibrated themselves.
-At $n=13824$ the planner's mixed plans run $1.73\times$ (f32) and $1.91\times$
+At $n=13824$ the planner's mixed plans run $1.66\times$ (f32) and $1.90\times$
 (f64) faster than Accelerate's GEMM, at $n=6912$ $1.38\times$ and
-$1.71\times$.  Measured against the exact product, the $3\times3\times6$-family
-plan that runs in the time of the best plan from the $4\times4$ scheme alone
-has 23--43\% less error at every size and precision tried, and less than the
-GEMM's own.  The planner's default budget, no less accurate than the GEMM,
-keeps every choice on that side: at $13824$ f64 the fastest plan puts a
-$2\times2$ level over two $3\times3\times6$ levels and, with
-Strassen--Winograd's programs in that level, had the GEMM's own error, so the
-budget took two $3\times3\times6$ levels alone, as fast to within 1\% at
-$1.9\times$ over Accelerate and with half the GEMM's error.  Replacing
-Strassen--Winograd's programs in the $2\times2$ level by the
-dyadic accurate point of Dumas, Pernet and Sedoglavic cuts the error of the
-plans with that level on top by 25--31\% at the same time, below the GEMM's.
+$1.72\times$.  Measured against the exact product, the planner's
+$3\times3\times6$-family plan at these sizes is $2.5$--$9.5\%$ faster than the
+best plan from the $4\times4$ scheme alone and has 23--33\% less error, and
+less than the GEMM's own.  The $2\times2$ level runs Strassen's scheme at the
+dyadic accurate point of Dumas, Pernet and Sedoglavic, whose programs take
+the time of Strassen--Winograd's and leave 25--31\% less error in the plans
+with that level on top, so those plans are more accurate than the GEMM too:
+the fastest plan measured at $13824$ f64 puts a $2\times2$ level over two
+$3\times3\times6$ levels, $1.94\times$ over Accelerate with $0.70$ of its
+error.  The planner's default budget, no less accurate than the GEMM, changes
+none of its choices on the square problems measured.
 As a test of the opposite
 design -- cheap passes instead of accurate ones -- a ternary $\mm{3\times3\times6:42}$ scheme from Perminov's catalogue
 (ternary: every coefficient is $-1$, $0$ or $1$, so its passes need no
 scalings), whose three programs need 139 additions against about 370 operations for the accurate
 scheme's, is measured as a level in the same library: its passes cost exactly
 the same (they are bound by the blocks they move), and its two extra products
-and $2.8\times$ amplification make it slower and less accurate than the
-accurate level at every size tried.  Apple's GPU, through the vendor's
-MPSGraph GEMM, ties the f32 plan at $13824$ in time with $2.6\times$ its
-error -- its product is bit for bit Accelerate's -- and is $1.4$--$1.6\times$
+and $2.8\times$ amplification make it about 5\% slower per level and
+$1.8$--$7\times$ less accurate in f32 than the accurate level.  Apple's GPU,
+through the vendor's MPSGraph GEMM, ties the f32 plan at $13824$ in time with
+$1.9\times$ its error -- its product is bit for bit Accelerate's -- and is $1.4$--$1.6\times$
 faster below that size; it has no f64.  Two implementations of the library,
 in C and in Rust, agree bit for bit.
 \end{abstract}
@@ -278,9 +277,9 @@ the blocks of its own product.  The leaves are flat: $11{,}200$ products of
 $384\times384$ by $384\times768$ matrices, Accelerate's GEMM six at a time,
 where the classical algorithm on the same grids has $23{,}328$.  \lv{+3} runs
 the $3\times6\times3$ level's passes on three threads overlapped with the
-products below (Section~\ref{sec:levels}).  Measured (Sections~\ref{sec:sw}
-and~\ref{sec:results}): $3.25$~s, $1.91\times$ Accelerate's GEMM, $0.70$ of
-its error.}
+products below (Section~\ref{sec:levels}).  Measured
+(Section~\ref{sec:results}): $3.24$~s, $1.94\times$ Accelerate's GEMM, the
+fastest plan measured at this size, with $0.70$ of its error.}
 \label{fig:plan}
 \end{figure}
 
@@ -316,12 +315,12 @@ $4\times4$ menu and rules out every larger shape and every Kronecker composite
 streams, pipelines, padding to multiples of $2^i3^j$, an error budget, and
 shape estimates that price uncalibrated rectangular problems within 2\%
 (Section~\ref{sec:planner}).  (v)~Measurements on the M4~Pro:
-$1.73\times$ and $1.91\times$ over Accelerate at $n=13824$ in f32 and f64,
-with less error than the GEMM in both precisions for every plan the default
-budget admits, and 23--43\% less than the best $4\times4$-only plan of the
-same speed; rectangular problems at $1.04$--$1.52\times$; and the GPU as
-the alternative, tied in time at $13824$ f32 with $2.6\times$ the error
-(Section~\ref{sec:results}).  (vi)~The ternary trial
+$1.66\times$ and $1.90\times$ over Accelerate at $n=13824$ in f32 and f64,
+with less error than the GEMM in both precisions for every measured plan the
+default budget admits, and 23--33\% less than the best $4\times4$-only plan,
+which they also beat in time; rectangular problems at $1.04$--$1.47\times$;
+and the GPU as the alternative, tied in time at $13824$ f32 with $1.9\times$
+the error (Section~\ref{sec:results}).  (vi)~The ternary trial
 (Section~\ref{sec:ternary}).  (vii)~Two implementations, C and Rust, that
 agree in plans, predicted times and results bit for bit
 (Section~\ref{sec:impl}).  (viii)~An assessment of the commercial value, in
@@ -347,12 +346,12 @@ error is as large as a plan's (Section~\ref{sec:results}).
 
 Table~\ref{tab:intro-acc} is the headline: the planner's own choice against
 Accelerate's GEMM alone on the same problem, in time and in error, at every
-size and precision tried -- faster by $1.2$--$1.9\times$ and more accurate by
-$1.7$--$2.6\times$ at once.  Table~\ref{tab:intro-matched} is the accuracy
-claim against the alternative: in each precision and size, the
-$3\times3\times6$-family plan that runs in the time of the best plan built
-from the $4\times4$ scheme alone has 23--43\% less error, and is 4--6\% faster
-besides.  Table~\ref{tab:intro-gpu} is the comparison with the
+size and precision tried -- faster by $1.18$--$1.90\times$ and more accurate by
+$1.4$--$2.4\times$ at once.  Table~\ref{tab:intro-matched} is the accuracy
+claim against the alternative: in each precision at $6912$ and $13824$, the
+planner's $3\times3\times6$-family plan is faster than the best plan built
+from the $4\times4$ scheme alone, by $2.5$--$9.5\%$, and has 23--33\% less
+error.  Table~\ref{tab:intro-gpu} is the comparison with the
 other engine on the machine, Apple's GPU through the vendor's MPSGraph GEMM,
 in f32, the only precision it has.
 
@@ -362,13 +361,14 @@ Row-major $A\in\R^{m\times k}$, $B\in\R^{k\times n}$, $C=AB$, in f32 or f64.
 The machine is an Apple M4~Pro (two performance clusters of five cores, one
 efficiency cluster of four, 64~GB) running macOS~26; Accelerate's GEMM runs on
 the SME matrix units, one per cluster, at about $3.3$~TFLOP/s in f32 and
-$0.85$ in f64 on large square problems.  Times are the best of five
-interleaved rounds (each round runs every method once; medians are within 2\%
-unless stated).  Errors are measured as defined above (``err64'' in the
-tables); the tables of Section~\ref{sec:results} also list ``relerr'', the
-same max-norm difference taken against Accelerate's product, which includes
-the GEMM's own error and is kept only for comparison with the earlier
-campaigns.
+$0.85$ in f64 on large square problems.  Times are the best of three to
+five interleaved rounds (each round runs every method once; medians are
+within 3\% of the best unless stated), all from one campaign on the library
+as it stands (Section~\ref{sec:data}).  Errors are measured as defined above
+(``err64'' in the tables); the tables of Section~\ref{sec:results} also list
+``relerr'', the same max-norm difference taken against Accelerate's product,
+which includes the GEMM's own error and is kept to show why it is not an
+error measure.
 
 \begin{table}[H]
 \centering\footnotesize
@@ -376,19 +376,19 @@ campaigns.
 \toprule
 $n$, prec. & mixed plan & time (s) & Accelerate (s) & faster & error & Accelerate's & less error\\
 \midrule
-3456 f32 & \lv{R363/G6} & 0.021 & 0.025 & $1.18\times$ & $1.28\cdot10^{-6}$ & $3.04\cdot10^{-6}$ & $2.4\times$\\
-6912 f32 & \lv{R363+4/D48/G6} & 0.141 & 0.195 & $1.38\times$ & $2.26\cdot10^{-6}$ & $3.85\cdot10^{-6}$ & $1.7\times$\\
-13824 f32 & \lv{R363+4/R363/G6} & 0.907 & 1.565 & $1.73\times$ & $2.46\cdot10^{-6}$ & $6.40\cdot10^{-6}$ & $2.6\times$\\
-3456 f64 & \lv{R363/G4} & 0.072 & 0.099 & $1.38\times$ & $2.76\cdot10^{-15}$ & $4.75\cdot10^{-15}$ & $1.7\times$\\
-6912 f64 & \lv{R363+3/R633/G6} & 0.451 & 0.773 & $1.71\times$ & $3.75\cdot10^{-15}$ & $6.69\cdot10^{-15}$ & $1.8\times$\\
-13824 f64 & \lv{R363+3/R336/G3} & 3.296 & 6.301 & $1.91\times$ & $6.40\cdot10^{-15}$ & $1.23\cdot10^{-14}$ & $1.9\times$\\
+3456 f32 & \lv{R363/G6} & 0.0208 & 0.0246 & $1.18\times$ & $1.28\cdot10^{-6}$ & $3.04\cdot10^{-6}$ & $2.4\times$\\
+6912 f32 & \lv{R363+4/R633/G6} & 0.141 & 0.195 & $1.38\times$ & $2.20\cdot10^{-6}$ & $3.85\cdot10^{-6}$ & $1.8\times$\\
+13824 f32 & \lv{R336+2/R363/G6} & 0.925 & 1.540 & $1.66\times$ & $3.34\cdot10^{-6}$ & $6.40\cdot10^{-6}$ & $1.9\times$\\
+3456 f64 & \lv{SW+4/R363/G6} & 0.0695 & 0.0964 & $1.39\times$ & $3.47\cdot10^{-15}$ & $4.75\cdot10^{-15}$ & $1.4\times$\\
+6912 f64 & \lv{R363+2/R633/G6} & 0.441 & 0.760 & $1.72\times$ & $3.75\cdot10^{-15}$ & $6.69\cdot10^{-15}$ & $1.8\times$\\
+13824 f64 & \lv{R363+2/R336/G3} & 3.293 & 6.268 & $1.90\times$ & $6.40\cdot10^{-15}$ & $1.23\cdot10^{-14}$ & $1.9\times$\\
 \bottomrule
 \end{tabular}
 \caption{The planner's choice under its default budget against Accelerate's
 GEMM alone, square problems on the M4~Pro, best of three to five interleaved
 rounds, errors against the exact product on the same inputs (the GEMM's own
-error in the ``Accelerate's'' column).  The $3456$ and $13824$ f64 rows are
-from the budget campaign, the rest from the campaign of Table~\ref{tab:results}.}
+error in the ``Accelerate's'' column), from the campaign of
+Table~\ref{tab:results}; without a budget the planner chooses the same plans.}
 \label{tab:intro-acc}
 \end{table}
 
@@ -398,23 +398,22 @@ from the budget campaign, the rest from the campaign of Table~\ref{tab:results}.
 \toprule
 $n$, prec. & mixed plan & time (s) & error & best $4\times4$-only & time (s) & error\\
 \midrule
-6912 f32 & \lv{R363+4/D48/G6} & 0.141 & $2.26\cdot10^{-6}$ & \lv{D48+4/D48/G6} & 0.149 & $2.94\cdot10^{-6}$\\
-13824 f32 & \lv{R363+4/R363/G6} & 0.907 & $2.46\cdot10^{-6}$ & \lv{D48+4/D48/G6} & 0.949 & $4.35\cdot10^{-6}$\\
-6912 f64 & \lv{R363+3/R633/G6} & 0.451 & $3.75\cdot10^{-15}$ & \lv{D48+4/D48/G6} & 0.478 & $5.60\cdot10^{-15}$\\
-13824 f64 & \lv{R363+3/R336/G3} & 3.296 & $6.40\cdot10^{-15}$ & \lv{D48+4/D48/G6} & 3.801 & $8.28\cdot10^{-15}$\\
+6912 f32 & \lv{R363+4/R633/G6} & 0.141 & $2.20\cdot10^{-6}$ & \lv{D48+4/D48/G6} & 0.149 & $2.94\cdot10^{-6}$\\
+13824 f32 & \lv{R336+2/R363/G6} & 0.925 & $3.34\cdot10^{-6}$ & \lv{D48+4/D48/G6} & 0.948 & $4.35\cdot10^{-6}$\\
+6912 f64 & \lv{R363+2/R633/G6} & 0.441 & $3.75\cdot10^{-15}$ & \lv{D48+4/D48/G6} & 0.473 & $5.60\cdot10^{-15}$\\
+13824 f64 & \lv{R363+2/R336/G3} & 3.293 & $6.40\cdot10^{-15}$ & \lv{D48+4/D48/G6} & 3.606 & $8.28\cdot10^{-15}$\\
 \bottomrule
 \end{tabular}
-\caption{Matched time: the $3\times3\times6$-family plan against the best
-plan from the $4\times4$ scheme alone (M4~Pro, square problems, best of
-three to five rounds, error against the exact product).  Accelerate alone
-takes $0.195$, $1.565$, $0.773$ and $6.223$~s on these four with errors
+\caption{Matched time: the planner's $3\times3\times6$-family plan against
+the best plan from the $4\times4$ scheme alone (M4~Pro, square problems, best
+of three to five rounds, error against the exact product).  Accelerate alone
+takes $0.195$, $1.540$, $0.760$ and $6.268$~s on these four with errors
 $3.85\cdot10^{-6}$, $6.40\cdot10^{-6}$, $6.69\cdot10^{-15}$ and
-$1.23\cdot10^{-14}$.  All four mixed plans are the planner's choices under its default budget.
-The $13824$ f64 row is from the budget campaign
-(\texttt{results/budget\_campaign\_2026-10-29.txt}), whose runs were 3\%
-slower throughout (Accelerate $6.30$~s), so both of its times are that run's;
-without a budget the planner takes \lv{SW/R363+3/R633/G6} there, $1$\% faster
-with $1.25\cdot10^{-14}$, the GEMM's own error (Section~\ref{sec:results}).}
+$1.23\cdot10^{-14}$.  All four mixed plans are the planner's choices, with
+its default budget and without one.  At $13824$ f32 a more accurate plan
+runs in the same time: \lv{R363+4/R363/G6}, $0.914$~s with
+$2.46\cdot10^{-6}$, 43\% below the $4\times4$-only plan
+(Section~\ref{sec:results}).}
 \label{tab:intro-matched}
 \end{table}
 
@@ -422,19 +421,19 @@ with $1.25\cdot10^{-14}$, the GEMM's own error (Section~\ref{sec:results}).}
 \centering\small
 \begin{tabular}{lrrrrrr}
 \toprule
- & \multicolumn{2}{c}{GPU (MPSGraph)} & \multicolumn{2}{c}{Accelerate} & \multicolumn{2}{c}{best mixed plan}\\
+ & \multicolumn{2}{c}{GPU (MPSGraph)} & \multicolumn{2}{c}{Accelerate} & \multicolumn{2}{c}{the planner's plan}\\
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
 $n$, f32 & time (s) & error & time (s) & error & time (s) & error\\
 \midrule
-3456 & 0.013 & $3.04\cdot10^{-6}$ & 0.025 & $3.04\cdot10^{-6}$ & 0.021 & $1.28\cdot10^{-6}$\\
-6912 & 0.099 & $3.85\cdot10^{-6}$ & 0.195 & $3.85\cdot10^{-6}$ & 0.141 & $2.26\cdot10^{-6}$\\
-13824 & 0.946 & $6.40\cdot10^{-6}$ & 1.565 & $6.40\cdot10^{-6}$ & 0.907 & $2.46\cdot10^{-6}$\\
+3456 & 0.013 & $3.04\cdot10^{-6}$ & 0.0246 & $3.04\cdot10^{-6}$ & 0.0208 & $1.28\cdot10^{-6}$\\
+6912 & 0.099 & $3.85\cdot10^{-6}$ & 0.195 & $3.85\cdot10^{-6}$ & 0.141 & $2.20\cdot10^{-6}$\\
+13824 & 0.946 & $6.40\cdot10^{-6}$ & 1.540 & $6.40\cdot10^{-6}$ & 0.925 & $3.34\cdot10^{-6}$\\
 \bottomrule
 \end{tabular}
 \caption{The GPU against the CPU in f32 (the GPU has no f64): the M4~Pro's
 20-core GPU through MPSGraph's matrix multiplication on zero-copy shared
-buffers, wall clock; Accelerate's GEMM; and the best mixed plan (\lv{R363/G6},
-\lv{R363+4/D48/G6}, \lv{R363+4/R363/G6}).  The GPU's product is bit for bit
+buffers, wall clock; Accelerate's GEMM; and the planner's plan (\lv{R363/G6},
+\lv{R363+4/R633/G6}, \lv{R336+2/R363/G6}).  The GPU's product is bit for bit
 Accelerate's, so its error is the GEMM's (Section~\ref{sec:gpu}).}
 \label{tab:intro-gpu}
 \end{table}
@@ -579,8 +578,7 @@ does not.
 \toprule
 level & scheme & saving & streams $L/R/P$ & traffic ($n^2$) & amp$_{\text{eq}}$ & $\gamma_{\text{eq}}$\\
 \midrule
-\lv{SW} & Strassen--Winograd $\mm{2\times2\times2:7}$ & 0.875 & 11/11/11 & 8.25 & 10.66 & 19.8\\
-\lv{SW} & DPS's dyadic point, Section~\ref{sec:sw} & 0.875 & 11/11/11 & 8.25 & 4.87 & 10.84\\
+\lv{SW} & Strassen, DPS's dyadic point (Section~\ref{sec:sw}) & 0.875 & 11/11/11 & 8.25 & 4.87 & 10.84\\
 \lv{D48} & DPS accurate $\mm{4\times4\times4:48}$, 262-op.\ point & 0.750 & 64/64/64 & 12.00 & 2.828 & 5.657\\
 \lv{R336} & DPS accurate $\mm{3\times3\times6:40}$ & 0.741 & 49/58/58 & 11.89 & 2.280 & 6.162\\
 \lv{R363} & the same, orientation $3\times6\times3$ & 0.741 & 58/58/49 & 11.89 & 2.453 & 5.125\\
@@ -784,26 +782,26 @@ arithmetic unchanged.  The calibration measures seven plans at $N_E=2304$ (divis
 and $6$) against the exact product -- the f64 product of the f32 inputs, the
 compensated product of the f64 inputs: the GEMM alone, which gives $e_0$, one
 level of each scheme over the GEMM, which gives its factor, and \lv{D48/D48}.
-In f32 the factors are \lv{SW} $1.41$, \lv{D48} $0.62$, \lv{R336} $0.55$,
-\lv{R363} $0.45$, \lv{R633} $0.60$; in f64 $1.51$, $0.72$, $0.65$, $0.47$,
-$0.64$ (with the dyadic point's programs of Section~\ref{sec:sw}, \lv{SW}'s
-factors are $1.05$ and $0.97$).  The accurate levels' factors are below one: their leaves accumulate
+In f32 the factors are \lv{SW} $1.05$, \lv{D48} $0.62$, \lv{R336} $0.55$,
+\lv{R363} $0.45$, \lv{R633} $0.60$; in f64 $0.97$, $0.72$, $0.65$, $0.47$,
+$0.64$.  The accurate levels' factors are below one: their leaves accumulate
 $k/g_2$ products instead of $k$, and the GEMM's own accumulation error is the
 larger term.  A second level does not get that again, so the factors do not
 simply multiply; the two-level plan measures the shortfall, a depth factor
 $\rho$ ($2.19$ in f32, $1.53$ in f64) by which the product of the factors is
 multiplied once per level after the first, $\rho^{d-1}$ for a plan of $d$
-fused levels in \eqref{eq:errmodel}.  Against the exact errors of the campaigns' plans at
-$3456$--$13824$ (Tables~\ref{tab:results} and \ref{tab:budget}) the model
-predicts the plans without a $2\times2$ level within $0.66$--$1.12$ of the
-measurement (the under-predictions are at $13824$ f64, where the GEMM's own
-error exceeds its $\sqrt{k}$ extrapolation by $1.3\times$) and over-predicts
-the plans with one by up to $1.6\times$ in f32, the safe side; the growth
-over the GEMM, which the budget uses, is within 25\%.  Until this refit the
-factors were fit to differences from Accelerate's product, which include the
-GEMM's own error: they ranked the accurate levels wrongly and put every f64
-plan above the GEMM, which is why the campaigns before the budget's
-introduction ran without one.
+fused levels in \eqref{eq:errmodel}.  Against the exact errors of the plans
+measured at $3456$--$13824$ (Tables~\ref{tab:results} and \ref{tab:budget})
+the model predicts the plans without a $2\times2$ level within $0.66$--$1.12$
+of the measurement (the under-predictions are at $13824$ f64, where the
+GEMM's own error exceeds its $\sqrt{k}$ extrapolation by $1.3\times$), and
+their growth over the GEMM, which the budget uses, within $0.81$--$1.23$.
+The plans with a $2\times2$ level it predicts within $0.74$--$1.05$ in f64
+and over-predicts by $1.6$--$1.8\times$ in f32 (growth $1.7$--$2.0\times$),
+the safe side.  Factors fitted to differences from Accelerate's product
+instead, which include the GEMM's own error, rank the accurate levels wrongly
+and put every f64 plan above the GEMM; the calibration therefore measures
+against the exact product.
 
 \subsection{Programs and precision}
 
@@ -824,53 +822,52 @@ library (\texttt{FMM\_F64PASS}), not the default.
 
 \subsection{The $2\times2$ level's programs}\label{sec:sw}
 
-Every campaign of this report ran the $2\times2$ level with Strassen--Winograd's
-programs ($15$ additions), chosen for the operation count before the
-measurements showed that a pass costs its traffic, not its arithmetic.  Dumas,
-Pernet and Sedoglavic minimized a growth factor over Strassen's orbit
-\cite{DPS24}; their Eq.~(38) is a point whose coefficients are $1$, $\frac12$
-and $\frac14$ only, so its scalings are exact in floating point, with
-amplification (Table~\ref{tab:menu}'s measure) $1.47$ per level against
-Winograd's $2.12$ and Strassen's $1.73$, and $\gamma_{\infty,2}$ $6.05$
-against $8$ and $6.83$.  On November~2 it became the level's default programs
-(\path{schemes/opt/dps7_{L,R,P}.slp}: cancellation-free programs from PLinOpt's
-optimizer, $8+3$, $8+3$ and $11+3$ additions and scalings;
-\texttt{gen\_kernels.py --sw winograd} rebuilds the kernels every table above
-used).  Measured against the exact product, the two binaries otherwise
-identical and run alternately (\path{results/sw_dps7_2026-11-02.txt}):
+The $2\times2$ level runs Strassen's scheme \cite{Strassen69} at a point of
+its orbit that Dumas, Pernet and Sedoglavic found by minimizing a growth
+factor \cite{DPS24}.  Their Eq.~(38) is a point whose coefficients are $1$,
+$\frac12$ and $\frac14$ only, so its scalings are exact in floating point,
+with amplification (Table~\ref{tab:menu}'s measure) $1.47$ per level against
+$2.12$ for Winograd's variant \cite{Winograd71}, the usual choice for its
+$15$ additions, and $1.73$ for Strassen's original, and $\gamma_{\infty,2}$
+$6.05$ against $8$ and $6.83$.  The library's programs for it
+(\path{schemes/opt/dps7_{L,R,P}.slp}) are cancellation-free programs from
+PLinOpt's optimizer, $8+3$, $8+3$ and $11+3$ additions and scalings.  Against
+Winograd's programs, with the two binaries otherwise identical, run
+alternately and measured against the exact product
+(\path{results/sw_dps7_2026-11-02.txt}; \texttt{gen\_kernels.py --sw
+winograd} builds the kernels with Winograd's programs):
 \begin{itemize}
 \item One level alone has $0.88$--$1.35\times$ the GEMM's error at $4096$ and
   $8192$ in both precisions where Winograd's programs have $1.44$--$1.95\times$;
   at two, three and four recursive levels the error is $2.5$--$3.6$,
   $3.7$--$4.0$ and $5.1$--$6.3$ times smaller than with Winograd's.  The
-  calibration's factor for \lv{SW} falls from $1.41$ to $1.05$ in f32 and from
-  $1.51$ to $0.97$ in f64; the other levels' factors and the depth factor are
-  unchanged within $1\%$.
+  calibration's factor for \lv{SW} is $1.05$ in f32 and $0.97$ in f64 against
+  Winograd's $1.41$ and $1.51$; the other levels' factors and the depth factor
+  agree within $1\%$.
 \item The passes cost the same: at $8192$ f64 the three passes of one level take
   $0.010$, $0.010$ and $0.009$~s with either program, and every plan's time is
   within the run-to-run noise of the other binary's ($\pm1\%$).
-\item The plans with a $2\times2$ level on top lose $25$--$31\%$ of their error:
+\item The plans with a $2\times2$ level on top have $25$--$31\%$ less error:
   \lv{SW/R363+3/R633/G6} at $13824$ f64 $8.66\cdot10^{-15}$ against
   $1.25\cdot10^{-14}$ (the GEMM's $1.23\cdot10^{-14}$) in $3.25$~s either way,
   \lv{SW+3/R363/G6} at $3456$ f64 $3.47$ against $4.62\cdot10^{-15}$ (the
   GEMM's $4.75$), \lv{SW/R363/G6} at $6912$ f64 $4.43$ against
   $6.40\cdot10^{-15}$ ($6.69$), \lv{SW/D48+2/D48/G6} at $13824$ f32 $6.30$
   against $9.13\cdot10^{-6}$ ($6.40$) and at $6912$ f32 $4.40$ against
-  $5.95\cdot10^{-6}$ ($3.85$).  Every plan with one level of it that the
-  planner picks now measures below the GEMM's error; the last, a three-level
-  plan twice as slow as the best at its size, is at $1.14\times$ ($1.55$ before).
-\item The default budget admits them.  At $3456$ f64 it returns
-  \lv{SW+3/R363/G6} ($0.071$~s, $0.73\times$ the GEMM's error) in place of
-  \lv{R363/G4} ($0.072$~s, $0.58\times$); at $13824$ f64 \lv{R336+3/R363/G3}
-  and \lv{SW/R363+3/R633/G6} are within $0.5\%$ of each other ($3.26$ and
-  $3.25$~s, errors $0.55\times$ and $0.70\times$), and the planner takes the
-  first; at $6912$ f32 it still rejects \lv{SW+4/R363/G6} by a hair (predicted
-  growth $1.02$, measured $0.58$) for \lv{R363+4/R633/G6} at the same
-  $0.14$~s.  That over-prediction, $1.8\times$, is the depth factor's: fitted on
-  \lv{D48/D48}, it charges a level whose own factor is near one as if it were
-  an accurate level's second.  The picks among the $3\times3\times6$ plans move
-  within $1\%$ between the two calibrations, as they did between earlier ones.
+  $5.95\cdot10^{-6}$ ($3.85$).  With Winograd's programs these plans have
+  $0.96$--$1.55\times$ the GEMM's error, with the dyadic point's
+  $0.66$--$1.14\times$; the last, a three-level plan twice as slow as the
+  best at its size, is the only one above the GEMM.
 \end{itemize}
+So a $2\times2$ level on top costs no accuracy, and the planner uses it:
+\lv{SW+4/R363/G6} is its choice at $3456$ f64 ($0.0695$~s, $1.39\times$ over
+Accelerate, $0.73\times$ its error), and \lv{SW/R363+3/R633/G6} is the fastest
+plan measured at $13824$ f64 ($3.238$~s, $1.94\times$, $0.70\times$), both
+within the default budget (Section~\ref{sec:results}).  The model's estimate
+for such plans is conservative in f32: \lv{SW+4/R363/G6} at $6912$ f32 is
+predicted at $1.02\times$ the GEMM's error and measures $0.58\times$, because
+the depth factor, fitted on \lv{D48/D48}, charges a level whose own factor is
+near one as if it were an accurate level's second.
 
 \section{The planner}\label{sec:planner}
 
@@ -904,22 +901,17 @@ so that a growth of $1$ means as accurate as the GEMM, $0.5$ twice as
 accurate, $2$ twice the error.  With $b>0$ the planner returns the fastest
 plan whose growth is at most $b$: $b=1$ asks for a plan no less accurate than
 the GEMM it replaces, $b<1$ for a more accurate one, and $b>1$ admits plans
-up to $b$ times the GEMM's error, which is where the deep plans live and,
-with Strassen--Winograd's programs, the plans with a $2\times2$ level
-(Section~\ref{sec:sw}).  $b=0$ means the default budget, $1$; a negative $b$ means no budget, the
-fastest plan whatever its error (\lv{auto:none} in the benchmark), which is
-how the campaigns before the budget's introduction ran.  So no budget can
-return a less accurate plan than the default: at $13824$ f64 it returns
-\lv{SW/R363+3/R633/G6}, whose exact error is $1.02\times$ the GEMM's, where
-the default returns \lv{R363+3/R336/G3} at $0.52\times$ in the same time
-(Table~\ref{tab:budget}).  The growth is the model's estimate, good to about
-25\% (Section~\ref{sec:accuracy}), so a budget is a target rather than a
-guarantee, and near a boundary the choice is not robust; the plans with
-Strassen--Winograd's $2\times2$ level on top sit at $1.0$--$1.1$ and the plans
-without one below $0.85$, so the
-default separates the two families with the margin the model has (with the
-dyadic point's programs the $2\times2$-topped plans measure $0.6$--$1.0$ and
-most of them pass, Section~\ref{sec:sw}).
+up to $b$ times the GEMM's error, which is where the deep plans live.
+$b=0$ means the default budget, $1$; a negative $b$ means no budget, the
+fastest plan whatever its error (\lv{auto:none} in the benchmark).  On the
+square problems measured the two return the same plan at every size and
+precision: the fastest plan the model sees is also predicted to be more
+accurate than the GEMM (Table~\ref{tab:budget}).  The growth is the model's
+estimate, good to about 25\% for plans without a $2\times2$ level and
+conservative in f32 for plans with one (Section~\ref{sec:accuracy}), so a
+budget is a target rather than a guarantee, and near a boundary the choice is
+not robust: \lv{SW+4/R363/G6} at $6912$ f32, predicted at $1.02$ and measured
+at $0.58$, falls outside the default budget by the model's margin.
 
 \paragraph{Calibration.}
 Everything the model needs is measured once per machine and precision and
@@ -928,8 +920,8 @@ the machine, the padding, the file format and the programs the kernels came
 from): the lone GEMM and the blocked GEMM at each size; for each level and
 product shape its three passes and the GEMM time per product at $0$, $3$, $4$
 and $6$ streams, measured together by running the level; the pipelines; and
-the seven error-model plans at $N_E=2304$, against the exact product.  For $n$ up to $13824$ this is $408$
-entries and $13$ minutes per precision.  Square shapes interpolate (log-log
+the seven error-model plans at $N_E=2304$, against the exact product.  For $n$ up to $13824$ this is $409$
+entries per precision, measured in $5$ minutes in f32 and $13$ in f64.  Square shapes interpolate (log-log
 between the measured sizes); rectangular shapes do not, and are either
 calibrated for the shape ($118$ entries, a few seconds) or priced by
 \emph{shape estimates} from the square calibration: GEMM-like entries at the
@@ -954,72 +946,88 @@ padding to a multiple of $54$ pays.  Planning a new shape costs $0.07$~s in C
 and $0.010$~s in Rust and is cached for $64$ shapes.
 
 \paragraph{Validation.}
-Predictions are within 0.3--3\% of the measured times at $n\ge8192$ in both
-precisions throughout the development (first with the $4\times4$ menu, then
-with streams, pipelines and the $3\times3\times6$ levels), and the planner's
-choice was the fastest plan measured, or within 1\% of it, at every size and
-precision tried, with two documented exceptions traced to noisy calibration
-entries (a pipeline slope from two and four sub-problems; a $4096$ f32 run 15\%
-slow throughout).  The classical variants themselves drift between runs
-(13824 f64: $6.2$--$6.7$~s), so speedups carry about $\pm5$\%.
+In the campaign of Section~\ref{sec:results}, $69$ of the $91$ measurements
+the planner can price are within 2\% of the prediction and $88$ within
+5.5\%; the three beyond are the lone GEMM at $3456$ f32 ($16\%$: its
+calibration entry was slow), the lone f64 GEMM at $13824$ in one of its two
+runs ($10\%$), and \lv{SW/D48+2/D48/G6} at $13824$ f32 ($8\%$), a plan
+$1.5\times$ slower than the best.  The planner's choice was the fastest plan
+measured at two of the six square sizes and precisions and within 3\% of it
+at the others.  The best plans at a size lie within 2--3\% of each other,
+about the run-to-run spread (a plan measured twice in the campaign repeats
+within 1.8\%, except three single-level plans at $13824$, within 3--7\%), so
+the choice
+among them is not robust to the calibration's noise.  The largest miss is at
+$13824$ f32: the calibration put the pipelined \lv{R336+2/R363/G6} at
+$0.891$~s, 2.4\% ahead of \lv{R363+3/D48/G6}, and it measured
+$0.914$--$0.925$~s against $0.901$ for \lv{R363+3/D48/G6}.  The GEMM itself drifts between runs
+($13824$ f64: $6.26$--$6.93$~s), so speedups carry about $\pm5$\%.
 
 \section{Results}\label{sec:results}
 
-\begin{table}[t]
+\begin{table}[tp]
 \centering\small
 \begin{tabular}{llrrrr}
 \toprule
 $n$, precision & plan & time (s) & over GEMM & relerr & err64\\
 \midrule
 6912 f32 & \lv{G} (Accelerate) & 0.195 & 1.00 & -- & $3.85\cdot10^{-6}$\\
- & \lv{D48/G} & 0.154 & 1.27 & $4.2\cdot10^{-6}$ & $2.81\cdot10^{-6}$\\
- & \lv{R336/G} & 0.164 & 1.19 & $3.9\cdot10^{-6}$ & $2.27\cdot10^{-6}$\\
- & \lv{R363/G} & 0.158 & 1.23 & $4.2\cdot10^{-6}$ & $1.76\cdot10^{-6}$\\
+ & \lv{D48/G} & 0.155 & 1.26 & $4.2\cdot10^{-6}$ & $2.81\cdot10^{-6}$\\
+ & \lv{R336/G} & 0.167 & 1.17 & $3.9\cdot10^{-6}$ & $2.27\cdot10^{-6}$\\
+ & \lv{R363/G} & 0.151 & 1.29 & $4.2\cdot10^{-6}$ & $1.76\cdot10^{-6}$\\
  & \lv{D48+4/D48/G6} & 0.149 & 1.31 & $4.3\cdot10^{-6}$ & $2.94\cdot10^{-6}$\\
- & \lv{R363+4/D48/G6} (auto) & \textbf{0.141} & \textbf{1.38} & $4.0\cdot10^{-6}$ & $2.26\cdot10^{-6}$\\
+ & \lv{R363+4/D48/G6} & 0.140 & 1.39 & $4.0\cdot10^{-6}$ & $2.26\cdot10^{-6}$\\
+ & \lv{SW+4/R363/G6} & \textbf{0.138} & \textbf{1.41} & $4.0\cdot10^{-6}$ & $2.22\cdot10^{-6}$\\
+ & \lv{R363+4/R633/G6} (auto) & 0.141 & 1.38 & $4.1\cdot10^{-6}$ & $2.20\cdot10^{-6}$\\
 \midrule
-13824 f32 & \lv{G} (Accelerate) & 1.565 & 1.00 & -- & $6.40\cdot10^{-6}$\\
- & \lv{D48/G} & 1.255 & 1.25 & $7.1\cdot10^{-6}$ & $4.16\cdot10^{-6}$\\
- & \lv{R336/G} & 1.244 & 1.26 & $6.7\cdot10^{-6}$ & $3.80\cdot10^{-6}$\\
- & \lv{R363/G} & 1.242 & 1.26 & $6.7\cdot10^{-6}$ & $2.73\cdot10^{-6}$\\
- & \lv{R336/R363/G} & 1.200 & 1.30 & $6.2\cdot10^{-6}$ & $3.34\cdot10^{-6}$\\
- & \lv{D48+4/D48/G6} & 0.949 & 1.65 & $7.0\cdot10^{-6}$ & $4.35\cdot10^{-6}$\\
- & \lv{R363+3/D48/G6} & 0.906 & 1.73 & $6.4\cdot10^{-6}$ & $3.49\cdot10^{-6}$\\
- & \lv{R363+4/R363/G6} (auto) & \textbf{0.907} & \textbf{1.73} & $6.6\cdot10^{-6}$ & $2.46\cdot10^{-6}$\\
+13824 f32 & \lv{G} (Accelerate) & 1.540 & 1.00 & -- & $6.40\cdot10^{-6}$\\
+ & \lv{D48/G} & 1.258 & 1.22 & $7.1\cdot10^{-6}$ & $4.16\cdot10^{-6}$\\
+ & \lv{R336/G} & 1.260 & 1.22 & $6.7\cdot10^{-6}$ & $3.80\cdot10^{-6}$\\
+ & \lv{R363/G} & 1.237 & 1.24 & $6.7\cdot10^{-6}$ & $2.73\cdot10^{-6}$\\
+ & \lv{R336/R363/G} & 1.198 & 1.29 & $6.2\cdot10^{-6}$ & $3.34\cdot10^{-6}$\\
+ & \lv{D48+4/D48/G6} & 0.948 & 1.62 & $7.0\cdot10^{-6}$ & $4.35\cdot10^{-6}$\\
+ & \lv{R363+3/D48/G6} & \textbf{0.901} & \textbf{1.71} & $6.4\cdot10^{-6}$ & $3.49\cdot10^{-6}$\\
+ & \lv{R363+4/R336/G6} & 0.907 & 1.70 & $6.4\cdot10^{-6}$ & $3.33\cdot10^{-6}$\\
+ & \lv{R363+4/R363/G6} & 0.914 & 1.68 & $6.6\cdot10^{-6}$ & $2.46\cdot10^{-6}$\\
+ & \lv{R336+2/R363/G6} (auto) & 0.925 & 1.66 & $6.2\cdot10^{-6}$ & $3.34\cdot10^{-6}$\\
 \midrule
-6912 f64 & \lv{G} (Accelerate) & 0.773 & 1.00 & -- & $6.69\cdot10^{-15}$\\
- & \lv{D48/G} & 0.612 & 1.26 & $7.8\cdot10^{-15}$ & $4.89\cdot10^{-15}$\\
- & \lv{R336/G} & 0.597 & 1.29 & $6.8\cdot10^{-15}$ & $4.53\cdot10^{-15}$\\
- & \lv{R363/G} & 0.647 & 1.19 & $6.8\cdot10^{-15}$ & $2.86\cdot10^{-15}$\\
- & \lv{R336/R363/G} & 0.594 & 1.30 & $8.3\cdot10^{-15}$ & $3.66\cdot10^{-15}$\\
- & \lv{D48+4/D48/G6} & 0.478 & 1.62 & $7.9\cdot10^{-15}$ & $5.60\cdot10^{-15}$\\
- & \lv{R363+3/R633/G6} (auto) & \textbf{0.451} & \textbf{1.71} & $6.7\cdot10^{-15}$ & $3.75\cdot10^{-15}$\\
+6912 f64 & \lv{G} (Accelerate) & 0.760 & 1.00 & -- & $6.69\cdot10^{-15}$\\
+ & \lv{D48/G} & 0.607 & 1.25 & $7.8\cdot10^{-15}$ & $4.89\cdot10^{-15}$\\
+ & \lv{R336/G} & 0.595 & 1.28 & $6.8\cdot10^{-15}$ & $4.53\cdot10^{-15}$\\
+ & \lv{R363/G} & 0.641 & 1.19 & $6.8\cdot10^{-15}$ & $2.86\cdot10^{-15}$\\
+ & \lv{R336/R363/G} & 0.593 & 1.28 & $8.3\cdot10^{-15}$ & $3.66\cdot10^{-15}$\\
+ & \lv{D48+4/D48/G6} & 0.473 & 1.61 & $7.9\cdot10^{-15}$ & $5.60\cdot10^{-15}$\\
+ & \lv{R363+4/D48/G6} & 0.454 & 1.67 & $7.0\cdot10^{-15}$ & $4.32\cdot10^{-15}$\\
+ & \lv{R336+2/R363/G6} & 0.452 & 1.68 & $8.3\cdot10^{-15}$ & $3.66\cdot10^{-15}$\\
+ & \lv{R363+3/R633/G6} & 0.448 & 1.70 & $6.7\cdot10^{-15}$ & $3.75\cdot10^{-15}$\\
+ & \lv{SW/R363/G6} & 0.530 & 1.43 & $7.8\cdot10^{-15}$ & $4.43\cdot10^{-15}$\\
+ & \lv{R363+2/R633/G6} (auto) & \textbf{0.441} & \textbf{1.72} & $6.7\cdot10^{-15}$ & $3.75\cdot10^{-15}$\\
 \midrule
-13824 f64 & \lv{G} (Accelerate) & 6.223 & 1.00 & -- & $1.23\cdot10^{-14}$\\
- & \lv{D48/G} & 4.970 & 1.25 & $1.40\cdot10^{-14}$ & $7.80\cdot10^{-15}$\\
- & \lv{R336/G} & 4.946 & 1.26 & $1.18\cdot10^{-14}$ & $7.21\cdot10^{-15}$\\
- & \lv{R363/G} & 4.919 & 1.27 & $1.30\cdot10^{-14}$ & $4.97\cdot10^{-15}$\\
- & \lv{R336/R363/G} & 3.703 & 1.68 & $1.45\cdot10^{-14}$ & $6.72\cdot10^{-15}$\\
- & \lv{D48+4/D48/G6} & 3.703 & 1.68 & $1.38\cdot10^{-14}$ & $8.28\cdot10^{-15}$\\
-  & \lv{R363+3/D48/G6} & 3.467 & 1.80 & $1.25\cdot10^{-14}$ & $5.81\cdot10^{-15}$\\
- & \lv{R363+3/R336/G3} (auto) & 3.296 & 1.89 & $1.33\cdot10^{-14}$ & $6.40\cdot10^{-15}$\\
- & \lv{SW/D48+2/D48/G6} & 3.407 & 1.83 & $1.85\cdot10^{-14}$ & $1.72\cdot10^{-14}$\\
-  & \lv{SW/R363+3/R633/G6} (no budget) & \textbf{3.251} & \textbf{1.91} & $1.51\cdot10^{-14}$ & $1.25\cdot10^{-14}$\\
+13824 f64 & \lv{G} (Accelerate) & 6.268 & 1.00 & -- & $1.23\cdot10^{-14}$\\
+ & \lv{D48/G} & 5.031 & 1.25 & $1.40\cdot10^{-14}$ & $7.80\cdot10^{-15}$\\
+ & \lv{R336/G} & 4.799 & 1.31 & $1.18\cdot10^{-14}$ & $7.21\cdot10^{-15}$\\
+ & \lv{R363/G} & 4.975 & 1.26 & $1.30\cdot10^{-14}$ & $4.97\cdot10^{-15}$\\
+ & \lv{R336/R363/G} & 3.693 & 1.70 & $1.45\cdot10^{-14}$ & $6.72\cdot10^{-15}$\\
+ & \lv{D48+4/D48/G6} & 3.606 & 1.74 & $1.38\cdot10^{-14}$ & $8.28\cdot10^{-15}$\\
+ & \lv{R363+3/D48/G6} & 3.456 & 1.81 & $1.25\cdot10^{-14}$ & $5.81\cdot10^{-15}$\\
+ & \lv{R363+3/R336/G3} & 3.285 & 1.91 & $1.33\cdot10^{-14}$ & $6.40\cdot10^{-15}$\\
+ & \lv{R336+3/R363/G3} & 3.272 & 1.92 & $1.45\cdot10^{-14}$ & $6.72\cdot10^{-15}$\\
+ & \lv{SW/D48+2/D48/G6} & 3.385 & 1.85 & $1.45\cdot10^{-14}$ & $1.24\cdot10^{-14}$\\
+ & \lv{SW/R363+3/R633/G6} & \textbf{3.238} & \textbf{1.94} & $1.36\cdot10^{-14}$ & $8.66\cdot10^{-15}$\\
+ & \lv{R363+2/R336/G3} (auto) & 3.293 & 1.90 & $1.33\cdot10^{-14}$ & $6.40\cdot10^{-15}$\\
 \bottomrule
 \end{tabular}
-\caption{Square problems on the M4~Pro (\texttt{results/r336\_campaign2\_2026-10-28.txt};
-the \lv{R363/G} rows and the $13824$ f64 \lv{R363+3/D48/G6} row from
-\texttt{t42\_campaign} and \texttt{f64exact} of the same day): best of three
-to five interleaved rounds; ``over GEMM'' is Accelerate's time divided by the
-plan's; relerr is the max-norm difference from Accelerate's product; err64
-the max-norm error against the exact product -- the f64 product in f32, the
-compensated product in f64 (\texttt{results/f64exact\_2026-10-28.txt}) -- with
-the GEMM's own error in the first row of each block.  ``auto'' is the planner's choice under its default budget (the $13824$ f64
-\lv{R363+3/R336/G3} row is from the budget campaign, Table~\ref{tab:budget}).
-Only err64 compares plans: the GEMM's own error is as
-large as a level's, so relerr mixes the two (\lv{R336/G} and \lv{R363/G} at
-$6912$ f64 have the same relerr and exact errors $4.53$ and
-$2.86\cdot10^{-15}$).}
+\caption{Square problems on the M4~Pro (\texttt{results/final\_campaign\_2026-11-12.txt}):
+best of five (6912 f32) or three interleaved rounds; ``over GEMM'' is
+Accelerate's time divided by the plan's; relerr is the max-norm difference
+from Accelerate's product; err64 the max-norm error against the exact
+product -- the f64 product in f32, the compensated product in f64 -- with
+the GEMM's own error in the first row of each block.  ``auto'' is the
+planner's choice, the same with its default budget and without one; the
+fastest plan measured at each size is in bold.  Only err64 compares plans:
+the GEMM's own error is as large as a level's, so relerr mixes the two
+(\lv{R336/G} and \lv{R363/G} at $6912$ f64 have the same relerr and exact
+errors $4.53$ and $2.86\cdot10^{-15}$).}
 \label{tab:results}
 \end{table}
 
@@ -1029,86 +1037,94 @@ mixed plan.  What the table says:
 
 \begin{itemize}
 \item As a single level the $3\times3\times6$ scheme ties the $4\times4$ scheme
-  in time at $13824$ (in f32 at $6912$ it is 3--6\% slower, because the passes
-  are a larger share there and its $L$ pass moves more) and is more accurate
-  in every orientation: \lv{R336} by 7--19\%, \lv{R363} by 34--41\% in both
-  precisions ($1.76$ against $2.81\cdot10^{-6}$ at $6912$ f32, $4.97$ against
-  $7.80\cdot10^{-15}$ at $13824$ f64).  The planner knows the pass costs and
+  in time at $13824$ (within 2\%, \lv{R336} 5\% ahead in f64; at $6912$ the
+  orientations range from 3\% faster to 8\% slower, because the passes are a
+  larger share there and they move different amounts per orientation) and is
+  more accurate in every orientation: \lv{R336} by 7--19\%, \lv{R363} by
+  34--42\% in both precisions ($1.76$ against $2.81\cdot10^{-6}$ at $6912$
+  f32, $4.97$ against $7.80\cdot10^{-15}$ at $13824$ f64).  The planner knows the pass costs and
   uses the orientation whose cheapest pass faces the largest operand.
 \item At matched time the mixed plans are the more accurate ones.  In each of
-  the four cases the $3\times3\times6$-family plan that runs in the time of
-  the best $4\times4$-only plan, \lv{D48+4/D48/G6}, has 23--43\% less error
-  against the exact product and is 4--6\% faster: \lv{R363+4/D48/G6} at
-  $6912$ f32 ($2.26$ against $2.94\cdot10^{-6}$), \lv{R363+4/R363/G6} at
-  $13824$ f32 ($2.46$ against $4.35\cdot10^{-6}$), \lv{R363+3/R633/G6} at
-  $6912$ f64 ($3.75$ against $5.60\cdot10^{-15}$) and \lv{R363+3/D48/G6} at
-  $13824$ f64 ($5.81$ against $8.28\cdot10^{-15}$).  These plans, at
-  $1.4$--$1.8\times$ over the GEMM, also have less error than a single
-  $4\times4$ level at $1.25\times$ (\lv{D48/G}).  All four are the planner's choices under its default budget (at $13824$
-f64 the default's own pick, \lv{R363+3/R336/G3}, is faster still: the next
-item), and its top six at $13824$ f32 are all $3\times3\times6$-family plans.
-\item Without a budget the planner's choice at $13824$ f64 is
-  \lv{SW/R363+3/R633/G6}: a Strassen--Winograd level on top buys $1.91\times$
-  against $1.68$ for the best $4\times4$ plan at the price of 51\% more error
-  ($1.25\cdot10^{-14}$ against $8.28\cdot10^{-15}$; the GEMM's own is
-  $1.23\cdot10^{-14}$).  The default budget rejects it (predicted growth
-  $1.07$) and takes \lv{R363+3/R336/G3}, a plan no earlier campaign had
-  measured: $3.30$~s against that plan's $3.27$ in the same run, with
-  error $6.40\cdot10^{-15}$, half the GEMM's (Table~\ref{tab:budget}).  At
-  $3456$ f64 the same happens: \lv{R363/G4} at $0.072$~s and $0.58\times$ the
-  GEMM's error replaces \lv{SW+3/R363/G6} at $0.071$~s and $0.97\times$.  With
-  Strassen--Winograd's programs those plans remain available under an explicit
-  budget of $2$ or none; with the dyadic point's programs
-  (Section~\ref{sec:sw}) \lv{SW/R363+3/R633/G6} measures $8.66\cdot10^{-15}$,
-  $0.70\times$ the GEMM's, in the same time, and passes the default budget.
+  the four cases the planner's choice, a $3\times3\times6$-family plan, is
+  faster than the best $4\times4$-only plan, \lv{D48+4/D48/G6}, by
+  2.5--9.5\%, and has 23--33\% less error against the exact product:
+  \lv{R363+4/R633/G6} at $6912$ f32 ($2.20$ against $2.94\cdot10^{-6}$),
+  \lv{R336+2/R363/G6} at $13824$ f32 ($3.34$ against $4.35\cdot10^{-6}$),
+  \lv{R363+2/R633/G6} at $6912$ f64 ($3.75$ against $5.60\cdot10^{-15}$) and
+  \lv{R363+2/R336/G3} at $13824$ f64 ($6.40$ against $8.28\cdot10^{-15}$).
+  These plans, at $1.4$--$1.9\times$ over the GEMM, also have less error than
+  a single $4\times4$ level at $1.22$--$1.26\times$ (\lv{D48/G}).  At $13824$
+  f32 the most accurate of the fast plans is \lv{R363+4/R363/G6}, 43\% below
+  the $4\times4$-only plan in $0.914$~s; the planner prefers
+  \lv{R336+2/R363/G6} by its calibration (Section~\ref{sec:planner}), and the
+  top six plans of that calibration are all $3\times3\times6$-family plans.
+\item A $2\times2$ level on top, at the dyadic accurate point
+  (Section~\ref{sec:sw}), costs no accuracy: \lv{SW/R363+3/R633/G6} is the
+  fastest plan measured at $13824$ f64 ($3.238$~s, $1.94\times$) with $0.70$
+  of the GEMM's error, and \lv{SW+4/R363/G6} the fastest at $6912$ f32
+  ($0.138$~s, $1.41\times$, $0.58\times$) and the planner's choice at $3456$
+  f64 ($0.0695$~s, $1.39\times$, $0.73\times$).  At $13824$ f64 the planner
+  prefers \lv{R363+2/R336/G3} by its prediction ($3.189$ against $3.252$~s),
+  which measured $3.25$--$3.29$~s in its two rows, within 1.7\% of the
+  fastest.  Only the three-level \lv{SW/D48+2/D48/G6} stays near the GEMM's
+  error ($0.98$--$1.14\times$), and it is slow except at $13824$ f64.
 \item Every plan without a $2\times2$ level has less error than the GEMM's own
-  in both precisions ($2.26$ against $3.85\cdot10^{-6}$ at $6912$ f32, $2.46$
-  against $6.40\cdot10^{-6}$ at $13824$ f32, $3.75$ against
-  $6.69\cdot10^{-15}$ at $6912$ f64, $5.81$ against $1.23\cdot10^{-14}$ at
-  $13824$ f64): a fast multiplication that is also the more accurate one
-  (Section~\ref{sec:accuracy} says why).  The difference from Accelerate's
-  product, the only f64 error the earlier campaigns recorded, hides all of
-  this: it mixes the GEMM's error with the plan's.
+  in both precisions (for the planner's choices $2.20$ against
+  $3.85\cdot10^{-6}$ at $6912$ f32, $3.34$ against $6.40\cdot10^{-6}$ at
+  $13824$ f32, $3.75$ against $6.69\cdot10^{-15}$ at $6912$ f64, $6.40$
+  against $1.23\cdot10^{-14}$ at $13824$ f64): a fast multiplication that is
+  also the more accurate one (Section~\ref{sec:accuracy} says why).  The
+  difference from Accelerate's product hides all of this: it mixes the GEMM's
+  error with the plan's.
 \item The three-orientation cycle alone (\lv{R336/R363/R633/G}) does not pay at
-  these sizes: its leaves of $n/54$ are too small for the GEMM.  Depth pays
-  through the pipelined two-level plans.
+  these sizes: its leaves of $n/54$ are too small for the GEMM, and it runs at
+  $0.63\times$ (f32) and $0.85\times$ (f64) the GEMM's speed at $13824$
+  (Table~\ref{tab:ternary}).  Depth pays through the pipelined two-level
+  plans.
 \end{itemize}
 
 \begin{table}[H]
 \centering\small
-\begin{tabular}{llllrrr}
+\begin{tabular}{lllrrrr}
 \toprule
-$n$, prec. & plan & budget & time (s) & \multicolumn{2}{c}{growth over the GEMM} & error\\
+$n$, prec. & plan & & time (s) & \multicolumn{2}{c}{growth over the GEMM} & error\\
 \cmidrule(lr){5-6}
  & & & & predicted & measured & \\
 \midrule
-3456 f64 & \lv{R363/G4} & default & 0.072 & 0.47 & 0.58 & $2.76\cdot10^{-15}$\\
- & \lv{SW+3/R363/G6} & none & 0.071 & 1.09 & 0.97 & $4.62\cdot10^{-15}$\\
-13824 f64 & \lv{R363+3/R336/G3} & default & 3.296 & 0.47 & 0.52 & $6.40\cdot10^{-15}$\\
- & \lv{SW/R363+3/R633/G6} & none & 3.267 & 1.07 & 1.02 & $1.25\cdot10^{-14}$\\
-3456 f32 & \lv{R363/G6} & both & 0.021 & 0.45 & 0.42 & $1.28\cdot10^{-6}$\\
-6912 f32 & \lv{R363+4/D48/G6} & both & 0.141 & 0.60 & 0.59 & $2.26\cdot10^{-6}$\\
-6912 f64 & \lv{R363+3/R633/G6} & both & 0.451 & 0.46 & 0.56 & $3.75\cdot10^{-15}$\\
-13824 f32 & \lv{R363+4/R363/G6} & both & 0.916 & 0.44 & 0.38 & $2.46\cdot10^{-6}$\\
+3456 f32 & \lv{R363/G6} & auto & 0.0208 & 0.45 & 0.42 & $1.28\cdot10^{-6}$\\
+ & \lv{SW+3/R363/G6} & & 0.0236 & 1.03 & 0.61 & $1.84\cdot10^{-6}$\\
+3456 f64 & \lv{SW+4/R363/G6} & auto & 0.0695 & 0.70 & 0.73 & $3.47\cdot10^{-15}$\\
+ & \lv{R363/G4} & & 0.0722 & 0.47 & 0.58 & $2.76\cdot10^{-15}$\\
+6912 f32 & \lv{R363+4/R633/G6} & auto & 0.141 & 0.59 & 0.57 & $2.20\cdot10^{-6}$\\
+ & \lv{SW+4/R363/G6} & & 0.138 & 1.02 & 0.58 & $2.22\cdot10^{-6}$\\
+6912 f64 & \lv{R363+2/R633/G6} & auto & 0.441 & 0.46 & 0.56 & $3.75\cdot10^{-15}$\\
+ & \lv{SW/R363/G6} & & 0.530 & 0.70 & 0.66 & $4.43\cdot10^{-15}$\\
+13824 f32 & \lv{R336+2/R363/G6} & auto & 0.925 & 0.54 & 0.52 & $3.34\cdot10^{-6}$\\
+ & \lv{R363+4/R363/G6} & & 0.914 & 0.44 & 0.38 & $2.46\cdot10^{-6}$\\
+ & \lv{SW/D48+2/D48/G6} & & 1.342 & 1.92 & 0.98 & $6.30\cdot10^{-6}$\\
+13824 f64 & \lv{R363+2/R336/G3} & auto & 3.293 & 0.47 & 0.52 & $6.40\cdot10^{-15}$\\
+ & \lv{SW/R363+3/R633/G6} & & 3.238 & 0.69 & 0.70 & $8.66\cdot10^{-15}$\\
+ & \lv{SW/D48+2/D48/G6} & & 3.385 & 1.18 & 1.01 & $1.24\cdot10^{-14}$\\
 \bottomrule
 \end{tabular}
-\caption{The planner's choices with the default budget ($1$: no less accurate
-than the GEMM) and without one
-(\texttt{results/budget\_campaign\_2026-10-29.txt}; best of three to five
-rounds, errors against the exact product).  ``Growth'' is the plan's error
-over the GEMM's on the same problem, as the model predicts it and as
-measured; ``both'' means the two budgets choose the same plan.}
+\caption{Error growth over the GEMM (the plan's error divided by the GEMM's
+on the same problem), as the model predicts it and as measured, for the
+planner's choices (auto: the default budget, $1$, and no budget choose the
+same plan at every size and precision here), the plans with a $2\times2$
+level on top, and the most accurate fast plan at $13824$ f32
+(\texttt{results/final\_campaign\_2026-11-12.txt}; best of three to five
+rounds, errors against the exact product).  The default budget admits a plan
+whose predicted growth is at most $1$.}
 \label{tab:budget}
 \end{table}
 
-The planner's choices by size, from the calibration at $13824$ and under the
-default budget: f32 \lv{G} at $1728$, \lv{R363/G6} at $3456$,
-\lv{R363+4/D48/G6} at $6912$, \lv{R363+4/R363/G6} at $13824$; f64
-\lv{R363/G6} at $1728$, \lv{R363/G4} at $3456$, \lv{R363+3/R633/G6} at
-$6912$, \lv{R363+3/R336/G3} at $13824$ (without a budget, \lv{SW+3/R363/G6}
-at $3456$ and \lv{SW/R363+3/R633/G6} at $13824$).
+The planner's choices by size, from the calibration at $13824$, with the
+default budget and without one alike: f32 \lv{G} at $1728$, \lv{R363/G6} at
+$3456$, \lv{R363+4/R633/G6} at $6912$, \lv{R336+2/R363/G6} at $13824$; f64
+\lv{R363/G6} at $1728$, \lv{SW+4/R363/G6} at $3456$, \lv{R363+2/R633/G6} at
+$6912$, \lv{R363+2/R336/G3} at $13824$.
 Sizes that $3$ does not divide keep their $4\times4$ plans (\lv{D48+4/D48/G6}
-at $8192$ f32, $1.40\times$; \lv{D48+3/D48/G6} at $9000$ f64 padded to $9008$,
+at $8192$ f32, $1.38\times$; \lv{D48+3/D48/G6} at $9000$ f64 padded to $9008$,
 $1.69\times$).
 
 \begin{table}[t]
@@ -1117,34 +1133,33 @@ $1.69\times$).
 \toprule
 $m\times k\times n$ & calibration & prec. & plan & predicted / measured (s) & over GEMM\\
 \midrule
-$3456\times3456\times1728$ & for the shape & f32 & \lv{R363/G6} & 0.0117 / 0.0115 & 1.05\\
- & & f64 & \lv{R363/G6} & 0.0366 / 0.0367 & 1.30\\
+$3456\times3456\times1728$ & for the shape & f32 & \lv{R363/G6} & 0.0115 / 0.0114 & 1.06\\
+ & & f64 & \lv{R363/G6} & 0.0365 / 0.0366 & 1.30\\
 $1000\times3000\times2000$ & estimated & f32 & \lv{G} & -- & 1.00\\
- & & f64 & \lv{SW/G4} & 0.0133 / 0.0144 & 1.04\\
+ & & f64 & \lv{SW/G4} & 0.0133 / 0.0139 & 1.04\\
 $2048\times4096\times1024$ & estimated & f32 & \lv{G} & -- & 1.00\\
- & & f64 & \lv{D48/G6} & 0.0177 / 0.0180 & 1.10\\
-$6912\times6912\times3456$ & estimated & f32 & \lv{D48/G3} & 0.0812 / 0.0777 & 1.30\\
- & & f64 & \lv{D48+4/R363/G6} & 0.2578 / 0.2565 & 1.52\\
+ & & f64 & \lv{D48/G6} & 0.0176 / 0.0179 & 1.07\\
+$6912\times6912\times3456$ & estimated & f32 & \lv{D48/G3} & 0.0815 / 0.0761 & 1.31\\
+ & & f64 & \lv{D48+3/R363/G6} & 0.2535 / 0.2598 & 1.47\\
 \bottomrule
 \end{tabular}
 \caption{Rectangular problems through the library's entry points
-(\texttt{results/\allowbreak rect\_\allowbreak api\_\allowbreak 2026-10-28.txt}): the planner's plan, its predicted
+(\texttt{test\_fmm} in \texttt{results/\allowbreak final\_\allowbreak campaign\_\allowbreak 2026-11-12.txt}): the planner's plan under the default budget, its predicted
 and measured time, and the speedup over Accelerate's GEMM on the same shape.
 ``Estimated'' shapes are priced from the square calibration by
-\eqref{eq:equiv}.  The plans are the default budget's; without one the f32
-$6912\times6912\times3456$ plan is \lv{SW+4/D48/G6}, $0.0790$ / $0.0796$~s,
-$1.26\times$.}
+\eqref{eq:equiv}.}
 \label{tab:rect}
 \end{table}
 
 Rectangular problems (Table~\ref{tab:rect}) go through the same planner over
 $(m,k,n)$: a level applies when its grid divides the current shape, so a
 $6912\times6912\times3456$ product gets a $4\times4$ level whose products are
-$1728\times1728\times864$ and then a $3\times6\times3$ level in f64.  The shape estimates are within 2\% of the measurements wherever a level pays
-(5\% for the f32 plan the default budget changed), and where
-none does the planner correctly returns the GEMM (the first version of the
-estimates had none, and padded $1000\times3000\times2000$ to $3072^3$, 30
-times slower than Accelerate).
+$1728\times1728\times864$ and then a $3\times6\times3$ level in f64.  Where a
+level pays, the shape estimates are within 4.3\% of the measurements in f64
+and 7\% high for the f32 $6912\times6912\times3456$ plan, which ran faster
+than estimated; where none does, the planner correctly returns the GEMM (a
+version of the estimates without that case padded $1000\times3000\times2000$
+to $3072^3$, 30 times slower than Accelerate).
 
 \subsection{The GPU as the alternative}\label{sec:gpu}
 
@@ -1164,21 +1179,21 @@ side.
 \centering\small
 \begin{tabular}{lrrrrlrr}
 \toprule
- & \multicolumn{2}{c}{GPU, MPSGraph} & Accelerate & GPU and Acc. & \multicolumn{3}{c}{best mixed plan}\\
+ & \multicolumn{2}{c}{GPU, MPSGraph} & Accelerate & GPU and Acc. & \multicolumn{3}{c}{the planner's plan}\\
 \cmidrule(lr){2-3}\cmidrule(lr){6-8}
 $n$ (f32) & time (s) & TFLOP/s & time (s) & error & plan & time (s) & error\\
 \midrule
-3456 & 0.013 & 6.3 & 0.025 & $3.04\cdot10^{-6}$ & \lv{R363/G6} & 0.021 & $1.28\cdot10^{-6}$\\
-6912 & 0.099 & 6.6 & 0.195 & $3.85\cdot10^{-6}$ & \lv{R363+4/D48/G6} & 0.141 & $2.26\cdot10^{-6}$\\
-13824 & 0.946 & 5.6 & 1.565 & $6.40\cdot10^{-6}$ & \lv{R363+4/R363/G6} & 0.907 & $2.46\cdot10^{-6}$\\
+3456 & 0.013 & 6.3 & 0.0246 & $3.04\cdot10^{-6}$ & \lv{R363/G6} & 0.0208 & $1.28\cdot10^{-6}$\\
+6912 & 0.099 & 6.6 & 0.195 & $3.85\cdot10^{-6}$ & \lv{R363+4/R633/G6} & 0.141 & $2.20\cdot10^{-6}$\\
+13824 & 0.946 & 5.6 & 1.540 & $6.40\cdot10^{-6}$ & \lv{R336+2/R363/G6} & 0.925 & $3.34\cdot10^{-6}$\\
 \bottomrule
 \end{tabular}
 \caption{The GPU as a GEMM (\texttt{results/gpu\_gemm\_2026-10-28.txt}): best
 of five rounds; the GPU's f32 error equals Accelerate's, hence one column.
 With f16 inputs and an f32 result the GPU takes $0.011$, $0.090$ and
 $0.790$~s with errors $2.5$--$2.8\cdot10^{-4}$.  Accelerate's and the plans'
-numbers are the campaigns' (Table~\ref{tab:results}, and the $3456$ exact
-errors of \texttt{results/f64exact\_2026-10-28.txt}).}
+numbers are the campaign's of Tables~\ref{tab:intro-acc}
+and~\ref{tab:results}.}
 \label{tab:gpu}
 \end{table}
 
@@ -1188,20 +1203,21 @@ What Table~\ref{tab:gpu} says:
   accumulate each output in increasing $k$ with fused multiply-adds and
   neither splits the inner dimension, so both equal the sequential FMA chain
   (64 sampled outputs recomputed as that chain agree with both), and the
-  GPU's error is the GEMM's.  The mixed plans have $1.7$--$2.6\times$ less
-  error than either.
-\item In time the GPU is $1.6\times$ ahead of the best plan at $3456$ and
+  GPU's error is the GEMM's.  The planner's plans have $1.75$--$2.4\times$
+  less error than either.
+\item In time the GPU is $1.6\times$ ahead of the planner's plan at $3456$ and
   $1.4\times$ at $6912$, and tied at $13824$, where its throughput falls to
-  $5.6$~TFLOP/s from $6.6$ at $6912$ and the CPU plan's $0.907$~s edges its
-  $0.946$.
+  $5.6$~TFLOP/s from $6.6$ at $6912$ and the CPU plan's $0.925$~s edges its
+  $0.946$ (the fastest plan measured there, \lv{R363+3/D48/G6}, takes
+  $0.901$).
 \item The GPU's f16-input path (f32 result) is only 14\% faster than its f32
   at $13824$, and its error, $2.5$--$2.8\cdot10^{-4}$, is the rounding of the
   inputs to 11 bits.
-\item In f64 the GPU does not compete, and the plans' $1.71$--$1.91\times$
-  over Accelerate's dgemm stands alone.
+\item In f64 the GPU does not compete, and the plans' $1.72$--$1.90\times$
+  over Accelerate's dgemm at $6912$ and $13824$ stands alone.
 \item The two engines share the package's power and thermal budget:
   Accelerate's sgemm interleaved with GPU runs took $1.81$--$1.88$~s at
-  $13824$ against $1.565$ alone.  A hybrid that keeps both busy has to
+  $13824$ against $1.54$--$1.57$ alone.  A hybrid that keeps both busy has to
   reckon with that; by estimate a $3\times3\times6$ level over GPU leaves at
   $13824$ f32 would run in about $0.77$~s ($40/54$ of the GPU's $0.946$ plus
   $0.07$~s of CPU passes), $1.2\times$ over the GPU alone, if the leaf
@@ -1250,32 +1266,32 @@ precisions, including pipelined plans).
 \toprule
 $n$, prec. & plan & R (s) & T (s) & T/R & R error & T error & T/R\\
 \midrule
-13824 f32 & \lv{X336/G} & 1.228 & 1.286 & 1.05 & 3.80e-6 & 1.28e-5 & 3.4\\
- & \lv{X363/G} & 1.242 & 1.304 & 1.05 & 2.73e-6 & 6.25e-6 & 2.3\\
- & \lv{X633/G} & 1.276 & 1.339 & 1.05 & 3.95e-6 & 1.01e-5 & 2.6\\
- & \lv{X336/X363/X633/G} & 2.538 & 2.874 & 1.13 & 4.95e-6 & 3.53e-5 & 7.1\\
- & \lv{X363+4/D48/G6} & 0.909 & 0.954 & 1.05 & 3.49e-6 & 6.23e-6 & 1.8\\
- & \lv{X363+4/X363/G6} & 0.906 & 0.994 & 1.10 & 2.46e-6 & 9.04e-6 & 3.7\\
+13824 f32 & \lv{X336/G} & 1.225 & 1.287 & 1.05 & 3.80e-6 & 1.28e-5 & 3.4\\
+ & \lv{X363/G} & 1.241 & 1.300 & 1.05 & 2.73e-6 & 6.25e-6 & 2.3\\
+ & \lv{X633/G} & 1.271 & 1.334 & 1.05 & 3.95e-6 & 1.01e-5 & 2.6\\
+ & \lv{X336/X363/X633/G} & 2.458 & 2.760 & 1.12 & 4.95e-6 & 3.53e-5 & 7.1\\
+ & \lv{X363+4/D48/G6} & 0.917 & 0.966 & 1.05 & 3.49e-6 & 6.23e-6 & 1.8\\
+ & \lv{X363+4/X363/G6} & 0.913 & 0.997 & 1.09 & 2.46e-6 & 9.04e-6 & 3.7\\
 \midrule
-13824 f64 & \lv{X336/G} & 4.858 & 5.089 & 1.05 & 1.18e-14 & 2.62e-14 & 2.2\\
- & \lv{X363/G} & 4.919 & 5.132 & 1.04 & 1.30e-14 & 1.34e-14 & 1.0\\
- & \lv{X336/X363/X633/G} & 7.546 & 8.763 & 1.16 & 1.24e-14 & 8.08e-14 & 6.5\\
- & \lv{SW/X363+3/X633/G6} & 3.236 & 3.573 & 1.10 & 1.51e-14 & 5.61e-14 & 3.7\\
- & \lv{X363+3/X633/G6} & 5.624 & 6.188 & 1.10 & 1.26e-14 & 2.63e-14 & 2.1\\
+13824 f64 & \lv{X336/G} & 5.123 & 5.040 & 0.98 & 1.18e-14 & 2.62e-14 & 2.2\\
+ & \lv{X363/G} & 4.934 & 5.179 & 1.05 & 1.30e-14 & 1.34e-14 & 1.0\\
+ & \lv{X336/X363/X633/G} & 7.347 & 8.565 & 1.17 & 1.24e-14 & 8.08e-14 & 6.5\\
+ & \lv{SW/X363+3/X633/G6} & 3.248 & 3.581 & 1.10 & 1.36e-14 & 3.55e-14 & 2.6\\
+ & \lv{X363+3/X633/G6} & 5.629 & 6.198 & 1.10 & 1.26e-14 & 2.63e-14 & 2.1\\
 \midrule
 6912 f32 & \lv{X336/G} & 0.165 & 0.173 & 1.05 & 2.27e-6 & 8.00e-6 & 3.5\\
- & \lv{X363/G} & 0.158 & 0.160 & 1.01 & 1.76e-6 & 3.87e-6 & 2.2\\
- & \lv{X363+4/D48/G6} & 0.142 & 0.147 & 1.04 & 2.26e-6 & 4.07e-6 & 1.8\\
- & \lv{X363+3/X633/G6} & 0.160 & 0.173 & 1.08 & 2.20e-6 & 8.72e-6 & 4.0\\
+ & \lv{X363/G} & 0.150 & 0.156 & 1.04 & 1.76e-6 & 3.87e-6 & 2.2\\
+ & \lv{X363+4/D48/G6} & 0.141 & 0.146 & 1.04 & 2.26e-6 & 4.07e-6 & 1.8\\
+ & \lv{X363+3/X633/G6} & 0.157 & 0.170 & 1.08 & 2.20e-6 & 8.72e-6 & 4.0\\
 \midrule
-6912 f64 & \lv{X336/G} & 0.598 & 0.626 & 1.05 & 6.78e-15 & 1.47e-14 & 2.2\\
- & \lv{X363+4/D48/G6} & 0.453 & 0.478 & 1.06 & 7.03e-15 & 8.81e-15 & 1.3\\
- & \lv{X363+3/X633/G6} & 0.451 & 0.497 & 1.10 & 6.74e-15 & 1.63e-14 & 2.4\\
+6912 f64 & \lv{X336/G} & 0.596 & 0.623 & 1.05 & 6.78e-15 & 1.47e-14 & 2.2\\
+ & \lv{X363+4/D48/G6} & 0.455 & 0.476 & 1.05 & 7.03e-15 & 8.81e-15 & 1.3\\
+ & \lv{X363+3/X633/G6} & 0.449 & 0.498 & 1.11 & 6.74e-15 & 1.63e-14 & 2.4\\
 \bottomrule
 \end{tabular}
 \caption{The ternary $\mm{3\times3\times6:42}$ levels (T) against the accurate
 $\mm{3\times3\times6:40}$ levels (R) on the same plans
-(\texttt{results/t42\_campaign\_2026-10-28.txt}; \lv{X} stands for \lv{R} or
+(\texttt{results/final\_campaign\_2026-11-12.txt}, step (3); \lv{X} stands for \lv{R} or
 \lv{T}): best of five (f32) or three (f64) interleaved rounds, seconds; the
 f32 error is against the f64 product, the f64 error against Accelerate's
 product, which in f64 includes Accelerate's own error, as large as an R
@@ -1287,22 +1303,26 @@ comparison.}
 \paragraph{Measured.}
 Table~\ref{tab:ternary} answers both questions.  The pass arithmetic is worth
 nothing: the T levels' passes take exactly the R levels' times (at $13824$
-f32, $L/R/P$ $0.036/0.020/0.017$~s against $0.034/0.019/0.017$; at $6912$,
+f32, $L/R/P$ $0.035/0.020/0.017$~s against $0.034/0.019/0.018$; at $6912$,
 $0.009/0.005/0.005$ for both), because a fused pass is bound by the blocks it
 moves and the T level moves two more per pass.  The two extra products cost
-what the rank says: the GEMM part of a single level is 5--7\% longer, a
-single T level is 4--5\% slower than its R counterpart at every size and
-precision (the one tie, \lv{T363/G} at $6912$ f32, is within the run's
-noise), a two-level T plan 8--10\% slower, and the three-orientation cycle
-13--16\% slower.  The accuracy cost is the amplification: $2.2$--$3.5\times$ the
-R level's error as a single level, $3.7$--$4\times$ in two-level plans and
-$6.5$--$7\times$ in the cycle, in line with the ratio of the amplification
-factors ($5.07/2.36 = 2.1$ for the $3\times3\times6$ orientation, the
-measured $2.2$--$3.5$ including the passes' own roundings).  In f32 every T
-plan's error is above the GEMM's own (\lv{T336/G} $1.28\cdot10^{-5}$ against
-$6.40\cdot10^{-6}$ at $13824$) where every R plan's is below it.  The
-planner's menu was left as it was: a level that is slower and less accurate
-than one already there on every plan cannot be chosen.
+what the rank says: the GEMM part of a single level is 4--6\% longer
+($42/40=1.05$), a plan with one T level is 4--5\% slower than its R
+counterpart, a plan with two T levels 8--11\% slower, and the
+three-orientation cycle 12--17\% slower, at every size and precision but
+one: \lv{T336/G} at $13824$ f64 ($0.98$) is within that size's f64 noise, its
+median 1\% above \lv{R336/G}'s, and \lv{R336/G} measured $4.80$~s in the
+campaign's square runs against $5.12$ here.  The accuracy cost is the
+amplification: in f32, against the exact product, $2.2$--$3.5\times$ the R
+level's error as a single level, $3.7$--$4\times$ in two-level plans and
+$7\times$ in the cycle, in line with the ratio of the amplification factors
+($5.07/2.36 = 2.1$ for the $3\times3\times6$ orientation, the measured
+$2.2$--$3.5$ including the passes' own roundings).  In f32 the T plans'
+errors are at or above the GEMM's own (\lv{T336/G} $1.28\cdot10^{-5}$ against
+$6.40\cdot10^{-6}$ at $13824$; the best, \lv{T363/G} and \lv{T363+4/D48/G6},
+level with it at $6.2\cdot10^{-6}$), where every R plan's is well below it.
+The planner's menu was left as it was: a level that is slower and less
+accurate than one already there cannot be chosen.
 
 \paragraph{What it shows.}
 The trial is the cleanest confirmation of the cost model's premise.  Two
@@ -1350,13 +1370,15 @@ fused passes as safe Rust emitted by the same generator (each slice a
 separate parameter, cut to the row length first: the compiler then
 vectorizes as \texttt{restrict} and the pragma let it in C).  The only unsafe
 code is the three FFI declarations for Accelerate behind safe wrappers that
-check the slices.  Cross-checked against the C library on the shared calibration, 26 cases
+check the slices.  Both ports carry the error model and the default budget.
+Cross-checked against the C library on the shared calibration, 26 cases
 (square sizes from $1000$ to $9000$, a leading dimension above $n$, an error
 budget, four rectangular shapes, both precisions) give the same plans, the
-same predicted times to the digit and results bit for bit, before and after
-the error model's refit and the default budget, which both ports carry.
-Speeds match at large sizes (f64 $8192$: $0.801$ against $0.815$~s; f32
-$6912\times6912\times3456$: $0.0789$ against $0.0796$); the Rust passes on
+same predicted times to the digit and results bit for bit
+(\path{results/final_crosscheck_2026-11-12.txt}).  Speeds match at large
+sizes (f64 $8192$: $0.810$--$0.811$~s in Rust against $0.814$--$0.817$ in C;
+f32 $6912\times6912\times3456$: $0.077$--$0.080$ against
+$0.076$--$0.077$); the Rust passes on
 blocks under about $600$ are $1.2$--$2\times$ slower (dispatch and per-chunk
 allocation), which only shows when Rust calibrates for itself.  Two traps
 found on the way: a zeroed \texttt{Vec} gets its pages on first write, so
@@ -1373,14 +1395,14 @@ measure of a scheme is its saving per block moved and its stream count, not
 its rank or the length of its programs; and the accuracy of a level is set by
 the point in its orbit and, at depth, by the roundings of its $P$ program,
 not by the operation count.  Under these measures the menu is short: two
-accurate schemes and a $2\times2$ scheme for the top of deep f64 plans.  A
+accurate schemes and an accurate $2\times2$ scheme for the top of a plan.  A
 scheme enters the menu only if a plan containing it beats every plan without
 it on this machine, and the planner decides that per shape and precision from
 measurements, which is why the library can take a new level (or a new machine) without
 any change but a calibration.  Its default objective is time at the GEMM's
-own accuracy or better; the plans with a $2\times2$ level on top, the only ones
-that breached it with Strassen--Winograd's programs, are within it with the
-dyadic accurate point's (Section~\ref{sec:sw}).
+own accuracy or better, and on this machine that objective costs no time:
+with the dyadic accurate point in the $2\times2$ level the fastest plans are
+within it, and the budget changed no square choice (Section~\ref{sec:sw}).
 
 The limits are also measured.  The GEMM is 85--95\% of every plan, so no menu
 can take more than the products it saves, and below $n\approx3000$ nothing
@@ -1392,8 +1414,8 @@ Kronecker composites because they inherit their pieces' amplification and
 multiply their streams.  And the ternary trial (Section~\ref{sec:ternary})
 closes the remaining door on the cheap side: when the passes are already
 bandwidth-bound, a program with a third of the additions buys nothing, while
-two extra products and $2.8\times$ the amplification cost speed and accuracy
-at every size.
+two extra products and $2.8\times$ the amplification cost about 5\% of the
+time per level and $2$--$4\times$ the error.
 
 What is next.  A dyadic point of the $3\times6\times3$ orientation closer to
 its class's amplification floor (DPS's is 14\% above it) would improve the
@@ -1586,9 +1608,9 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   the accurate $4\times4$ scheme (\lv{D} for its authors, Dumas, Pernet and
   Sedoglavic, $48$ for its rank), the accurate $3\times3\times6$ scheme in
   its three orientations (\lv{R} for rectangular, the digits the grid
-  $g_1\times g_2\times g_3$ it cuts the problem into), the $2\times2$ level (Strassen--Winograd's programs in
-  the campaigns, DPS's dyadic accurate point since November~2,
-  Section~\ref{sec:sw}), and the ternary $3\times3\times6$ scheme of Section~\ref{sec:ternary}
+  $g_1\times g_2\times g_3$ it cuts the problem into), the $2\times2$ level
+  (Strassen's scheme at DPS's dyadic accurate point, Section~\ref{sec:sw}),
+  and the ternary $3\times3\times6$ scheme of Section~\ref{sec:ternary}
 (ternary: coefficients in $\{-1,0,1\}$, from Perminov's catalogue); \lv{X} in
   Table~\ref{tab:ternary} stands for \lv{R} or \lv{T}.
 \item[\lv{G}, \lv{G3}, \lv{G4}, \lv{G6}, \lv{B2}, \lv{+p}.]  The leaves and the
@@ -1609,8 +1631,8 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   with the products of the level below.
 \item[err64, relerr.]  The max-norm relative error against the exact
   product (Section~\ref{sec:intro}), and the same quantity against
-  Accelerate's product, which includes the GEMM's own error and is kept only
-  for comparison with the earlier campaigns.
+  Accelerate's product, which includes the GEMM's own error and is kept to
+  show why it is not an error measure.
 \item[Error growth, \lv{max\_growth}, \lv{auto:}$b$.]  A plan's predicted
   error divided by the GEMM's, the factor $\rho^{d-1}\prod_X f_X$ of the error
   model, its per-level factors times its depth factor; the budget $b$ a call
@@ -1659,27 +1681,30 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
 \path{fmm.h}), the kernel generator (\path{gen_kernels.py}), the programs
 of the $3\times3\times6$ levels (\path{schemes/opt/r*}, PLinOpt-optimized;
 \path{schemes/r*}, the direct sums), of the $2\times2$ level
-(\path{schemes/opt/dps7_*}; Strassen--Winograd's are in \path{gen_kernels.py})
-and of the ternary levels
+(\path{schemes/opt/dps7_*}; Winograd's, for comparison, are in
+\path{gen_kernels.py}) and of the ternary levels
 (\path{schemes/t*}), the Rust crate (\path{rust/}), the benchmark and the
 test (\path{bench_fmm.c}, \path{test_fmm.c}), the calibrations
 (\path{results/calib5_f32.txt}, \path{calib5_f64.txt}) and the raw
-results of every run quoted here:
-\path{results/r336_campaign_2026-10-28.txt},
-\path{r336_campaign2_2026-10-28.txt} (Table~\ref{tab:results}),
-\path{r336_opt_vs_direct_2026-10-28.txt},
-\path{rect_api_2026-10-28.txt} (Table~\ref{tab:rect}),
-\path{t42_campaign_2026-10-28.txt} (Table~\ref{tab:ternary}),
-\path{f64exact_2026-10-28.txt} (the f64 err64 column of
-Table~\ref{tab:results}), \path{gpu_gemm_2026-10-28.txt} (Table~\ref{tab:gpu};
-the tool is \path{gpu_gemm.m}, built by \texttt{make build/gpu\_gemm}, the script \path{run_gpu.sh}), \path{budget_campaign_2026-10-29.txt}
-(Table~\ref{tab:budget}; \path{run_budget.sh}),
-\path{sw_dps7_2026-11-02.txt} (Section~\ref{sec:sw}; \path{run_sw_dps7.sh},
-the Strassen--Winograd binary by \texttt{make build/bench\_fmm\_winograd};
-the calibration before the change is \path{calib5_f32_winograd_2026-10-29.txt},
-\path{calib5_f64_winograd_2026-10-29.txt}), and the
-earlier campaigns of October 24--26 (streams, pipelines, accuracy, the
-$4\times4$ programs).  The menu screen is \path{matmul/levels/}
+results of every run quoted here.  One campaign on the library as it
+stands, \path{run_final.sh}, gives the calibration, every table of
+Sections~\ref{sec:intro}, \ref{sec:results} and~\ref{sec:ternary} but the GPU
+columns, and the tests: \path{results/final_campaign_2026-11-12.txt}, with
+\path{final_campaign_3456_2026-11-12.txt} (its $3456$ runs repeated with the
+times printed to $0.1$~ms) and \path{final_crosscheck_2026-11-12.txt} (the
+Rust-vs-C crosscheck, Section~\ref{sec:impl}).  The GPU's columns are
+\path{gpu_gemm_2026-10-28.txt} (the tool is \path{gpu_gemm.m}, built by
+\texttt{make build/gpu\_gemm}, the script \path{run_gpu.sh}); the comparison
+of the $2\times2$ level's programs is \path{sw_dps7_2026-11-02.txt}
+(Section~\ref{sec:sw}; \path{run_sw_dps7.sh}, the binary with Winograd's
+programs by \texttt{make build/bench\_fmm\_winograd}, its calibration
+\path{calib5_f32_winograd_2026-10-29.txt},
+\path{calib5_f64_winograd_2026-10-29.txt}); the comparison of the
+$3\times3\times6$ programs is \path{r336_opt_vs_direct_2026-10-28.txt};
+the estimates' failure on uncalibrated shapes is in
+\path{rect_api_2026-10-28.txt}; and the campaigns of October 24--26 hold the
+streams, pipelines, accuracy and $4\times4$-program measurements of
+Sections~\ref{sec:levels} and~\ref{sec:accuracy}.  The menu screen is \path{matmul/levels/}
 (\path{levels.py}, \path{levels.csv}, \path{orbit_rect.py},
 \path{cost_rect.py}, README).  The accuracy study of the $4\times4$ class
 is \path{doc/matmul_4x4_rank48_accurate262.pdf} \cite{S26b}.  The running

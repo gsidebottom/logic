@@ -1013,6 +1013,10 @@ starts), so the comparison is by type.
   0,4,6,13,14,18,23,27,33,36,44 / 1,3,4,12,13,14,18,27,32,38,41 /
   1,3,4,12,13,14,32,34,38,40,41 / 1,4,12,22,26,30,33,34,37,40,43 /
   3,7,9,11,14,18,21,23,27,32,45 / 5,12,30,31,32,34,35,40,41,45,46.
+  The class's slot symmetry (perm (2,1,0), transposes 010, in its
+  stabilizer; proj/kres_line_orbits.py) fixes the second and third and
+  swaps the first with the fifth and the fourth with the sixth, and a
+  verdict is constant on an orbit: four lines up to symmetry.
   Drivers as run: proj/kres_census_k11.zsh (the sweep with its
   regressions), proj/kres_census_k11_alt2.zsh (the depth-2 pass),
   proj/kres_census_k11_chain.zsh, proj/kres_census_k11_alt3.zsh,

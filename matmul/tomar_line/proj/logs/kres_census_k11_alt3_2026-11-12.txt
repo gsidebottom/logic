@@ -173,3 +173,14 @@
    2 A k=11 dims=7,7,7 idx=1,4,12,22,26,30,33,34,37,40,43
    2 A k=11 dims=7,7,7 idx=3,7,9,11,14,18,21,23,27,32,45
    2 A k=11 dims=7,7,7 idx=5,12,30,31,32,34,35,40,41,45,46
+
+## the six under projkm47_7's slot-symmetry stabilizer element (proj/kres_line_orbits.py 4 found47_km56/d180/r47-00007.bits <the six>; the kres representative wp/reps/projkm47_7.bits is byte-identical to that file)
+r47-00007.bits: 47 terms; 6 distinct lines
+slot variant perm (2, 1, 0) transposes 010: in the stabilizer, term permutation with 9 fixed terms
+  0,4,6,13,14,18,23,27,33,36,44 -> 3,7,9,11,14,18,21,23,27,32,45  (another line of the file)
+  1,3,4,12,13,14,18,27,32,38,41 -> 1,3,4,12,13,14,18,27,32,38,41  (itself)
+  1,3,4,12,13,14,32,34,38,40,41 -> 1,3,4,12,13,14,32,34,38,40,41  (itself)
+  1,4,12,22,26,30,33,34,37,40,43 -> 5,12,30,31,32,34,35,40,41,45,46  (another line of the file)
+  3,7,9,11,14,18,21,23,27,32,45 -> 0,4,6,13,14,18,23,27,33,36,44  (another line of the file)
+  5,12,30,31,32,34,35,40,41,45,46 -> 1,4,12,22,26,30,33,34,37,40,43  (another line of the file)
+4 orbits under the slot-symmetry elements found: sizes [1, 1, 2, 2]

@@ -3001,10 +3001,19 @@ the two source papers for this track):
   km47 9,109 / at47 10,518 / ref47 9,267 / proj47_5 9,783 ALL UNIQUE, projkm47_7 12,285 of 12,291 distinct unique and
   6 OPEN (1.3-2.5 s per line).  -> NO OTHER 47 WITHIN 11 PRODUCTS of km47, at47, ref47, proj47_5 (exact); projkm47_7
   the same except six 11-subsets, exactly its six R lines (refuted for reduction: no 46 there): factors span 7 dims in
-  every slot, slice spaces four short of 11, so the alternative question needs depth 4 (not run; cost per line about
-  127^2 depth-3 searches of a coset).  The 12,297 input lines held each of the six twice (R line + A line).  The
-  class's slot-symmetry element (perm (2,1,0), transposes 010) fixes two of the six and swaps the other four in pairs
-  (proj/kres_line_orbits.py): FOUR lines up to symmetry.
+  every slot, slice spaces four short of 11, so the alternative question needs depth 4 (run 2026-11-12, next entry;
+  cost per line about 127^2 depth-3 searches of a coset).  The 12,297 input lines held each of the six twice (R line +
+  A line).  The class's slot-symmetry element (perm (2,1,0), transposes 010) fixes two of the six and swaps the other
+  four in pairs (proj/kres_line_orbits.py): FOUR lines up to symmetry.
+  2026-11-12 14:15: kres DEPTH 4 DONE on those four (068d3de: --shard i/n partitions the decider's first-level
+  extensions by index mod n; driver proj/kres_census_k11_alt4.zsh + _job.zsh, log
+  proj/logs/kres_census_k11_alt4_2026-11-12.txt): ALL FOUR UNIQUE, so all six are.  -> NO OTHER 47 WITHIN 11 PRODUCTS
+  OF ANY OF THE FIVE CLASSES (exact), the same range as the 46 statement; k = 11 complete for both questions.  96
+  shards per line on 12 workers, 384 jobs all exit 0 "1 unique", every shard exhausted, extension counts add up to
+  16,129 per line; 54.4 single-core hours (6.5 / 8.5 / 8.5 / 31.0; the probe said 45), wall 10:10-14:15.  Controls:
+  planted alternatives (proj/kres_plant_flip.py) found and verified at delta 3 and 4, three seeds each, and through
+  the sharded job script in the shards holding the unsharded runs' finds (seed 3's extension 128 in shard 32/96; 12
+  shards of seed 1 without one say unique); km47 depth-3 regression unique in 3 shards; cargo test 4/4.
   Earlier slot-symmetry quotients (s3cnf, Oct 18):
   rank 49 SAT in 6 min, rank 47 no scheme in 8 h (53 shapes UNSAT, 91 open).  The concise reply to Alexandre now carries his
   three answers and the new-families question (doc/letters/reply_alexandre_2026-11-09_short.md, 675 words).

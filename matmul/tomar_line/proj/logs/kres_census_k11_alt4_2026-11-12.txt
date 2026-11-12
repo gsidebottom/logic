@@ -1,0 +1,793 @@
+kres depth 4 at k = 11: projkm47_7's six 11-subsets left alt-open at depth 3 (2026-11-12)
+================================================================================
+Scheme: projkm47_7 representative (scratch wp/reps/projkm47_7.bits = proj/found47_km56/d180/r47-00007.bits).
+Binary: src/bin/kres.rs at 068d3de (--shard i/n, --progress), built as scratch kres/build/kres_d4.
+Scratch prefix $S = the session scratchpad (see matmul/session_data/README.md).
+
+The six lines (dims 7,7,7 in every slot; the decider's direction has m = 7, target 11, delta 4) and their
+orbits under the class's slot-symmetry element (perm (2,1,0), transposes 010; proj/kres_line_orbits.py, log
+kres_census_k11_alt3_2026-11-12.txt):
+  run line 3   0,4,6,13,14,18,23,27,33,36,44     <-> 3,7,9,11,14,18,21,23,27,32,45
+  run line 1   1,3,4,12,13,14,18,27,32,38,41     fixed
+  run line 2   1,3,4,12,13,14,32,34,38,40,41     fixed
+  run line 4   1,4,12,22,26,30,33,34,37,40,43    <-> 5,12,30,31,32,34,35,40,41,45,46
+A verdict is constant on an orbit, so the four run lines settle all six.
+
+Method: the decider's generic level (delta >= 3) extends the slice space S by every rank-one element
+N = kron(x, y) outside S (16,129 first-level extensions for 7x7 slices) and runs the depth-3 search on each.
+--shard i/n keeps the extensions whose loop index is i mod n, so the n runs partition the search exactly:
+a line has an alternative iff some shard reports one, and it is unique iff every shard reports unique.
+96 shards per line, one core each, a pool of 12 workers (proj/kres_census_k11_alt4.zsh with
+kres_census_k11_alt4_job.zsh), cap 7200 s per job.
+
+## RESULT
+
+  run line   shards   exit 0 + '1 unique'   first-level extensions   single-core hours   longest shard
+  1          96       96                    16129 (16128 outside S)  8.46                329 s
+  2          96       96                    16129 (16128 outside S)  8.45                329 s
+  3          96       96                    16129 (16128 outside S)  6.54                259 s
+  4          96       96                    16129 (16129 outside S)  30.98               1788 s
+
+All 384 jobs exited 0 with 'c k=11: 1 unique'; every shard's progress log ends 'exhausted' and its out file is
+empty; no ALTERNATIVES, REDUCIBLE or open verdict anywhere.  ALL FOUR LINES UNIQUE, hence all six (orbits).
+With the depth-3 pass (kres_census_k11_alt3_2026-11-12.txt): NO OTHER RANK-47 SCHEME SHARES 36 OR MORE
+PRODUCTS with a scheme of any of the five classes km47, at47, ref47, proj47_5, projkm47_7 (exact, k <= 11).
+Total 54.4 single-core hours (the 3-minute probe below predicted about 45); wall 10:10 to 14:15.
+
+## CONTROLS BEFORE THE LAUNCH
+
+### planted flips (proj/kres_plant_flip.py): k products with factor spans 7,7,7, two sharing a c-factor, so a
+### known alternative exists (checked on the tensor); alt must say YES, verified=1
+
+$ S=$S; tail -5 "$S/kres/build/build_d4.log"; cp /Users/greg/projects/logic/target/release/kres "$S/kres/build/kres_d4" && ls -la "$S/kres/build/kres_d4"; cd /Users/greg/projects/logic && /opt/homebrew/bin/timeout 120 "$S/kres/build/kres_d4" 4 4 4 "$S/kres/deep/d4/plant_k10_s1.bits" --subset 0,1,2,3,4,5,6,7,8,9 --maxdelta 3 --maxdelta-alt 3 --no-census 2>&1 | cut -c1-300
+subset k=10 idx=0,1,2,3,4,5,6,7,8,9 factor-span dims 7,7,7
+  direction 0 (slices over slots 1 x 2, 7x7 matrices): flattening rank 7, original space dim 10
+  direction 1 (slices over slots 0 x 2, 7x7 matrices): flattening rank 7, original space dim 10
+  direction 2 (slices over slots 0 x 1, 7x7 matrices): flattening rank 7, original space dim 10
+  reduce: NO (deficient, delta = 2) 0.000 s
+  alt: YES, 10 products, verified=1 (deficient, delta = 3) 0.000 s
+    new=1110110010111110/1001110010111010/0111001110100110,0011100100101100/0010000000010111/0111001110100110,0011110110010010/0111101101101111/1011001111011100,0010000010000001/1100011011011000/0000110010110111,0010111000000001/1000010101100000/1011101010101100,1001010001010001/1011011101100010/101
+(progress lines omitted: 0)
+
+$ S=$S; cd /Users/greg/projects/logic && for sd in 1 2 3; do echo "== k=11 seed $sd"; /opt/homebrew/bin/timeout 120 "$S/kres/build/kres_d4" 4 4 4 "$S/kres/deep/d4/plant_k11_s$sd.bits" --subset 0,1,2,3,4,5,6,7,8,9,10 --maxdelta 3 --maxdelta-alt 4 --no-census --progress 2>&1 | grep -v '^    new=' | cut -c1-200; done; for sd in 2 3; do echo "== k=10 seed $sd"; /opt/homebrew/bin/timeout 120 "$S/kres/build/kres_d4" 4 4 4 "$S/kres/deep/d4/plant_k10_s$sd.bits" --subset 0,1,2,3,4,5,6,7,8,9 --maxdelta 3 --maxdelta-alt 3 --no-census 2>&1 | grep -E 'alt|reduce' | cut -c1-200; done
+== k=11 seed 1
+subset k=11 idx=0,1,2,3,4,5,6,7,8,9,10 factor-span dims 7,7,7
+  direction 0 (slices over slots 1 x 2, 7x7 matrices): flattening rank 7, original space dim 11
+  direction 1 (slices over slots 0 x 2, 7x7 matrices): flattening rank 7, original space dim 11
+  direction 2 (slices over slots 0 x 1, 7x7 matrices): flattening rank 7, original space dim 11
+p shard 0/1: 16129 of 16129 first-level candidates, delta 3, 7x7 slices, dim S 7
+p shard 0/1: exhausted 16129 candidates (16128 outside S) in 0.4 s
+  reduce: NO (deficient, delta = 3) 0.359 s
+p shard 0/1: 16129 of 16129 first-level candidates, delta 4, 7x7 slices, dim S 7
+p shard 0/1: FOUND at candidate 0 (x=1, y=1) after 1 of 16129, 0.0 s
+  alt: YES, 11 products, verified=1 (deficient, delta = 4) 0.017 s
+== k=11 seed 2
+subset k=11 idx=0,1,2,3,4,5,6,7,8,9,10 factor-span dims 7,7,7
+  direction 0 (slices over slots 1 x 2, 7x7 matrices): flattening rank 7, original space dim 11
+  direction 1 (slices over slots 0 x 2, 7x7 matrices): flattening rank 7, original space dim 11
+  direction 2 (slices over slots 0 x 1, 7x7 matrices): flattening rank 7, original space dim 11
+p shard 0/1: 16129 of 16129 first-level candidates, delta 3, 7x7 slices, dim S 7
+p shard 0/1: exhausted 16129 candidates (16128 outside S) in 0.5 s
+  reduce: NO (deficient, delta = 3) 0.533 s
+p shard 0/1: 16129 of 16129 first-level candidates, delta 4, 7x7 slices, dim S 7
+p shard 0/1: FOUND at candidate 0 (x=1, y=1) after 1 of 16129, 0.0 s
+  alt: YES, 11 products, verified=1 (deficient, delta = 4) 0.022 s
+== k=11 seed 3
+subset k=11 idx=0,1,2,3,4,5,6,7,8,9,10 factor-span dims 7,7,7
+  direction 0 (slices over slots 1 x 2, 7x7 matrices): flattening rank 7, original space dim 11
+  direction 1 (slices over slots 0 x 2, 7x7 matrices): flattening rank 7, original space dim 11
+  direction 2 (slices over slots 0 x 1, 7x7 matrices): flattening rank 7, original space dim 11
+p shard 0/1: 16129 of 16129 first-level candidates, delta 3, 7x7 slices, dim S 7
+p shard 0/1: exhausted 16129 candidates (16126 outside S) in 0.0 s
+  reduce: NO (deficient, delta = 3) 0.013 s
+p shard 0/1: 16129 of 16129 first-level candidates, delta 4, 7x7 slices, dim S 7
+p shard 0/1: FOUND at candidate 128 (x=2, y=2) after 129 of 16129, 2.8 s
+  alt: YES, 11 products, verified=1 (deficient, delta = 4) 2.844 s
+== k=10 seed 2
+  reduce: NO (deficient, delta = 2) 0.000 s
+  alt: YES, 10 products, verified=1 (deficient, delta = 3) 0.000 s
+== k=10 seed 3
+  reduce: NO (deficient, delta = 2) 0.000 s
+  alt: YES, 10 products, verified=1 (deficient, delta = 3) 0.000 s
+(progress lines omitted: 300)
+
+### regression: 24 km47 depth-3 lines, unsharded and in three shards (expect unique everywhere; shard times
+### add up to about the unsharded time), and the four lines still alt-open at depth 3
+
+## regression: 24 km47 depth-3 lines (P7 open2 head), unsharded
+c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+c census d=1: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+c census d=2: dim G 47 of 47, rank-one elements 47 (extra 0)
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/km47.bits; 24 candidate lines from $S/kres/deep/d4/reg24_km47.txt; mode alt; maxdelta 2 / alt 3
+c k=11: 24 unique
+c 43.7 s
+c wrote 0 lines to $S/kres/deep/d4/reg24_all.txt
+## shard 0/3
+c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+c census d=1: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+c census d=2: dim G 47 of 47, rank-one elements 47 (extra 0)
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/km47.bits; 24 candidate lines from $S/kres/deep/d4/reg24_km47.txt; mode alt; maxdelta 2 / alt 3
+c k=11: 24 unique
+c 15.2 s
+c wrote 0 lines to $S/kres/deep/d4/reg24_s0.txt
+## shard 1/3
+c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+c census d=1: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+c census d=2: dim G 47 of 47, rank-one elements 47 (extra 0)
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/km47.bits; 24 candidate lines from $S/kres/deep/d4/reg24_km47.txt; mode alt; maxdelta 2 / alt 3
+c k=11: 24 unique
+c 15.0 s
+c wrote 0 lines to $S/kres/deep/d4/reg24_s1.txt
+## shard 2/3
+c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+c census d=1: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+c census d=2: dim G 47 of 47, rank-one elements 47 (extra 0)
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/km47.bits; 24 candidate lines from $S/kres/deep/d4/reg24_km47.txt; mode alt; maxdelta 2 / alt 3
+c k=11: 24 unique
+c 14.8 s
+c wrote 0 lines to $S/kres/deep/d4/reg24_s2.txt
+## projkm47_7's four lines at depth 3 (expect open)
+c census d=0: dim G 47 of 47, rank-one elements 47 (extra 0)
+c census d=1: dim G 47 of 47, rank-one elements 48 (extra 1, index-set sizes [47])
+c census d=2: dim G 47 of 47, rank-one elements 47 (extra 0)
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/projkm47_7.bits; 4 candidate lines from $S/kres/deep/d4/rep4.txt; mode alt; maxdelta 2 / alt 3
+c k=11: 4 alt-open
+c 0.0 s
+c wrote 4 lines to $S/kres/deep/d4/rep4_d3.txt
+A k=11 dims=7,7,7 idx=1,3,4,12,13,14,18,27,32,38,41
+A k=11 dims=7,7,7 idx=1,3,4,12,13,14,32,34,38,40,41
+A k=11 dims=7,7,7 idx=0,4,6,13,14,18,23,27,33,36,44
+A k=11 dims=7,7,7 idx=1,4,12,22,26,30,33,34,37,40,43
+
+### timing probe: shard 0/64 of each line at depth 4, 180 s cap (exit 124 = the cap, as intended)
+
+#### line 1
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/projkm47_7.bits; 1 candidate lines from $S/kres/deep/d4/line1.txt; mode alt; maxdelta 2 / alt 4
+p shard 0/64: 253 of 16129 first-level candidates, delta 4, 7x7 slices, dim S 7
+p shard 0/64: 2/253 (2 outside S) 3.3 s, est. total 413 s
+p shard 0/64: 4/253 (4 outside S) 6.5 s, est. total 413 s
+p shard 0/64: 6/253 (6 outside S) 9.9 s, est. total 418 s
+p shard 0/64: 8/253 (8 outside S) 13.5 s, est. total 428 s
+p shard 0/64: 10/253 (10 outside S) 17.1 s, est. total 432 s
+p shard 0/64: 12/253 (12 outside S) 20.2 s, est. total 425 s
+p shard 0/64: 14/253 (14 outside S) 23.3 s, est. total 421 s
+p shard 0/64: 16/253 (16 outside S) 27.1 s, est. total 428 s
+p shard 0/64: 18/253 (18 outside S) 30.2 s, est. total 424 s
+p shard 0/64: 20/253 (20 outside S) 33.3 s, est. total 422 s
+p shard 0/64: 22/253 (22 outside S) 36.4 s, est. total 419 s
+p shard 0/64: 24/253 (24 outside S) 40.3 s, est. total 425 s
+p shard 0/64: 26/253 (26 outside S) 43.4 s, est. total 422 s
+p shard 0/64: 28/253 (28 outside S) 46.4 s, est. total 419 s
+p shard 0/64: 30/253 (30 outside S) 49.5 s, est. total 417 s
+p shard 0/64: 32/253 (32 outside S) 53.3 s, est. total 421 s
+p shard 0/64: 34/253 (34 outside S) 56.3 s, est. total 419 s
+p shard 0/64: 36/253 (36 outside S) 59.5 s, est. total 418 s
+p shard 0/64: 38/253 (38 outside S) 62.6 s, est. total 417 s
+p shard 0/64: 40/253 (40 outside S) 66.1 s, est. total 418 s
+p shard 0/64: 42/253 (42 outside S) 69.2 s, est. total 417 s
+p shard 0/64: 44/253 (44 outside S) 72.3 s, est. total 416 s
+p shard 0/64: 46/253 (46 outside S) 75.4 s, est. total 415 s
+p shard 0/64: 48/253 (48 outside S) 78.7 s, est. total 415 s
+p shard 0/64: 50/253 (50 outside S) 81.7 s, est. total 413 s
+p shard 0/64: 52/253 (52 outside S) 84.8 s, est. total 413 s
+p shard 0/64: 54/253 (54 outside S) 87.9 s, est. total 412 s
+p shard 0/64: 56/253 (56 outside S) 90.9 s, est. total 411 s
+p shard 0/64: 58/253 (58 outside S) 94.0 s, est. total 410 s
+p shard 0/64: 60/253 (60 outside S) 97.1 s, est. total 409 s
+p shard 0/64: 62/253 (62 outside S) 100.2 s, est. total 409 s
+p shard 0/64: 64/253 (64 outside S) 107.1 s, est. total 423 s
+p shard 0/64: 66/253 (66 outside S) 110.2 s, est. total 422 s
+p shard 0/64: 68/253 (68 outside S) 113.3 s, est. total 422 s
+p shard 0/64: 70/253 (70 outside S) 116.4 s, est. total 421 s
+p shard 0/64: 72/253 (72 outside S) 120.1 s, est. total 422 s
+p shard 0/64: 74/253 (74 outside S) 123.1 s, est. total 421 s
+p shard 0/64: 76/253 (76 outside S) 126.2 s, est. total 420 s
+p shard 0/64: 78/253 (78 outside S) 129.3 s, est. total 419 s
+p shard 0/64: 80/253 (80 outside S) 132.4 s, est. total 419 s
+p shard 0/64: 82/253 (82 outside S) 135.5 s, est. total 418 s
+p shard 0/64: 84/253 (84 outside S) 138.5 s, est. total 417 s
+p shard 0/64: 86/253 (86 outside S) 141.6 s, est. total 417 s
+p shard 0/64: 88/253 (88 outside S) 144.7 s, est. total 416 s
+p shard 0/64: 90/253 (90 outside S) 147.8 s, est. total 415 s
+p shard 0/64: 92/253 (92 outside S) 150.8 s, est. total 415 s
+p shard 0/64: 94/253 (94 outside S) 153.9 s, est. total 414 s
+p shard 0/64: 96/253 (96 outside S) 158.6 s, est. total 418 s
+p shard 0/64: 98/253 (98 outside S) 161.7 s, est. total 417 s
+p shard 0/64: 100/253 (100 outside S) 165.2 s, est. total 418 s
+p shard 0/64: 102/253 (102 outside S) 168.7 s, est. total 418 s
+p shard 0/64: 104/253 (104 outside S) 172.2 s, est. total 419 s
+p shard 0/64: 106/253 (106 outside S) 175.3 s, est. total 418 s
+p shard 0/64: 108/253 (108 outside S) 178.4 s, est. total 418 s
+exit 124
+
+#### line 2
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/projkm47_7.bits; 1 candidate lines from $S/kres/deep/d4/line2.txt; mode alt; maxdelta 2 / alt 4
+p shard 0/64: 253 of 16129 first-level candidates, delta 4, 7x7 slices, dim S 7
+p shard 0/64: 2/253 (2 outside S) 5.2 s, est. total 654 s
+p shard 0/64: 4/253 (4 outside S) 8.1 s, est. total 512 s
+p shard 0/64: 6/253 (6 outside S) 11.6 s, est. total 490 s
+p shard 0/64: 8/253 (8 outside S) 19.1 s, est. total 603 s
+p shard 0/64: 10/253 (10 outside S) 22.2 s, est. total 562 s
+p shard 0/64: 12/253 (12 outside S) 25.3 s, est. total 533 s
+p shard 0/64: 14/253 (14 outside S) 28.4 s, est. total 514 s
+p shard 0/64: 16/253 (16 outside S) 32.1 s, est. total 507 s
+p shard 0/64: 18/253 (18 outside S) 35.2 s, est. total 495 s
+p shard 0/64: 20/253 (20 outside S) 38.4 s, est. total 485 s
+p shard 0/64: 22/253 (22 outside S) 41.4 s, est. total 476 s
+p shard 0/64: 24/253 (24 outside S) 46.1 s, est. total 486 s
+p shard 0/64: 26/253 (26 outside S) 49.2 s, est. total 479 s
+p shard 0/64: 28/253 (28 outside S) 52.3 s, est. total 472 s
+p shard 0/64: 30/253 (30 outside S) 55.3 s, est. total 467 s
+p shard 0/64: 32/253 (32 outside S) 59.0 s, est. total 466 s
+p shard 0/64: 34/253 (34 outside S) 62.0 s, est. total 461 s
+p shard 0/64: 36/253 (36 outside S) 66.3 s, est. total 466 s
+p shard 0/64: 38/253 (38 outside S) 69.3 s, est. total 462 s
+p shard 0/64: 40/253 (40 outside S) 72.4 s, est. total 458 s
+p shard 0/64: 42/253 (42 outside S) 75.5 s, est. total 455 s
+p shard 0/64: 44/253 (44 outside S) 78.7 s, est. total 453 s
+p shard 0/64: 46/253 (46 outside S) 82.1 s, est. total 452 s
+p shard 0/64: 48/253 (48 outside S) 85.8 s, est. total 452 s
+p shard 0/64: 50/253 (50 outside S) 88.8 s, est. total 449 s
+p shard 0/64: 52/253 (52 outside S) 91.9 s, est. total 447 s
+p shard 0/64: 54/253 (54 outside S) 94.9 s, est. total 445 s
+p shard 0/64: 56/253 (56 outside S) 98.0 s, est. total 443 s
+p shard 0/64: 58/253 (58 outside S) 101.1 s, est. total 441 s
+p shard 0/64: 60/253 (60 outside S) 104.1 s, est. total 439 s
+p shard 0/64: 62/253 (62 outside S) 107.2 s, est. total 438 s
+p shard 0/64: 64/253 (64 outside S) 112.3 s, est. total 444 s
+p shard 0/64: 66/253 (66 outside S) 115.3 s, est. total 442 s
+p shard 0/64: 68/253 (68 outside S) 118.4 s, est. total 441 s
+p shard 0/64: 70/253 (70 outside S) 121.5 s, est. total 439 s
+p shard 0/64: 72/253 (72 outside S) 127.1 s, est. total 447 s
+p shard 0/64: 74/253 (74 outside S) 130.6 s, est. total 447 s
+p shard 0/64: 76/253 (76 outside S) 133.7 s, est. total 445 s
+p shard 0/64: 78/253 (78 outside S) 136.8 s, est. total 444 s
+p shard 0/64: 80/253 (80 outside S) 139.9 s, est. total 443 s
+p shard 0/64: 82/253 (82 outside S) 142.9 s, est. total 441 s
+p shard 0/64: 84/253 (84 outside S) 146.0 s, est. total 440 s
+p shard 0/64: 86/253 (86 outside S) 149.1 s, est. total 439 s
+p shard 0/64: 88/253 (88 outside S) 152.4 s, est. total 438 s
+p shard 0/64: 90/253 (90 outside S) 155.4 s, est. total 437 s
+p shard 0/64: 92/253 (92 outside S) 158.5 s, est. total 436 s
+p shard 0/64: 94/253 (94 outside S) 161.6 s, est. total 435 s
+p shard 0/64: 96/253 (96 outside S) 165.1 s, est. total 435 s
+p shard 0/64: 98/253 (98 outside S) 168.2 s, est. total 434 s
+p shard 0/64: 100/253 (100 outside S) 171.7 s, est. total 434 s
+p shard 0/64: 102/253 (102 outside S) 175.0 s, est. total 434 s
+p shard 0/64: 104/253 (104 outside S) 178.1 s, est. total 433 s
+exit 124
+
+#### line 3
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/projkm47_7.bits; 1 candidate lines from $S/kres/deep/d4/line3.txt; mode alt; maxdelta 2 / alt 4
+p shard 0/64: 253 of 16129 first-level candidates, delta 4, 7x7 slices, dim S 7
+p shard 0/64: 2/253 (2 outside S) 2.4 s, est. total 309 s
+p shard 0/64: 4/253 (4 outside S) 5.7 s, est. total 361 s
+p shard 0/64: 6/253 (6 outside S) 8.1 s, est. total 341 s
+p shard 0/64: 8/253 (8 outside S) 11.0 s, est. total 348 s
+p shard 0/64: 10/253 (10 outside S) 14.1 s, est. total 357 s
+p shard 0/64: 12/253 (12 outside S) 16.5 s, est. total 347 s
+p shard 0/64: 14/253 (14 outside S) 19.1 s, est. total 344 s
+p shard 0/64: 16/253 (16 outside S) 24.9 s, est. total 394 s
+p shard 0/64: 18/253 (18 outside S) 27.3 s, est. total 384 s
+p shard 0/64: 20/253 (20 outside S) 29.8 s, est. total 376 s
+p shard 0/64: 22/253 (22 outside S) 32.2 s, est. total 370 s
+p shard 0/64: 24/253 (24 outside S) 34.6 s, est. total 365 s
+p shard 0/64: 26/253 (26 outside S) 37.0 s, est. total 360 s
+p shard 0/64: 28/253 (28 outside S) 39.7 s, est. total 359 s
+p shard 0/64: 30/253 (30 outside S) 42.1 s, est. total 355 s
+p shard 0/64: 32/253 (32 outside S) 45.7 s, est. total 361 s
+p shard 0/64: 34/253 (34 outside S) 48.3 s, est. total 360 s
+p shard 0/64: 36/253 (36 outside S) 51.7 s, est. total 363 s
+p shard 0/64: 38/253 (38 outside S) 54.1 s, est. total 360 s
+p shard 0/64: 40/253 (40 outside S) 56.5 s, est. total 357 s
+p shard 0/64: 42/253 (42 outside S) 58.9 s, est. total 355 s
+p shard 0/64: 44/253 (44 outside S) 61.8 s, est. total 355 s
+p shard 0/64: 46/253 (46 outside S) 64.5 s, est. total 355 s
+p shard 0/64: 48/253 (48 outside S) 66.9 s, est. total 353 s
+p shard 0/64: 50/253 (50 outside S) 69.7 s, est. total 353 s
+p shard 0/64: 52/253 (52 outside S) 72.1 s, est. total 351 s
+p shard 0/64: 54/253 (54 outside S) 74.4 s, est. total 349 s
+p shard 0/64: 56/253 (56 outside S) 76.8 s, est. total 347 s
+p shard 0/64: 58/253 (58 outside S) 79.2 s, est. total 346 s
+p shard 0/64: 60/253 (60 outside S) 81.6 s, est. total 344 s
+p shard 0/64: 62/253 (62 outside S) 83.9 s, est. total 342 s
+p shard 0/64: 64/253 (64 outside S) 87.1 s, est. total 344 s
+p shard 0/64: 66/253 (66 outside S) 89.8 s, est. total 344 s
+p shard 0/64: 68/253 (68 outside S) 92.9 s, est. total 346 s
+p shard 0/64: 70/253 (70 outside S) 95.3 s, est. total 344 s
+p shard 0/64: 72/253 (72 outside S) 97.6 s, est. total 343 s
+p shard 0/64: 74/253 (74 outside S) 100.0 s, est. total 342 s
+p shard 0/64: 76/253 (76 outside S) 102.4 s, est. total 341 s
+p shard 0/64: 78/253 (78 outside S) 105.1 s, est. total 341 s
+p shard 0/64: 80/253 (80 outside S) 107.5 s, est. total 340 s
+p shard 0/64: 82/253 (82 outside S) 109.9 s, est. total 339 s
+p shard 0/64: 84/253 (84 outside S) 112.3 s, est. total 338 s
+p shard 0/64: 86/253 (86 outside S) 114.7 s, est. total 337 s
+p shard 0/64: 88/253 (88 outside S) 117.0 s, est. total 336 s
+p shard 0/64: 90/253 (90 outside S) 119.4 s, est. total 336 s
+p shard 0/64: 92/253 (92 outside S) 121.8 s, est. total 335 s
+p shard 0/64: 94/253 (94 outside S) 124.1 s, est. total 334 s
+p shard 0/64: 96/253 (96 outside S) 127.0 s, est. total 335 s
+p shard 0/64: 98/253 (98 outside S) 129.8 s, est. total 335 s
+p shard 0/64: 100/253 (100 outside S) 132.2 s, est. total 335 s
+p shard 0/64: 102/253 (102 outside S) 134.6 s, est. total 334 s
+p shard 0/64: 104/253 (104 outside S) 137.0 s, est. total 333 s
+p shard 0/64: 106/253 (106 outside S) 139.4 s, est. total 333 s
+p shard 0/64: 108/253 (108 outside S) 141.7 s, est. total 332 s
+p shard 0/64: 110/253 (110 outside S) 144.1 s, est. total 331 s
+p shard 0/64: 112/253 (112 outside S) 146.5 s, est. total 331 s
+p shard 0/64: 114/253 (114 outside S) 148.9 s, est. total 331 s
+p shard 0/64: 116/253 (116 outside S) 151.3 s, est. total 330 s
+p shard 0/64: 118/253 (118 outside S) 153.6 s, est. total 329 s
+p shard 0/64: 120/253 (120 outside S) 156.0 s, est. total 329 s
+p shard 0/64: 122/253 (122 outside S) 158.4 s, est. total 328 s
+p shard 0/64: 124/253 (124 outside S) 160.8 s, est. total 328 s
+p shard 0/64: 126/253 (126 outside S) 163.1 s, est. total 328 s
+p shard 0/64: 128/253 (128 outside S) 166.3 s, est. total 329 s
+p shard 0/64: 130/253 (130 outside S) 171.1 s, est. total 333 s
+p shard 0/64: 132/253 (132 outside S) 173.9 s, est. total 333 s
+p shard 0/64: 134/253 (134 outside S) 176.3 s, est. total 333 s
+p shard 0/64: 136/253 (136 outside S) 178.9 s, est. total 333 s
+exit 124
+
+#### line 4
+c kres --lines: <4,4,4> rank 47 from $S/wp/reps/projkm47_7.bits; 1 candidate lines from $S/kres/deep/d4/line4.txt; mode alt; maxdelta 2 / alt 4
+p shard 0/64: 253 of 16129 first-level candidates, delta 4, 7x7 slices, dim S 7
+p shard 0/64: 2/253 (2 outside S) 13.3 s, est. total 1685 s
+p shard 0/64: 4/253 (4 outside S) 23.7 s, est. total 1497 s
+p shard 0/64: 6/253 (6 outside S) 34.2 s, est. total 1443 s
+p shard 0/64: 8/253 (8 outside S) 49.7 s, est. total 1570 s
+p shard 0/64: 10/253 (10 outside S) 60.3 s, est. total 1525 s
+p shard 0/64: 12/253 (12 outside S) 70.9 s, est. total 1495 s
+p shard 0/64: 14/253 (14 outside S) 80.1 s, est. total 1448 s
+p shard 0/64: 16/253 (16 outside S) 92.1 s, est. total 1456 s
+p shard 0/64: 18/253 (18 outside S) 101.4 s, est. total 1425 s
+p shard 0/64: 20/253 (20 outside S) 110.7 s, est. total 1400 s
+p shard 0/64: 22/253 (22 outside S) 119.9 s, est. total 1379 s
+p shard 0/64: 24/253 (24 outside S) 130.5 s, est. total 1376 s
+p shard 0/64: 26/253 (26 outside S) 139.7 s, est. total 1360 s
+p shard 0/64: 28/253 (28 outside S) 150.1 s, est. total 1356 s
+p shard 0/64: 30/253 (30 outside S) 160.6 s, est. total 1354 s
+p shard 0/64: 32/253 (32 outside S) 173.7 s, est. total 1373 s
+exit 124
+
+## THE RUN: run/driver.log
+
+=== d4 start 2026-11-12 10:09:53: lines 0, 96 shards each, 12 workers, cap 7200 s per job
+=== d4 done 2026-11-12 10:10:55
+    (the first launch's jobs.txt had 96 jobs of a line 0 that does not exist; xargs was stopped at 10:10 after starting l4 s0-s11, which run on)
+=== d4 start 2026-11-12 10:11:23: lines 1 2 3 4 (4 first), 96 shards each, 12 workers, cap 7200 s per job, skipping [4:0 4:1 4:2 4:3 4:4 4:5 4:6 4:7 4:8 4:9 4:10 4:11]
+    372 jobs
+l4 s5/96 exit 0 c k=11: 1 unique 1777 s 10:39:30
+l4 s1/96 exit 0 c k=11: 1 unique 1778 s 10:39:31
+l4 s8/96 exit 0 c k=11: 1 unique 1780 s 10:39:33
+l4 s4/96 exit 0 c k=11: 1 unique 1780 s 10:39:33
+l4 s6/96 exit 0 c k=11: 1 unique 1783 s 10:39:36
+l4 s7/96 exit 0 c k=11: 1 unique 1784 s 10:39:37
+l4 s3/96 exit 0 c k=11: 1 unique 1784 s 10:39:37
+l4 s10/96 exit 0 c k=11: 1 unique 1784 s 10:39:37
+l4 s9/96 exit 0 c k=11: 1 unique 1785 s 10:39:38
+l4 s11/96 exit 0 c k=11: 1 unique 1786 s 10:39:39
+l4 s2/96 exit 0 c k=11: 1 unique 1787 s 10:39:40
+l4 s0/96 exit 0 c k=11: 1 unique 1788 s 10:39:41
+l4 s20/96 exit 0 c k=11: 1 unique 1765 s 10:40:48
+l4 s17/96 exit 0 c k=11: 1 unique 1766 s 10:40:49
+l4 s14/96 exit 0 c k=11: 1 unique 1768 s 10:40:51
+l4 s12/96 exit 0 c k=11: 1 unique 1769 s 10:40:52
+l4 s15/96 exit 0 c k=11: 1 unique 1769 s 10:40:52
+l4 s16/96 exit 0 c k=11: 1 unique 1771 s 10:40:54
+l4 s23/96 exit 0 c k=11: 1 unique 1771 s 10:40:54
+l4 s19/96 exit 0 c k=11: 1 unique 1773 s 10:40:56
+l4 s22/96 exit 0 c k=11: 1 unique 1774 s 10:40:57
+l4 s18/96 exit 0 c k=11: 1 unique 1775 s 10:40:58
+l4 s13/96 exit 0 c k=11: 1 unique 1775 s 10:40:58
+l4 s21/96 exit 0 c k=11: 1 unique 1776 s 10:40:59
+l4 s24/96 exit 0 c k=11: 1 unique 951 s 10:56:39
+l4 s25/96 exit 0 c k=11: 1 unique 955 s 10:56:44
+l4 s35/96 exit 0 c k=11: 1 unique 952 s 10:56:51
+l4 s27/96 exit 0 c k=11: 1 unique 959 s 10:56:51
+l4 s32/96 exit 0 c k=11: 1 unique 956 s 10:56:53
+l4 s29/96 exit 0 c k=11: 1 unique 959 s 10:56:53
+l4 s26/96 exit 0 c k=11: 1 unique 963 s 10:56:54
+l4 s30/96 exit 0 c k=11: 1 unique 961 s 10:56:56
+l4 s28/96 exit 0 c k=11: 1 unique 964 s 10:56:56
+l4 s33/96 exit 0 c k=11: 1 unique 961 s 10:56:59
+l4 s31/96 exit 0 c k=11: 1 unique 965 s 10:57:01
+l4 s34/96 exit 0 c k=11: 1 unique 967 s 10:57:05
+l4 s36/96 exit 0 c k=11: 1 unique 957 s 11:12:36
+l4 s38/96 exit 0 c k=11: 1 unique 952 s 11:12:43
+l4 s37/96 exit 0 c k=11: 1 unique 961 s 11:12:45
+l4 s39/96 exit 0 c k=11: 1 unique 955 s 11:12:46
+l4 s42/96 exit 0 c k=11: 1 unique 955 s 11:12:49
+l4 s44/96 exit 0 c k=11: 1 unique 953 s 11:12:49
+l4 s41/96 exit 0 c k=11: 1 unique 958 s 11:12:51
+l4 s40/96 exit 0 c k=11: 1 unique 959 s 11:12:52
+l4 s43/96 exit 0 c k=11: 1 unique 956 s 11:12:52
+l4 s45/96 exit 0 c k=11: 1 unique 955 s 11:12:54
+l4 s47/96 exit 0 c k=11: 1 unique 954 s 11:12:59
+l4 s46/96 exit 0 c k=11: 1 unique 960 s 11:13:01
+l4 s48/96 exit 0 c k=11: 1 unique 956 s 11:28:32
+l4 s51/96 exit 0 c k=11: 1 unique 957 s 11:28:43
+l4 s49/96 exit 0 c k=11: 1 unique 961 s 11:28:44
+l4 s50/96 exit 0 c k=11: 1 unique 962 s 11:28:47
+l4 s54/96 exit 0 c k=11: 1 unique 957 s 11:28:48
+l4 s53/96 exit 0 c k=11: 1 unique 961 s 11:28:50
+l4 s55/96 exit 0 c k=11: 1 unique 960 s 11:28:52
+l4 s52/96 exit 0 c k=11: 1 unique 964 s 11:28:53
+l4 s57/96 exit 0 c k=11: 1 unique 959 s 11:28:53
+l4 s56/96 exit 0 c k=11: 1 unique 963 s 11:28:55
+l4 s58/96 exit 0 c k=11: 1 unique 957 s 11:28:56
+l4 s59/96 exit 0 c k=11: 1 unique 958 s 11:28:59
+l4 s60/96 exit 0 c k=11: 1 unique 947 s 11:44:19
+l4 s61/96 exit 0 c k=11: 1 unique 953 s 11:44:36
+l4 s62/96 exit 0 c k=11: 1 unique 954 s 11:44:38
+l4 s63/96 exit 0 c k=11: 1 unique 951 s 11:44:38
+l4 s66/96 exit 0 c k=11: 1 unique 954 s 11:44:46
+l4 s64/96 exit 0 c k=11: 1 unique 959 s 11:44:47
+l4 s70/96 exit 0 c k=11: 1 unique 952 s 11:44:48
+l4 s67/96 exit 0 c k=11: 1 unique 958 s 11:44:51
+l4 s65/96 exit 0 c k=11: 1 unique 962 s 11:44:52
+l4 s68/96 exit 0 c k=11: 1 unique 960 s 11:44:53
+l4 s69/96 exit 0 c k=11: 1 unique 958 s 11:44:53
+l4 s71/96 exit 0 c k=11: 1 unique 961 s 11:45:01
+l4 s72/96 exit 0 c k=11: 1 unique 958 s 12:00:17
+l4 s73/96 exit 0 c k=11: 1 unique 954 s 12:00:30
+l4 s75/96 exit 0 c k=11: 1 unique 953 s 12:00:31
+l4 s74/96 exit 0 c k=11: 1 unique 953 s 12:00:31
+l4 s76/96 exit 0 c k=11: 1 unique 956 s 12:00:42
+l4 s78/96 exit 0 c k=11: 1 unique 955 s 12:00:43
+l4 s77/96 exit 0 c k=11: 1 unique 957 s 12:00:44
+l4 s79/96 exit 0 c k=11: 1 unique 956 s 12:00:47
+l4 s81/96 exit 0 c k=11: 1 unique 955 s 12:00:48
+l4 s82/96 exit 0 c k=11: 1 unique 955 s 12:00:48
+l4 s80/96 exit 0 c k=11: 1 unique 960 s 12:00:52
+l4 s83/96 exit 0 c k=11: 1 unique 960 s 12:01:01
+l4 s84/96 exit 0 c k=11: 1 unique 957 s 12:16:14
+l4 s86/96 exit 0 c k=11: 1 unique 952 s 12:16:23
+l4 s85/96 exit 0 c k=11: 1 unique 957 s 12:16:27
+l4 s87/96 exit 0 c k=11: 1 unique 958 s 12:16:29
+l4 s88/96 exit 0 c k=11: 1 unique 952 s 12:16:34
+l4 s94/96 exit 0 c k=11: 1 unique 948 s 12:16:40
+l4 s91/96 exit 0 c k=11: 1 unique 953 s 12:16:40
+l4 s93/96 exit 0 c k=11: 1 unique 954 s 12:16:42
+l4 s89/96 exit 0 c k=11: 1 unique 959 s 12:16:42
+l4 s90/96 exit 0 c k=11: 1 unique 960 s 12:16:44
+l4 s92/96 exit 0 c k=11: 1 unique 957 s 12:16:45
+l4 s95/96 exit 0 c k=11: 1 unique 949 s 12:16:50
+l3 s0/96 exit 0 c k=11: 1 unique 251 s 12:20:38
+l3 s1/96 exit 0 c k=11: 1 unique 248 s 12:20:48
+l3 s2/96 exit 0 c k=11: 1 unique 247 s 12:20:49
+l3 s3/96 exit 0 c k=11: 1 unique 242 s 12:20:52
+l1 s0/96 exit 0 c k=11: 1 unique 315 s 12:21:29
+l2 s0/96 exit 0 c k=11: 1 unique 318 s 12:21:41
+l1 s1/96 exit 0 c k=11: 1 unique 318 s 12:21:47
+l1 s2/96 exit 0 c k=11: 1 unique 313 s 12:21:53
+l2 s1/96 exit 0 c k=11: 1 unique 322 s 12:21:56
+l2 s2/96 exit 0 c k=11: 1 unique 315 s 12:21:57
+l2 s3/96 exit 0 c k=11: 1 unique 315 s 12:22:00
+l1 s3/96 exit 0 c k=11: 1 unique 320 s 12:22:04
+l3 s4/96 exit 0 c k=11: 1 unique 244 s 12:24:53
+l3 s5/96 exit 0 c k=11: 1 unique 245 s 12:25:46
+l1 s4/96 exit 0 c k=11: 1 unique 319 s 12:25:57
+l3 s6/96 exit 0 c k=11: 1 unique 242 s 12:25:58
+l1 s5/96 exit 0 c k=11: 1 unique 315 s 12:26:07
+l3 s7/96 exit 0 c k=11: 1 unique 245 s 12:26:09
+l2 s4/96 exit 0 c k=11: 1 unique 321 s 12:26:09
+l2 s5/96 exit 0 c k=11: 1 unique 312 s 12:26:41
+l1 s6/96 exit 0 c k=11: 1 unique 314 s 12:27:01
+l2 s6/96 exit 0 c k=11: 1 unique 314 s 12:27:07
+l2 s7/96 exit 0 c k=11: 1 unique 318 s 12:27:18
+l1 s7/96 exit 0 c k=11: 1 unique 323 s 12:27:20
+l3 s8/96 exit 0 c k=11: 1 unique 247 s 12:30:04
+l3 s9/96 exit 0 c k=11: 1 unique 245 s 12:30:14
+l1 s8/96 exit 0 c k=11: 1 unique 322 s 12:30:15
+l3 s10/96 exit 0 c k=11: 1 unique 243 s 12:31:04
+l2 s8/96 exit 0 c k=11: 1 unique 322 s 12:31:08
+l1 s9/96 exit 0 c k=11: 1 unique 319 s 12:31:17
+l3 s11/96 exit 0 c k=11: 1 unique 243 s 12:31:23
+l1 s10/96 exit 0 c k=11: 1 unique 316 s 12:31:25
+l2 s9/96 exit 0 c k=11: 1 unique 319 s 12:31:26
+l2 s10/96 exit 0 c k=11: 1 unique 312 s 12:31:53
+l1 s11/96 exit 0 c k=11: 1 unique 316 s 12:32:23
+l2 s11/96 exit 0 c k=11: 1 unique 317 s 12:32:35
+l3 s12/96 exit 0 c k=11: 1 unique 244 s 12:34:19
+l1 s12/96 exit 0 c k=11: 1 unique 318 s 12:35:22
+l3 s13/96 exit 0 c k=11: 1 unique 246 s 12:35:23
+l3 s14/96 exit 0 c k=11: 1 unique 243 s 12:35:29
+l2 s12/96 exit 0 c k=11: 1 unique 327 s 12:35:41
+l1 s13/96 exit 0 c k=11: 1 unique 318 s 12:36:22
+l2 s13/96 exit 0 c k=11: 1 unique 321 s 12:36:29
+l3 s15/96 exit 0 c k=11: 1 unique 244 s 12:36:39
+l2 s14/96 exit 0 c k=11: 1 unique 316 s 12:36:41
+l1 s14/96 exit 0 c k=11: 1 unique 318 s 12:36:41
+l1 s15/96 exit 0 c k=11: 1 unique 318 s 12:37:11
+l2 s15/96 exit 0 c k=11: 1 unique 317 s 12:37:40
+l1 s16/96 exit 0 c k=11: 1 unique 316 s 12:39:35
+l3 s16/96 exit 0 c k=11: 1 unique 252 s 12:39:35
+l3 s17/96 exit 0 c k=11: 1 unique 244 s 12:40:26
+l2 s16/96 exit 0 c k=11: 1 unique 321 s 12:40:43
+l3 s18/96 exit 0 c k=11: 1 unique 245 s 12:40:46
+l1 s17/96 exit 0 c k=11: 1 unique 325 s 12:40:55
+l2 s17/96 exit 0 c k=11: 1 unique 321 s 12:41:02
+l3 s19/96 exit 0 c k=11: 1 unique 245 s 12:41:45
+l1 s18/96 exit 0 c k=11: 1 unique 323 s 12:41:52
+l2 s18/96 exit 0 c k=11: 1 unique 314 s 12:41:53
+l1 s19/96 exit 0 c k=11: 1 unique 315 s 12:41:56
+l2 s19/96 exit 0 c k=11: 1 unique 315 s 12:42:26
+l3 s20/96 exit 0 c k=11: 1 unique 244 s 12:44:30
+l2 s20/96 exit 0 c k=11: 1 unique 317 s 12:44:52
+l1 s20/96 exit 0 c k=11: 1 unique 318 s 12:44:53
+l3 s21/96 exit 0 c k=11: 1 unique 245 s 12:45:00
+l3 s22/96 exit 0 c k=11: 1 unique 245 s 12:45:57
+l1 s21/96 exit 0 c k=11: 1 unique 315 s 12:45:58
+l2 s21/96 exit 0 c k=11: 1 unique 315 s 12:46:01
+l1 s22/96 exit 0 c k=11: 1 unique 315 s 12:46:17
+l3 s23/96 exit 0 c k=11: 1 unique 241 s 12:46:27
+l2 s22/96 exit 0 c k=11: 1 unique 314 s 12:46:59
+l2 s23/96 exit 0 c k=11: 1 unique 312 s 12:47:08
+l1 s23/96 exit 0 c k=11: 1 unique 320 s 12:47:13
+l3 s24/96 exit 0 c k=11: 1 unique 249 s 12:49:02
+l1 s24/96 exit 0 c k=11: 1 unique 324 s 12:49:55
+l3 s25/96 exit 0 c k=11: 1 unique 245 s 12:50:03
+l1 s25/96 exit 0 c k=11: 1 unique 315 s 12:50:15
+l2 s24/96 exit 0 c k=11: 1 unique 325 s 12:50:17
+l3 s26/96 exit 0 c k=11: 1 unique 245 s 12:50:32
+l2 s25/96 exit 0 c k=11: 1 unique 317 s 12:51:14
+l3 s27/96 exit 0 c k=11: 1 unique 241 s 12:51:14
+l1 s26/96 exit 0 c k=11: 1 unique 319 s 12:51:20
+l2 s26/96 exit 0 c k=11: 1 unique 313 s 12:51:30
+l1 s27/96 exit 0 c k=11: 1 unique 313 s 12:52:12
+l2 s27/96 exit 0 c k=11: 1 unique 310 s 12:52:18
+l3 s28/96 exit 0 c k=11: 1 unique 248 s 12:54:11
+l1 s28/96 exit 0 c k=11: 1 unique 317 s 12:54:19
+l3 s29/96 exit 0 c k=11: 1 unique 248 s 12:54:40
+l2 s28/96 exit 0 c k=11: 1 unique 325 s 12:55:20
+l3 s30/96 exit 0 c k=11: 1 unique 251 s 12:55:31
+l1 s29/96 exit 0 c k=11: 1 unique 322 s 12:55:37
+l2 s29/96 exit 0 c k=11: 1 unique 324 s 12:55:41
+l3 s31/96 exit 0 c k=11: 1 unique 250 s 12:56:28
+l2 s30/96 exit 0 c k=11: 1 unique 321 s 12:56:35
+l1 s30/96 exit 0 c k=11: 1 unique 322 s 12:56:36
+l1 s31/96 exit 0 c k=11: 1 unique 322 s 12:56:52
+l2 s31/96 exit 0 c k=11: 1 unique 320 s 12:57:32
+l3 s32/96 exit 0 c k=11: 1 unique 259 s 12:58:59
+l1 s32/96 exit 0 c k=11: 1 unique 327 s 12:59:38
+l2 s32/96 exit 0 c k=11: 1 unique 325 s 12:59:44
+l3 s33/96 exit 0 c k=11: 1 unique 252 s 12:59:49
+l1 s33/96 exit 0 c k=11: 1 unique 325 s 13:00:45
+l3 s34/96 exit 0 c k=11: 1 unique 252 s 13:00:47
+l2 s33/96 exit 0 c k=11: 1 unique 321 s 13:00:52
+l1 s34/96 exit 0 c k=11: 1 unique 322 s 13:01:03
+l3 s35/96 exit 0 c k=11: 1 unique 250 s 13:01:42
+l2 s34/96 exit 0 c k=11: 1 unique 325 s 13:01:53
+l1 s35/96 exit 0 c k=11: 1 unique 329 s 13:02:05
+l2 s35/96 exit 0 c k=11: 1 unique 329 s 13:02:21
+l3 s36/96 exit 0 c k=11: 1 unique 251 s 13:03:55
+l1 s36/96 exit 0 c k=11: 1 unique 322 s 13:04:21
+l3 s37/96 exit 0 c k=11: 1 unique 247 s 13:04:54
+l2 s36/96 exit 0 c k=11: 1 unique 322 s 13:05:00
+l1 s37/96 exit 0 c k=11: 1 unique 319 s 13:05:08
+l3 s38/96 exit 0 c k=11: 1 unique 248 s 13:05:50
+l2 s37/96 exit 0 c k=11: 1 unique 315 s 13:06:00
+l1 s38/96 exit 0 c k=11: 1 unique 323 s 13:06:15
+l2 s38/96 exit 0 c k=11: 1 unique 319 s 13:06:22
+l3 s39/96 exit 0 c k=11: 1 unique 247 s 13:06:28
+l1 s39/96 exit 0 c k=11: 1 unique 321 s 13:07:14
+l2 s39/96 exit 0 c k=11: 1 unique 316 s 13:07:21
+l3 s40/96 exit 0 c k=11: 1 unique 246 s 13:09:00
+l1 s40/96 exit 0 c k=11: 1 unique 313 s 13:09:08
+l2 s40/96 exit 0 c k=11: 1 unique 314 s 13:09:35
+l3 s41/96 exit 0 c k=11: 1 unique 245 s 13:09:55
+l1 s41/96 exit 0 c k=11: 1 unique 318 s 13:10:18
+l2 s41/96 exit 0 c k=11: 1 unique 314 s 13:10:22
+l3 s42/96 exit 0 c k=11: 1 unique 244 s 13:10:26
+l1 s42/96 exit 0 c k=11: 1 unique 319 s 13:11:19
+l3 s43/96 exit 0 c k=11: 1 unique 244 s 13:11:25
+l2 s42/96 exit 0 c k=11: 1 unique 318 s 13:11:33
+l1 s43/96 exit 0 c k=11: 1 unique 317 s 13:11:45
+l2 s43/96 exit 0 c k=11: 1 unique 314 s 13:12:28
+l3 s44/96 exit 0 c k=11: 1 unique 246 s 13:13:41
+l1 s44/96 exit 0 c k=11: 1 unique 319 s 13:14:19
+l3 s45/96 exit 0 c k=11: 1 unique 246 s 13:14:28
+l2 s44/96 exit 0 c k=11: 1 unique 322 s 13:14:30
+l1 s45/96 exit 0 c k=11: 1 unique 320 s 13:15:15
+l3 s46/96 exit 0 c k=11: 1 unique 246 s 13:15:31
+l2 s45/96 exit 0 c k=11: 1 unique 316 s 13:15:34
+l1 s46/96 exit 0 c k=11: 1 unique 322 s 13:15:48
+l3 s47/96 exit 0 c k=11: 1 unique 247 s 13:16:35
+l2 s46/96 exit 0 c k=11: 1 unique 322 s 13:16:41
+l1 s47/96 exit 0 c k=11: 1 unique 320 s 13:16:53
+l2 s47/96 exit 0 c k=11: 1 unique 316 s 13:17:01
+l3 s48/96 exit 0 c k=11: 1 unique 253 s 13:18:41
+l1 s48/96 exit 0 c k=11: 1 unique 318 s 13:18:59
+l3 s49/96 exit 0 c k=11: 1 unique 249 s 13:19:40
+l2 s48/96 exit 0 c k=11: 1 unique 325 s 13:19:44
+l1 s49/96 exit 0 c k=11: 1 unique 319 s 13:19:49
+l2 s49/96 exit 0 c k=11: 1 unique 317 s 13:20:32
+l3 s50/96 exit 0 c k=11: 1 unique 247 s 13:20:42
+l1 s50/96 exit 0 c k=11: 1 unique 319 s 13:20:53
+l2 s50/96 exit 0 c k=11: 1 unique 316 s 13:21:04
+l3 s51/96 exit 0 c k=11: 1 unique 247 s 13:21:08
+l1 s51/96 exit 0 c k=11: 1 unique 318 s 13:21:59
+l2 s51/96 exit 0 c k=11: 1 unique 319 s 13:22:12
+l3 s52/96 exit 0 c k=11: 1 unique 243 s 13:23:43
+l1 s52/96 exit 0 c k=11: 1 unique 321 s 13:24:02
+l2 s52/96 exit 0 c k=11: 1 unique 322 s 13:24:21
+l3 s53/96 exit 0 c k=11: 1 unique 243 s 13:24:36
+l1 s53/96 exit 0 c k=11: 1 unique 318 s 13:25:02
+l2 s53/96 exit 0 c k=11: 1 unique 317 s 13:25:06
+l3 s54/96 exit 0 c k=11: 1 unique 244 s 13:25:08
+l1 s54/96 exit 0 c k=11: 1 unique 317 s 13:25:59
+l2 s54/96 exit 0 c k=11: 1 unique 315 s 13:26:08
+l3 s55/96 exit 0 c k=11: 1 unique 245 s 13:26:18
+l1 s55/96 exit 0 c k=11: 1 unique 321 s 13:26:29
+l2 s55/96 exit 0 c k=11: 1 unique 320 s 13:27:19
+l3 s56/96 exit 0 c k=11: 1 unique 247 s 13:28:28
+l1 s56/96 exit 0 c k=11: 1 unique 316 s 13:28:59
+l3 s57/96 exit 0 c k=11: 1 unique 245 s 13:29:11
+l2 s56/96 exit 0 c k=11: 1 unique 316 s 13:29:18
+l1 s57/96 exit 0 c k=11: 1 unique 317 s 13:29:53
+l3 s58/96 exit 0 c k=11: 1 unique 244 s 13:30:12
+l2 s57/96 exit 0 c k=11: 1 unique 317 s 13:30:19
+l1 s58/96 exit 0 c k=11: 1 unique 316 s 13:30:24
+l2 s58/96 exit 0 c k=11: 1 unique 314 s 13:31:13
+l3 s59/96 exit 0 c k=11: 1 unique 244 s 13:31:23
+l1 s59/96 exit 0 c k=11: 1 unique 314 s 13:31:32
+l2 s59/96 exit 0 c k=11: 1 unique 315 s 13:31:44
+l3 s60/96 exit 0 c k=11: 1 unique 244 s 13:33:15
+l1 s60/96 exit 0 c k=11: 1 unique 317 s 13:33:45
+l2 s60/96 exit 0 c k=11: 1 unique 317 s 13:34:16
+l3 s61/96 exit 0 c k=11: 1 unique 245 s 13:34:17
+l1 s61/96 exit 0 c k=11: 1 unique 314 s 13:34:32
+l2 s61/96 exit 0 c k=11: 1 unique 312 s 13:35:05
+l3 s62/96 exit 0 c k=11: 1 unique 250 s 13:35:23
+l1 s62/96 exit 0 c k=11: 1 unique 315 s 13:35:34
+l2 s62/96 exit 0 c k=11: 1 unique 318 s 13:35:42
+l3 s63/96 exit 0 c k=11: 1 unique 243 s 13:35:47
+l1 s63/96 exit 0 c k=11: 1 unique 319 s 13:36:42
+l2 s63/96 exit 0 c k=11: 1 unique 319 s 13:36:51
+l3 s64/96 exit 0 c k=11: 1 unique 247 s 13:38:23
+l1 s64/96 exit 0 c k=11: 1 unique 314 s 13:38:29
+l3 s65/96 exit 0 c k=11: 1 unique 244 s 13:39:09
+l2 s64/96 exit 0 c k=11: 1 unique 327 s 13:39:12
+l1 s65/96 exit 0 c k=11: 1 unique 317 s 13:39:34
+l3 s66/96 exit 0 c k=11: 1 unique 247 s 13:39:49
+l2 s65/96 exit 0 c k=11: 1 unique 318 s 13:39:50
+l1 s66/96 exit 0 c k=11: 1 unique 321 s 13:40:44
+l3 s67/96 exit 0 c k=11: 1 unique 244 s 13:40:55
+l2 s66/96 exit 0 c k=11: 1 unique 321 s 13:40:55
+l1 s67/96 exit 0 c k=11: 1 unique 319 s 13:41:06
+l2 s67/96 exit 0 c k=11: 1 unique 317 s 13:41:59
+l3 s68/96 exit 0 c k=11: 1 unique 244 s 13:43:13
+l1 s68/96 exit 0 c k=11: 1 unique 321 s 13:43:44
+l2 s68/96 exit 0 c k=11: 1 unique 322 s 13:43:51
+l3 s69/96 exit 0 c k=11: 1 unique 248 s 13:43:57
+l1 s69/96 exit 0 c k=11: 1 unique 322 s 13:44:34
+l2 s69/96 exit 0 c k=11: 1 unique 318 s 13:44:52
+l3 s70/96 exit 0 c k=11: 1 unique 246 s 13:45:01
+l1 s70/96 exit 0 c k=11: 1 unique 316 s 13:45:06
+l3 s71/96 exit 0 c k=11: 1 unique 242 s 13:46:01
+l2 s70/96 exit 0 c k=11: 1 unique 318 s 13:46:02
+l1 s71/96 exit 0 c k=11: 1 unique 313 s 13:46:08
+l2 s71/96 exit 0 c k=11: 1 unique 314 s 13:46:20
+l3 s72/96 exit 0 c k=11: 1 unique 249 s 13:48:00
+l1 s72/96 exit 0 c k=11: 1 unique 317 s 13:48:30
+l3 s73/96 exit 0 c k=11: 1 unique 244 s 13:48:56
+l2 s72/96 exit 0 c k=11: 1 unique 320 s 13:49:04
+l1 s73/96 exit 0 c k=11: 1 unique 317 s 13:49:14
+l2 s73/96 exit 0 c k=11: 1 unique 318 s 13:49:52
+l3 s74/96 exit 0 c k=11: 1 unique 245 s 13:50:06
+l1 s74/96 exit 0 c k=11: 1 unique 318 s 13:50:19
+l2 s74/96 exit 0 c k=11: 1 unique 317 s 13:50:23
+l3 s75/96 exit 0 c k=11: 1 unique 246 s 13:50:26
+l1 s75/96 exit 0 c k=11: 1 unique 315 s 13:51:17
+l2 s75/96 exit 0 c k=11: 1 unique 317 s 13:51:25
+l3 s76/96 exit 0 c k=11: 1 unique 242 s 13:52:58
+l1 s76/96 exit 0 c k=11: 1 unique 317 s 13:53:17
+l2 s76/96 exit 0 c k=11: 1 unique 319 s 13:53:49
+l3 s77/96 exit 0 c k=11: 1 unique 244 s 13:53:56
+l1 s77/96 exit 0 c k=11: 1 unique 315 s 13:54:19
+l3 s78/96 exit 0 c k=11: 1 unique 242 s 13:54:25
+l2 s77/96 exit 0 c k=11: 1 unique 319 s 13:54:33
+l1 s78/96 exit 0 c k=11: 1 unique 316 s 13:55:22
+l3 s79/96 exit 0 c k=11: 1 unique 244 s 13:55:29
+l2 s78/96 exit 0 c k=11: 1 unique 319 s 13:55:38
+l1 s79/96 exit 0 c k=11: 1 unique 319 s 13:55:45
+l2 s79/96 exit 0 c k=11: 1 unique 319 s 13:56:36
+l3 s80/96 exit 0 c k=11: 1 unique 254 s 13:58:03
+l1 s80/96 exit 0 c k=11: 1 unique 314 s 13:58:12
+l3 s81/96 exit 0 c k=11: 1 unique 243 s 13:58:28
+l2 s80/96 exit 0 c k=11: 1 unique 326 s 13:58:43
+l1 s81/96 exit 0 c k=11: 1 unique 316 s 13:59:12
+l2 s81/96 exit 0 c k=11: 1 unique 311 s 13:59:30
+l3 s82/96 exit 0 c k=11: 1 unique 244 s 13:59:33
+l1 s82/96 exit 0 c k=11: 1 unique 318 s 13:59:52
+l2 s82/96 exit 0 c k=11: 1 unique 314 s 14:00:36
+l3 s83/96 exit 0 c k=11: 1 unique 242 s 14:00:38
+l1 s83/96 exit 0 c k=11: 1 unique 318 s 14:00:56
+l2 s83/96 exit 0 c k=11: 1 unique 312 s 14:00:57
+l3 s84/96 exit 0 c k=11: 1 unique 245 s 14:02:33
+l1 s84/96 exit 0 c k=11: 1 unique 313 s 14:03:16
+l2 s84/96 exit 0 c k=11: 1 unique 319 s 14:03:31
+l3 s85/96 exit 0 c k=11: 1 unique 245 s 14:03:35
+l1 s85/96 exit 0 c k=11: 1 unique 318 s 14:04:01
+l2 s85/96 exit 0 c k=11: 1 unique 313 s 14:04:25
+l3 s86/96 exit 0 c k=11: 1 unique 244 s 14:04:40
+l1 s86/96 exit 0 c k=11: 1 unique 315 s 14:04:48
+l3 s87/96 exit 0 c k=11: 1 unique 247 s 14:05:04
+l2 s86/96 exit 0 c k=11: 1 unique 317 s 14:05:09
+l1 s87/96 exit 0 c k=11: 1 unique 314 s 14:05:52
+l2 s87/96 exit 0 c k=11: 1 unique 314 s 14:06:10
+l3 s88/96 exit 0 c k=11: 1 unique 245 s 14:07:36
+l1 s88/96 exit 0 c k=11: 1 unique 316 s 14:07:49
+l3 s89/96 exit 0 c k=11: 1 unique 242 s 14:08:27
+l2 s88/96 exit 0 c k=11: 1 unique 316 s 14:08:32
+l1 s89/96 exit 0 c k=11: 1 unique 312 s 14:08:47
+l3 s90/96 exit 0 c k=11: 1 unique 243 s 14:09:07
+l2 s89/96 exit 0 c k=11: 1 unique 312 s 14:09:13
+l1 s90/96 exit 0 c k=11: 1 unique 314 s 14:09:54
+l2 s90/96 exit 0 c k=11: 1 unique 311 s 14:09:59
+l3 s91/96 exit 0 c k=11: 1 unique 242 s 14:10:12
+l1 s91/96 exit 0 c k=11: 1 unique 315 s 14:10:24
+l2 s91/96 exit 0 c k=11: 1 unique 313 s 14:11:05
+l3 s92/96 exit 0 c k=11: 1 unique 247 s 14:12:34
+l1 s92/96 exit 0 c k=11: 1 unique 313 s 14:12:49
+l2 s92/96 exit 0 c k=11: 1 unique 314 s 14:13:03
+l3 s93/96 exit 0 c k=11: 1 unique 241 s 14:13:08
+l1 s93/96 exit 0 c k=11: 1 unique 308 s 14:13:40
+l2 s93/96 exit 0 c k=11: 1 unique 306 s 14:13:53
+l3 s94/96 exit 0 c k=11: 1 unique 234 s 14:13:53
+l1 s94/96 exit 0 c k=11: 1 unique 298 s 14:14:11
+l3 s95/96 exit 0 c k=11: 1 unique 221 s 14:14:46
+l2 s94/96 exit 0 c k=11: 1 unique 293 s 14:14:47
+l1 s95/96 exit 0 c k=11: 1 unique 294 s 14:15:06
+l2 s95/96 exit 0 c k=11: 1 unique 293 s 14:15:17
+=== d4 done 2026-11-12 14:15:17
+
+## CONTROL AFTER THE RUN: the planted k = 11 schemes through the same job script (scratch kres/deep/d4/ctl/job.zsh:
+## job.zsh with the planted scheme and its lines file in place of projkm47_7 and lineL.txt), 96 shards
+
+The full 3 x 96 sweep was stopped after seed 1's shards 0-13 had started (about 150 s per shard without an
+alternative, an hour for the sweep); the shards holding the alternatives the unsharded runs found were then run
+directly (seed 2 shard 0 for candidate 0, seed 3 shard 32 for candidate 128, plus seed 3 shard 0).
+
+=== ctl start 2026-11-12 14:19:01
+p1 s0/96 exit 0 c k=11: 1 ALTERNATIVES 0 s 14:19:02
+p1 s4/96 exit 0 c k=11: 1 ALTERNATIVES 3 s 14:19:05
+    (xargs stopped at 14:21:17 after starting p1 s0-s13, which run on; the rest replaced by the targeted batch below)
+=== ctl done 2026-11-12 14:21:17
+=== ctl targeted batch start 2026-11-12 14:21:25: p2 s0, p3 s32 (holds candidate 128), p3 s0
+p2 s0/96 exit 0 c k=11: 1 ALTERNATIVES 0 s 14:21:25
+p3 s32/96 exit 0 c k=11: 1 ALTERNATIVES 0 s 14:21:25
+p3 s0/96 exit 0 c k=11: 1 ALTERNATIVES 0 s 14:21:25
+p1 s12/96 exit 0 c k=11: 1 unique 146 s 14:21:28
+p1 s3/96 exit 0 c k=11: 1 unique 148 s 14:21:30
+p1 s7/96 exit 0 c k=11: 1 unique 149 s 14:21:31
+p1 s6/96 exit 0 c k=11: 1 unique 149 s 14:21:31
+p1 s11/96 exit 0 c k=11: 1 unique 149 s 14:21:31
+p1 s5/96 exit 0 c k=11: 1 unique 149 s 14:21:31
+p1 s10/96 exit 0 c k=11: 1 unique 149 s 14:21:31
+p1 s2/96 exit 0 c k=11: 1 unique 149 s 14:21:31
+p1 s8/96 exit 0 c k=11: 1 unique 149 s 14:21:31
+p1 s9/96 exit 0 c k=11: 1 unique 150 s 14:21:32
+p1 s13/96 exit 0 c k=11: 1 unique 148 s 14:21:33
+p1 s1/96 exit 0 c k=11: 1 unique 151 s 14:21:33
+=== ctl all done 2026-11-12 14:21:35
+
+p1_s0: verified=1  FOUND at candidate 0 (x=1, y=1) after 1 of 169, 0.0 s
+p1_s4: verified=1  FOUND at candidate 388 (x=4, y=8) after 5 of 168, 3.4 s
+p2_s0: verified=1  FOUND at candidate 0 (x=1, y=1) after 1 of 169, 0.0 s
+p3_s0: verified=1  FOUND at candidate 384 (x=4, y=4) after 5 of 169, 0.5 s
+p3_s32: verified=1  FOUND at candidate 128 (x=2, y=2) after 2 of 168, 0.1 s
+
+Every ALT is verified on the tensor; shard 32 finds seed 3's candidate 128 (128 mod 96 = 32); the shards of seed 1
+holding no alternative exhaust their 168 extensions and say unique.  The pipeline reports alternatives.
+
+## UNIT TESTS after the run: cargo test --release --bin kres
+
+test tests::prefixes_cover_the_subsets ... ok
+test tests::rank3_terms_decompose ... ok
+test tests::census_matches_brute_force ... ok
+test tests::depth_search_matches_brute_force has been running for over 60 seconds
+test tests::depth_search_matches_brute_force ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 95.68s

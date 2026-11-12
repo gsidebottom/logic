@@ -1009,7 +1009,7 @@ starts), so the comparison is by type.
   lines: their factors span only 7 dimensions in every slot, so their
   slice spaces sit four short of the 11 an alternative needs, beyond
   depth 3.  Their reduce question is settled (refuted above); the
-  alternative question needs depth 4:
+  alternative question needed depth 4:
   0,4,6,13,14,18,23,27,33,36,44 / 1,3,4,12,13,14,18,27,32,38,41 /
   1,3,4,12,13,14,32,34,38,40,41 / 1,4,12,22,26,30,33,34,37,40,43 /
   3,7,9,11,14,18,21,23,27,32,45 / 5,12,30,31,32,34,35,40,41,45,46.
@@ -1017,14 +1017,37 @@ starts), so the comparison is by type.
   stabilizer; proj/kres_line_orbits.py) fixes the second and third and
   swaps the first with the fifth and the fourth with the sixth, and a
   verdict is constant on an orbit: four lines up to symmetry.
+  Depth 4 on the four (2026-11-12 10:10 to 14:15): ALL UNIQUE, so all
+  six are.  So NO OTHER RANK-47 SCHEME SHARES 36 OR MORE PRODUCTS with a
+  scheme of any of the five classes (exact, k <= 11), the same range as
+  the rank-46 statement: k = 11 is complete for both questions.  At
+  delta >= 3 the decider extends the slice space by every rank-one
+  element outside it, 16,129 first-level extensions here, and runs the
+  depth-3 search on each.  kres --shard i/n keeps the extensions whose
+  loop index is i mod n, so n runs partition the search: a line is
+  unique iff every shard says unique.  96 shards per line, one core
+  each, 12 workers.  All 384 jobs exited 0 with "1 unique", every shard
+  exhausted its extensions, and the extension counts add up to 16,129
+  per line.  Single-core hours per line, in the list's order: 6.5 /
+  8.5 / 8.5 / 31.0, 54.4 in all.  Controls: planted alternatives
+  (proj/kres_plant_flip.py: k products with factor spans 7,7,7, two
+  sharing a c-factor, the alternative checked on the tensor) found and
+  verified at delta 3 (k = 10) and delta 4 (k = 11), three seeds each;
+  the k = 11 ones through the sharded job script report ALTERNATIVES,
+  verified, in the shards holding them (seed 3's extension 128 in shard
+  32 of 96) and unique in the 12 shards of seed 1 holding none; 24 km47
+  depth-3 lines stay unique in three shards whose times add up to about
+  the unsharded run's; cargo test 4/4.
   Drivers as run: proj/kres_census_k11.zsh (the sweep with its
   regressions), proj/kres_census_k11_alt2.zsh (the depth-2 pass),
   proj/kres_census_k11_chain.zsh, proj/kres_census_k11_alt3.zsh,
   kres_census_k11_alt3c.zsh and kres_census_k11_alt3d.zsh (depth 3: one
   call per class, then the chunked run and its resume after the full
-  disk of 2026-11-11 08:17); logs
-  proj/logs/kres_census_k11_2026-11-10.txt and
-  proj/logs/kres_census_k11_alt3_2026-11-12.txt.
+  disk of 2026-11-11 08:17), proj/kres_census_k11_alt4.zsh with
+  kres_census_k11_alt4_job.zsh (depth 4); logs
+  proj/logs/kres_census_k11_2026-11-10.txt,
+  proj/logs/kres_census_k11_alt3_2026-11-12.txt and
+  proj/logs/kres_census_k11_alt4_2026-11-12.txt.
 
 - Walks at rank 47 from the fifth class (2026-11-08 evening, follow-up 3 of
   the "keep the CPUs busy" queue): flip --walk from its four schemes

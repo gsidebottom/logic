@@ -74,7 +74,9 @@ typedef struct {
 #define T float
 #define SUF f
 #define GEMM cblas_sgemm
+#define FMM_FLOAT 1
 #include "bench_impl.h"
+#undef FMM_FLOAT
 #undef T
 #undef SUF
 #undef GEMM

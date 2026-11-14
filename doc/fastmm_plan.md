@@ -1554,3 +1554,45 @@ history removed (no "since November 2", no budget-campaign story; Winograd's pro
 Table 6's screen row), tab:levels keeps only the library's SW row, tab:budget now predicted-vs-measured growth for
 the picks and the SW-topped plans, tab:results bolds the fastest plan per size and marks auto, the results table may
 take a float page ([tp]: before, it and every later table sat at the end of the document).  Not pushed.
+
+**2026-11-14: faster, first — where the time goes, our own SME kernel, and the GPU as a second engine (f32
+1.7-2.0x, same or less error).**  Greg: make the mixed-level multiplier faster first and more accurate second, never
+less accurate; his guess was more memory-efficient small schemes and new ways of mixing them.  Three measurements.
+(1) The profile (matmul/levels/pass_profile.py, .txt, from the final calibration, and the final campaign's splits).
+At 13824 the picks spend 3.7% (f64) and 7.8% (f32) in the top level's passes, and their pipelines run 4-9% above the
+GEMM-only time: every pass cost together is 8% (f64) to 15% (f32) of a plan, so no scheme or mixing can gain more
+than that at the present depth.  A level's traffic is 3 + s (g1 + g2 + g3) words per n^2 for saving s: it depends on
+the scheme only through its saving and the SUM of its grid, and <3x3x6:40> (sum 12, s 0.741) is the best known ratio
+of traffic to log-saving (39.6; 4x4:48 41.7; 2x2:7 61.8; 3x3x4:29 51; 5x5:93 48); the accurate schemes have no
+operand that is a single block (0 of 40 rows in L and R of the 3x3x6 scheme, 8 of 48 in D48's R), so nothing can be
+used in place.  A third level is closed by memory, not by arithmetic: the two-level picks already move about 112 GB (f64)
+and 56 GB (f32) through a 130 GB/s memory system, 26% and 46% of its capacity over the run; each further level
+triples the pass traffic (3-level f64 351 GB against 2.2-2.6 s of GEMM), and fusing two levels' passes saves 38% of
+it only by holding all r1 r2 leaf operands at once.  A level pays when n > 23 w R / B (R the leaf engine's flop/s, B
+the bandwidth, w the word): 1400 in f64, 2800 in f32 on the SME units, as measured.
+(2) Our own SME leaf (sme_gemm.h, sme_test.c, results/sme_leaf_2026-11-14.txt; Apple clang compiles SME2 with
+-mcpu=apple-m4, vectors of 512 bits).  An FMOPA kernel with the A operand kept transposed (no packing at all; the
+passes are layout-blind, so one transposition at the top would do) gives Accelerate's results bit for bit (both are
+the k-ordered FMA chain) and, in cache, 1.0 TFLOP/s f64 and 4.0 f32 on six threads down to 128-blocks, where
+Accelerate falls to 0.87 / 2.8.  As a level's products through memory it is 0.81-0.94x Accelerate at blocks of 384
+and up (not tuned: the SME units read from L2, and its blocking is naive) and equal at 256 and below, where both are
+bandwidth-bound (a 128-cube f32 product carries 21 flops per byte: 2.8 TFLOP/s at 130 GB/s).  So an open kernel does
+not unlock depth; kept as a probe, not in the library.
+(3) The GPU as a second engine (gpu_share.m the probe; gpu_leaf.h/.m, leaves GM and GkM, the K16/K32/K64 levels;
+build/bench_fmm_gpu, run_gpu_share.sh, results/gpu_share_2026-11-14.txt).  MPS's f32 product is bit for bit
+Accelerate's sgemm (known since 10-28), unified memory lets it read and write the library's scratch blocks without a
+copy, and it runs beside the SME units without slowing them: a level's products taken from one end by the GEMM
+streams and from the other by the GPU (a few per command buffer) run at 7.3-9.1 TFLOP/s on blocks of 1152 and up
+against 3.3-3.8 for the streams and 4.0-6.6 for the GPU alone.  Whole plans, f32, exact errors, min of 5-7 rounds:
+  3456   pick R363/G6 0.0206 s (err 1.28e-6)          R363/G6M 0.0119 s, the same result        1.73x
+  6912   pick R363+4/R633/G6 0.1408 s (2.20e-6)       R363/G6M 0.0712 s, 1.76e-6 (20% less)     1.98x
+  13824  pick R336+2/R363/G6 0.982 s (3.34e-6)        R363/G6M 0.5405 s, 2.73e-6 (18% less)     1.82x
+         (0.925 s in the final campaign: 1.71x)       R363+4/R336/G6M 0.532 s, 3.33e-6 (same)
+against the GPU alone 0.013 / 0.106 / 0.850 s and the GEMM 0.0243 / 0.195 / 1.559 s (2.0x, 2.7x, 2.9x over
+Accelerate).  The classical product shared without any level (K32/GM, K64/G6M: strips of rows, in place, the GEMM's
+own result) takes 0.0120 / 0.0878 / 0.813 s, so one accurate level still pays from 6912 up, and with a 9 TFLOP/s
+leaf the fastest plans have ONE level, which is why the error falls.  Passes now decide: R363+p/R336/G6M at 13824
+is 0.739 s with 2 pass threads, 0.621 with 3, 0.532 with 4.  Not done: the planner and calibration for the M
+leaves, the library's entry points (regions must be page-aligned to be wrapped), the Rust port, f64 (Metal has
+none: f64 stays where it is, within about 8% of its GEMM-only time).  Default build unchanged (test_fmm all ok,
+errors of the old plans identical).  Not committed.

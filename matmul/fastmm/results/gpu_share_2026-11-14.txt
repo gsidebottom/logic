@@ -1,0 +1,47 @@
+# GPU-shared leaves; 2026-11-14 09:53; Apple M4 Pro; logic 23e25ff
+## the probe: r products of one shape, streams alone, the GPU alone, both
+gpu_share  4608x 2304x 4608 r= 20 streams=6 depth=4  cpu  0.5987 s  3268.3 GF  gpu  0.2966 s  6597.8 GF  both  0.2670 s  7330.5 GF (gpu took 12)  both/cpu 2.24x  maxdiff/max 0.0e+00
+gpu_share  2304x 1152x 2304 r= 40 streams=6 depth=4  cpu  0.1433 s  3413.4 GF  gpu  0.0882 s  5548.6 GF  both  0.0537 s  9112.4 GF (gpu took 26)  both/cpu 2.67x  maxdiff/max 0.0e+00
+gpu_share  1536x  768x  768 r=160 streams=6 depth=4  cpu  0.0771 s  3760.6 GF  gpu  0.0733 s  3956.9 GF  both  0.0339 s  8562.9 GF (gpu took 92)  both/cpu 2.28x  maxdiff/max 0.0e+00
+gpu_share  1152x  576x 1152 r= 40 streams=6 depth=4  cpu  0.0164 s  3739.9 GF  gpu  0.0140 s  4353.3 GF  both  0.0076 s  8042.9 GF (gpu took 22)  both/cpu 2.15x  maxdiff/max 0.0e+00
+gpu_share   768x  384x  384 r=320 streams=6 depth=4  cpu  0.0219 s  3305.3 GF  gpu  0.0412 s  1759.8 GF  both  0.0133 s  5455.6 GF (gpu took 134)  both/cpu 1.65x  maxdiff/max 0.0e+00
+## n=3456 f32
+gpu_graph  n=3456   f32  min    0.013 s  med    0.013 s  gpu-time min    0.000 med    0.000   6242.0 GFLOP/s(2n^3, med wall)  err64 3.04e-06  vs-sgemm 0.00e+00
+classical  n=3456   f32  min   0.0243 s  med   0.0245 s   3368.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.024 P 0.000  plan G  pred 0.029 s (+18.9%)  perr 2.78e-06  err64 3.04e-06
+plan=R363/G6 n=3456   f32  min   0.0206 s  med   0.0207 s   3987.7 GFLOP/s(2mkn)  speedup 1.184  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.016 P 0.002  plan R363/G6  pred 0.021 s (+2.5%)  perr 1.25e-06  err64 1.28e-06
+plan=K16/GM n=3456   f32  min   0.0152 s  med   0.0154 s   5366.3 GFLOP/s(2mkn)  speedup 1.593  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.016 P 0.000  plan K16/GM  err64 3.04e-06
+plan=K32/G6M n=3456   f32  min   0.0120 s  med   0.0127 s   6482.3 GFLOP/s(2mkn)  speedup 1.924  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.013 P 0.000  plan K32/G6M  err64 3.04e-06
+plan=K64/G6M n=3456   f32  min   0.0147 s  med   0.0152 s   5431.1 GFLOP/s(2mkn)  speedup 1.612  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.016 P 0.000  plan K64/G6M  err64 3.04e-06
+plan=R363/G6M n=3456   f32  min   0.0119 s  med   0.0125 s   6598.6 GFLOP/s(2mkn)  speedup 1.959  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.008 P 0.002  plan R363/G6M  perr 1.25e-06  err64 1.28e-06
+plan=R363/GM n=3456   f32  min   0.0143 s  med   0.0148 s   5573.5 GFLOP/s(2mkn)  speedup 1.654  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.011 P 0.002  plan R363/GM  perr 1.25e-06  err64 1.28e-06
+plan=D48/G6M n=3456   f32  min   0.0136 s  med   0.0137 s   6044.6 GFLOP/s(2mkn)  speedup 1.794  relerr 3.83e-06  split L 0.001 R 0.002 gemm 0.010 P 0.001  plan D48/G6M  perr 1.72e-06  err64 2.01e-06
+plan=R336/G6M n=3456   f32  min   0.0128 s  med   0.0129 s   6421.5 GFLOP/s(2mkn)  speedup 1.906  relerr 3.10e-06  split L 0.002 R 0.001 gemm 0.009 P 0.001  plan R336/G6M  perr 1.52e-06  err64 1.68e-06
+## n=6912 f32
+gpu_graph  n=6912   f32  min    0.106 s  med    0.109 s  gpu-time min    0.000 med    0.000   6038.4 GFLOP/s(2n^3, med wall)  err64 3.85e-06  vs-sgemm 0.00e+00
+classical  n=6912   f32  min   0.1947 s  med   0.1949 s   3389.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.195 P 0.000  plan G  pred 0.196 s (+0.8%)  perr 3.94e-06  err64 3.85e-06
+plan=R363+4/R633/G6 n=6912   f32  min   0.1408 s  med   0.1421 s   4648.7 GFLOP/s(2mkn)  speedup 1.371  relerr 4.14e-06  split L 0.005 R 0.005 gemm 0.125 P 0.007  plan R363+4/R633/G6  pred 0.140 s (-1.2%)  perr 2.32e-06  err64 2.20e-06
+plan=K32/GM n=6912   f32  min   0.1083 s  med   0.1211 s   5452.3 GFLOP/s(2mkn)  speedup 1.609  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.119 P 0.000  plan K32/GM  err64 3.85e-06
+plan=K64/G6M n=6912   f32  min   0.0878 s  med   0.0907 s   7285.3 GFLOP/s(2mkn)  speedup 2.149  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.090 P 0.000  plan K64/G6M  err64 3.85e-06
+plan=R363/G6M n=6912   f32  min   0.0712 s  med   0.0732 s   9028.6 GFLOP/s(2mkn)  speedup 2.664  relerr 4.18e-06  split L 0.005 R 0.005 gemm 0.056 P 0.007  plan R363/G6M  perr 1.76e-06  err64 1.76e-06
+plan=R363/GM n=6912   f32  min   0.0782 s  med   0.0787 s   8387.0 GFLOP/s(2mkn)  speedup 2.474  relerr 4.18e-06  split L 0.005 R 0.005 gemm 0.062 P 0.007  plan R363/GM  perr 1.76e-06  err64 1.76e-06
+plan=R336/GM n=6912   f32  min   0.0852 s  med   0.0852 s   7748.1 GFLOP/s(2mkn)  speedup 2.286  relerr 3.91e-06  split L 0.009 R 0.005 gemm 0.067 P 0.005  plan R336/GM  perr 2.16e-06  err64 2.27e-06
+plan=D48/G6M n=6912   f32  min   0.0754 s  med   0.0791 s   8352.8 GFLOP/s(2mkn)  speedup 2.464  relerr 4.18e-06  split L 0.006 R 0.006 gemm 0.062 P 0.005  plan D48/G6M  perr 2.44e-06  err64 2.81e-06
+plan=D48/GM n=6912   f32  min   0.0813 s  med   0.0816 s   8097.0 GFLOP/s(2mkn)  speedup 2.389  relerr 4.18e-06  split L 0.006 R 0.006 gemm 0.065 P 0.005  plan D48/GM  perr 2.44e-06  err64 2.81e-06
+plan=R363+4/R633/G6M n=6912   f32  min   0.1206 s  med   0.1223 s   5398.7 GFLOP/s(2mkn)  speedup 1.593  relerr 4.14e-06  split L 0.005 R 0.005 gemm 0.105 P 0.007  plan R363+4/R633/G6M  perr 2.32e-06  err64 2.20e-06
+plan=R363+4/D48/G6M n=6912   f32  min   0.1244 s  med   0.1248 s   5292.1 GFLOP/s(2mkn)  speedup 1.561  relerr 4.00e-06  split L 0.005 R 0.005 gemm 0.108 P 0.007  plan R363+4/D48/G6M  perr 2.38e-06  err64 2.26e-06
+## n=13824 f32
+gpu_graph  n=13824  f32  min    0.850 s  med    0.853 s  gpu-time min    0.000 med    0.000   6190.9 GFLOP/s(2n^3, med wall)  err64 6.40e-06  vs-sgemm 0.00e+00
+classical  n=13824  f32  min   1.5591 s  med   1.6340 s   3233.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.654 P 0.000  plan G  pred 1.560 s (-4.5%)  perr 5.57e-06  err64 6.40e-06
+plan=R336+2/R363/G6 n=13824  f32  min   0.9816 s  med   0.9975 s   5297.0 GFLOP/s(2mkn)  speedup 1.638  relerr 6.16e-06  split L 0.034 R 0.019 gemm 0.925 P 0.018  plan R336+2/R363/G6  pred 0.891 s (-10.7%)  perr 2.98e-06  err64 3.34e-06
+plan=K32/GM n=13824  f32  min   0.8134 s  med   0.8226 s   6423.2 GFLOP/s(2mkn)  speedup 1.986  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.824 P 0.000  plan K32/GM  err64 6.40e-06
+plan=R363/GM n=13824  f32  min   0.6148 s  med   0.6282 s   8411.1 GFLOP/s(2mkn)  speedup 2.601  relerr 6.70e-06  split L 0.019 R 0.019 gemm 0.557 P 0.030  plan R363/GM  perr 2.49e-06  err64 2.73e-06
+plan=R363/G6M n=13824  f32  min   0.5405 s  med   0.5521 s   9570.4 GFLOP/s(2mkn)  speedup 2.960  relerr 6.70e-06  split L 0.019 R 0.019 gemm 0.483 P 0.030  plan R363/G6M  perr 2.49e-06  err64 2.73e-06
+plan=R336/GM n=13824  f32  min   0.6189 s  med   0.6283 s   8408.8 GFLOP/s(2mkn)  speedup 2.601  relerr 6.70e-06  split L 0.034 R 0.019 gemm 0.561 P 0.018  plan R336/GM  perr 3.05e-06  err64 3.80e-06
+plan=D48/GM n=13824  f32  min   0.5961 s  med   0.6065 s   8711.3 GFLOP/s(2mkn)  speedup 2.694  relerr 7.11e-06  split L 0.025 R 0.025 gemm 0.541 P 0.021  plan D48/GM  perr 3.45e-06  err64 4.16e-06
+plan=R363+3/R336/G6M n=13824  f32  min   0.6213 s  med   0.6278 s   8416.3 GFLOP/s(2mkn)  speedup 2.603  relerr 6.43e-06  split L 0.019 R 0.019 gemm 0.562 P 0.030  plan R363+3/R336/G6M  perr 2.98e-06  err64 3.33e-06
+plan=R363+4/R336/G6M n=13824  f32  min   0.5323 s  med   0.5434 s   9723.2 GFLOP/s(2mkn)  speedup 3.007  relerr 6.43e-06  split L 0.019 R 0.019 gemm 0.485 P 0.029  plan R363+4/R336/G6M  perr 2.98e-06  err64 3.33e-06
+plan=R336+4/R363/G6M n=13824  f32  min   0.5368 s  med   0.5440 s   9713.4 GFLOP/s(2mkn)  speedup 3.004  relerr 6.16e-06  split L 0.034 R 0.019 gemm 0.485 P 0.018  plan R336+4/R363/G6M  perr 2.98e-06  err64 3.34e-06
+plan=R363+4/R363/G6M n=13824  f32  min   0.5976 s  med   0.6066 s   8709.7 GFLOP/s(2mkn)  speedup 2.694  relerr 6.57e-06  split L 0.019 R 0.019 gemm 0.540 P 0.030  plan R363+4/R363/G6M  perr 2.43e-06  err64 2.46e-06
+plan=R363+4/D48/G6M n=13824  f32  min   0.5714 s  med   0.5901 s   8953.6 GFLOP/s(2mkn)  speedup 2.769  relerr 6.43e-06  split L 0.019 R 0.019 gemm 0.523 P 0.030  plan R363+4/D48/G6M  perr 3.37e-06  err64 3.49e-06
+# done 09:55
+# exit 0

@@ -9,6 +9,19 @@ build/bench_fmm: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h bui
 build/kernels.h: gen_kernels.py schemes/opt/dps7_L.slp schemes/opt/dps7_R.slp schemes/opt/dps7_P.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp schemes/opt/r336_L.slp schemes/opt/r336_R.slp schemes/opt/r336_P.slp schemes/opt/r363_L.slp schemes/opt/r363_R.slp schemes/opt/r363_P.slp schemes/opt/r633_L.slp schemes/opt/r633_R.slp schemes/opt/r633_P.slp schemes/opt/t336_L.slp schemes/opt/t336_R.slp schemes/opt/t336_P.slp schemes/opt/t363_L.slp schemes/opt/t363_R.slp schemes/opt/t363_P.slp schemes/opt/t633_L.slp schemes/opt/t633_R.slp schemes/opt/t633_P.slp
 	mkdir -p build && python3 gen_kernels.py $@
 
+# the same with the GPU as a second engine for a level's products (f32): leaves GM and GkM, and the K
+# levels to share the classical product (gpu_leaf.m; gpu_share.m is the probe)
+build/bench_fmm_gpu: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h gpu_leaf.h gpu_leaf.m build/kernels.h
+	clang -O2 -fobjc-arc -Wall -c gpu_leaf.m -o build/gpu_leaf.o
+	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -DFMM_GPU -Ibuild bench_fmm.c build/gpu_leaf.o -framework Accelerate -framework Foundation -framework Metal -framework MetalPerformanceShaders -o $@
+
+build/gpu_share: gpu_share.m
+	mkdir -p build && clang -O2 -fobjc-arc -Wall -Wno-deprecated-declarations gpu_share.m -framework Foundation -framework Metal -framework MetalPerformanceShaders -framework Accelerate -o $@
+
+# the SME leaf kernel of sme_gemm.h against Accelerate on a level's products
+build/sme_test: sme_test.c sme_gemm.h
+	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall sme_test.c -framework Accelerate -o $@
+
 # the same with every use of a scaled value as a fused multiply-add (x * 0.5 + y -> one FMLA);
 # -ffp-contract=fast alone fuses nothing here: each halving feeds 4-5 additions
 build/bench_fmm_fma: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/fma/kernels.h

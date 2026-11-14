@@ -275,6 +275,11 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
     free(cal);
     T *work = alloc_t(wsz * sizeof(T));
     memset(work, 0, wsz * sizeof(T));
+#if defined(FMM_FLOAT) && defined(FMM_GPU)
+    if (fmm_gpu_attach(A, na * sizeof(T)) || fmm_gpu_attach(B, nb * sizeof(T)) || fmm_gpu_attach(C, nn * sizeof(T)) ||
+        fmm_gpu_attach(work, wsz * sizeof(T)))
+        printf("# no GPU regions: the M leaves run on the GEMM\n");
+#endif
     T **temps = NULL;
     int ntemps = max_temp() + 1;
     if (strstr(methods, "dps48ops")) {
@@ -376,6 +381,9 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
         free(temps);
     }
     free(R64);
+#if defined(FMM_FLOAT) && defined(FMM_GPU)
+    fmm_gpu_detach_all();
+#endif
     free(A); free(B); free(C); free(Cref); free(work);
 }
 

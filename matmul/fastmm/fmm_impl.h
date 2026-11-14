@@ -67,17 +67,66 @@ static void FN(kernels)(int lv, FN(kern_t) k[3]) {
     else { k[0] = FN(sw2_L_); k[1] = FN(sw2_R_); k[2] = FN(sw2_P_); }
 }
 
-/* the r products of a level, of shape t, as k single-threaded GEMM streams taking products in
- * turn */
-static void FN(gemm_streams)(int r, shape_t t, T *const *S, T *const *Tt, T *const *M, int k) {
-    atomic_int next = 0;
-    atomic_int *pn = &next;
-    dispatch_apply((size_t)k, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t w) {
-        (void)w;
-        enum BLAS_THREADING old = BLASGetThreading();
-        BLASSetThreading(BLAS_THREADING_SINGLE_THREADED);
-        for (int q; (q = atomic_fetch_add(pn, 1)) < r;) FN(gemm)(t, S[q], t.k, Tt[q], t.n, M[q], t.n);
-        BLASSetThreading(old);
+/* a product index for the streams (front, from the low end) or the GPU (from the high end) of a
+ * shared level; -1 when the two have met */
+static int FN(take)(atomic_int *lo, atomic_int *hi, int front) {
+    for (;;) {
+        int l = atomic_load(lo), h = atomic_load(hi);
+        if (l > h) return -1;
+        if (front) { if (atomic_compare_exchange_weak(lo, &l, l + 1)) return l; }
+        else if (atomic_compare_exchange_weak(hi, &h, h - 1)) return h;
+    }
+}
+
+#undef HAVE_GPU_SIDE
+#if defined(FMM_FLOAT) && defined(FMM_GPU)
+/* the GPU's side of a shared level: products from the high end, a few per command buffer (about
+ * FMM_GPU_FLOPS flops, default 2.5e10: some milliseconds, so that the last batch does not leave the
+ * streams idle for long; at most 8), until the streams have taken the rest; a batch the GPU
+ * refuses (a block outside the attached regions) is computed here by the GEMM */
+static void FN(gpu_side)(atomic_int *lo, atomic_int *hi, shape_t t, T *const *S, size_t lds, T *const *Tt, size_t ldt,
+                         T *const *M, size_t ldm) {
+    const char *e = getenv("FMM_GPU_FLOPS");
+    double target = e ? atof(e) : 2.5e10, per = 2.0 * (double)t.m * (double)t.k * (double)t.n;
+    int batch = (int)(target / per);
+    if (batch < 1) batch = 1;
+    if (batch > 8) batch = 8;
+    for (;;) {
+        const T *a[8], *b[8];
+        T *c[8];
+        int cnt = 0;
+        for (int q; cnt < batch && (q = FN(take)(lo, hi, 0)) >= 0; cnt++) { a[cnt] = S[q]; b[cnt] = Tt[q]; c[cnt] = M[q]; }
+        if (!cnt) break;
+        if (fmm_gpu_sgemm_batch(t.m, t.k, t.n, cnt, a, lds, b, ldt, c, ldm) != 0)
+            for (int i = 0; i < cnt; i++) FN(gemm)(t, a[i], lds, b[i], ldt, c[i], ldm);
+    }
+}
+#define HAVE_GPU_SIDE 1
+#else
+#define HAVE_GPU_SIDE 0
+#endif
+
+/* the r products of a level, of shape t (S[q] with leading dimension lds times Tt[q] (ldt) into
+ * M[q] (ldm)), as k single-threaded GEMM streams taking products in turn (k = 0: one product at a
+ * time with Accelerate's own threading); gpu: shared with the GPU, which takes products from the
+ * other end (FMM_GPU builds, f32) */
+static void FN(gemm_streams)(int r, shape_t t, T *const *S, size_t lds, T *const *Tt, size_t ldt, T *const *M,
+                             size_t ldm, int k, int gpu) {
+    atomic_int lo = 0, hi = r - 1;
+    atomic_int *plo = &lo, *phi = &hi;
+    if (!HAVE_GPU_SIDE) gpu = 0;
+    int cpu = k > 0 ? k : 1;
+    dispatch_apply((size_t)(cpu + (gpu ? 1 : 0)), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t w) {
+        if ((int)w < cpu) {
+            enum BLAS_THREADING old = BLASGetThreading();
+            if (k > 0) BLASSetThreading(BLAS_THREADING_SINGLE_THREADED);
+            for (int q; (q = FN(take)(plo, phi, 1)) >= 0;) FN(gemm)(t, S[q], lds, Tt[q], ldt, M[q], ldm);
+            if (k > 0) BLASSetThreading(old);
+        } else {
+#if HAVE_GPU_SIDE
+            FN(gpu_side)(plo, phi, t, S, lds, Tt, ldt, M, ldm);
+#endif
+        }
     });
 }
 
@@ -179,7 +228,7 @@ static void FN(bg_drain)(FN(bg_t) *bg) {
  * TX[q] (t.k x t.n, ld t.n) into MX[q] (t.m x t.n, ld t.n)), each a level Y over k GEMM streams */
 static void FN(pipeline)(const int *py, shape_t t, int r, T *const *SX, T *const *TX, T *const *MX, T *work,
                          FN(split_t) *sp, int w, FN(bg_t) *bg) {
-    int ly = PLV(py[0]), ry = lv_rank(ly), k = PST(py[1]);
+    int ly = PLV(py[0]), ry = lv_rank(ly), k = PST(py[1]), gpu = HAVE_GPU_SIDE && PGP(py[1]);
     int gy1 = LVDEF[ly].g1, gy2 = LVDEF[ly].g2, gy3 = LVDEF[ly].g3;
     shape_t ty = lv_sub(ly, t);
     size_t pad = fmm_pad(), bsS = ty.m * ty.k + pad, bsT = ty.k * ty.n + pad, bsM = ty.m * ty.n + pad,
@@ -210,21 +259,27 @@ static void FN(pipeline)(const int *py, shape_t t, int r, T *const *SX, T *const
         if (have_out)
             for (int b = 0; b < gy1 * gy3; b++) out_c[b] = MX[qo] + (size_t)(b / gy3) * ty.m * t.n + (size_t)(b % gy3) * ty.n;
         int ntask = (have_out ? nch : 0) + (have_in ? 2 * nch : 0);
-        atomic_int next_p = 0, next_g = 0;
-        atomic_int *pnp = &next_p, *png = &next_g;
+        atomic_int next_p = 0, g_lo = 0, g_hi = ry - 1;
+        atomic_int *pnp = &next_p, *plo = &g_lo, *phi = &g_hi;
         const T *const *ins = (const T *const *)in_s, *const *int_ = (const T *const *)in_t;
         T *const *outc = out_c;
         int si = qi & 1, sg = q & 1, so = qo & 1;
-        atomic_int gemm_active = gq ? k : 0;
+        atomic_int gemm_active = gq ? k + gpu : 0;
         atomic_int *pga = &gemm_active;
-        dispatch_apply((size_t)(k + w), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t id) {
+        dispatch_apply((size_t)(k + w + gpu), dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t id) {
             if ((int)id < k) {
                 if (!gq) return;
                 enum BLAS_THREADING old = BLASGetThreading();
                 BLASSetThreading(BLAS_THREADING_SINGLE_THREADED);
-                for (int j; (j = atomic_fetch_add(png, 1)) < ry;)
+                for (int j; (j = FN(take)(plo, phi, 1)) >= 0;)
                     FN(gemm)(ty, P->S[sg][j], ty.k, P->Tt[sg][j], ty.n, P->M[sg][j], ty.n);
                 BLASSetThreading(old);
+                atomic_fetch_sub(pga, 1);
+            } else if ((int)id >= k + w) {          /* the GPU's side of the sub-problem's products */
+                if (!gq) return;
+#if HAVE_GPU_SIDE
+                FN(gpu_side)(plo, phi, ty, P->S[sg], ty.k, P->Tt[sg], ty.n, P->M[sg], ty.n);
+#endif
                 atomic_fetch_sub(pga, 1);
             } else {
                 for (int tk; (tk = atomic_fetch_add(pnp, 1)) < ntask;) {
@@ -320,8 +375,8 @@ static void FN(exec)(const int *plan, shape_t s, const T *A, size_t lda, const T
         return;
     }
     int g1 = LVDEF[lv].g1, g2 = LVDEF[lv].g2, g3 = LVDEF[lv].g3, r = lv_rank(lv);
-    FN(kern_t) k[3];
-    FN(kernels)(lv, k);
+    FN(kern_t) k[3] = {0};
+    if (!lv_split(lv)) FN(kernels)(lv, k);
     shape_t t = lv_sub(lv, s);
     const T *Ab[64], *Bb[64];
     T *Cb[64], *S[64], *Tt[64], *M[64];
@@ -337,14 +392,25 @@ static void FN(exec)(const int *plan, shape_t s, const T *A, size_t lda, const T
         M[q] = work + (size_t)r * (bsS + bsT) + (size_t)q * bsM;
     }
     T *deeper = work + (size_t)r * (bsS + bsT + bsM);
-    double t0 = now();
-    FN(pass)(k[0], t.m, t.k, lda, t.k, Ab, S);
-    double t1 = now();
-    FN(pass)(k[1], t.k, t.n, ldb, t.n, Bb, Tt);
-    double t2 = now();
-    if (sp) {
-        sp->tL += t1 - t0;
-        sp->tR += t2 - t1;
+    size_t ldS = t.k, ldT = t.n, ldM = t.n;
+    if (lv_split(lv)) {     /* a K level: product q is strip q of A times B into strip q of C, in place */
+        for (int q = 0; q < r; q++) {
+            S[q] = (T *)Ab[q];
+            Tt[q] = (T *)B;
+            M[q] = Cb[q];
+        }
+        ldS = lda; ldT = ldb; ldM = ldc;
+        deeper = work;
+    } else {
+        double t0 = now();
+        FN(pass)(k[0], t.m, t.k, lda, t.k, Ab, S);
+        double t1 = now();
+        FN(pass)(k[1], t.k, t.n, ldb, t.n, Bb, Tt);
+        double t2 = now();
+        if (sp) {
+            sp->tL += t1 - t0;
+            sp->tR += t2 - t1;
+        }
     }
     if (PPI(plan[0]) && !lv_leaf(PLV(plan[1])) && PPI(plan[1]) && !lv_leaf(PLV(plan[2])) && PLV(plan[3]) == LV_G &&
         PST(plan[3]) > 0) {
@@ -355,13 +421,14 @@ static void FN(exec)(const int *plan, shape_t s, const T *A, size_t lda, const T
         double tt = now();
         FN(gemm_hybrid)(r, t.m, S, Tt, M, PST(plan[1]), PNE(plan[1]), fmm_neon_threads());
         if (sp) sp->tG += now() - tt;
-    } else if (PLV(plan[1]) == LV_G && PST(plan[1]) > 0) {
+    } else if (PLV(plan[1]) == LV_G && (PST(plan[1]) > 0 || PGP(plan[1]))) {
         double tt = now();
-        FN(gemm_streams)(r, t, S, Tt, M, PST(plan[1]));
+        FN(gemm_streams)(r, t, S, ldS, Tt, ldT, M, ldM, PST(plan[1]), PGP(plan[1]));
         if (sp) sp->tG += now() - tt;
     } else {
-        for (int q = 0; q < r; q++) FN(exec)(plan + 1, t, S[q], t.k, Tt[q], t.n, M[q], t.n, deeper, sp);
+        for (int q = 0; q < r; q++) FN(exec)(plan + 1, t, S[q], ldS, Tt[q], ldT, M[q], ldM, deeper, sp);
     }
+    if (lv_split(lv)) return;
     double t3 = now();
     FN(pass)(k[2], t.m, t.n, t.n, ldc, (const T *const *)M, Cb);
     if (sp) sp->tP += now() - t3;

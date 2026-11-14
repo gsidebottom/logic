@@ -36,6 +36,9 @@
 #include "fmm.h"
 #include "kernels.h"
 #include "neon_gemm.h"
+#ifdef FMM_GPU
+#include "gpu_leaf.h"
+#endif
 
 /* R = A B (A m x k, B k x n, row-major) with every entry a compensated dot product (Ogita, Rump
  * and Oishi's Dot2: each product split exactly by an FMA, the sum accumulated with an error-free
@@ -141,8 +144,9 @@ static void evict(void) {
  * are pipelined, the passes of the neighbouring products on fmm_pass_threads() cores (or on
  * p cores, with p << 25, written D48+p) while the GEMMs of one product run. */
 enum { LV_NONE = -1, LV_G = 0, LV_B2, LV_B4, LV_B8, LV_SW, LV_D48, LV_SW2, LV_R336, LV_R363, LV_R633,
-       LV_T336, LV_T363, LV_T633, LV_N };
-static const char *LV_NAME[LV_N] = {"G", "B2", "B4", "B8", "SW", "D48", "SW2", "R336", "R363", "R633", "T336", "T363", "T633"};
+       LV_T336, LV_T363, LV_T633, LV_K16, LV_K32, LV_K64, LV_N };
+static const char *LV_NAME[LV_N] = {"G", "B2", "B4", "B8", "SW", "D48", "SW2", "R336", "R363", "R633", "T336", "T363", "T633",
+                                    "K16", "K32", "K64"};
 /* a level's grid g1 x g2 x g3 (A split into g1 x g2 blocks, B into g2 x g3, C into g1 x g3) and
  * its rank; the R levels are the three orientations of the accurate <3x3x6:40> scheme of
  * Dumas, Pernet and Sedoglavic (PLinOpt's 3x3x6_40_DPS-accurate and transposes; schemes/); the T
@@ -152,7 +156,12 @@ static const char *LV_NAME[LV_N] = {"G", "B2", "B4", "B8", "SW", "D48", "SW2", "
 typedef struct { int g1, g2, g3, r; } lvdef_t;
 static const lvdef_t LVDEF[LV_N] = {{1, 1, 1, 1},  {2, 2, 2, 8},  {4, 4, 4, 64}, {8, 8, 8, 512}, {2, 2, 2, 7},
                                     {4, 4, 4, 48}, {4, 4, 4, 49}, {3, 3, 6, 40}, {3, 6, 3, 40},  {6, 3, 3, 40},
-                                    {3, 3, 6, 42}, {3, 6, 3, 42}, {6, 3, 3, 42}};
+                                    {3, 3, 6, 42}, {3, 6, 3, 42}, {6, 3, 3, 42},
+                                    {16, 1, 1, 16}, {32, 1, 1, 32}, {64, 1, 1, 64}};
+/* the K levels are the classical product cut into g strips of rows, C_i = A_i B: no passes and no
+ * scratch (the strips are the operands, in place), g independent products of (m/g x k)(k x n) for
+ * the engines below to share (named plans; the result is the GEMM's own, bit for bit) */
+static int lv_split(int lv) { return lv >= LV_K16 && lv <= LV_K64; }
 /* the fused levels the planner uses (SW2 has D48's passes and one product more; the T levels are
  * not in the menu: named plans only, until the trial says they pay) */
 static const int FUSED[] = {LV_SW, LV_D48, LV_R336, LV_R363, LV_R633};
@@ -180,6 +189,7 @@ static shape_t lv_up(int lv, shape_t t) {      /* the problem whose products hav
 #define PNE(e) ((e) < 0 ? 0 : ((e) >> 16) & 0xff) /* its products on NEON */
 #define PPI(e) ((e) < 0 ? 0 : ((e) >> 24) & 1)    /* its sub-problems pipelined */
 #define PPW(e) ((e) < 0 ? 0 : ((e) >> 25) & 0xf)  /* on this many pass threads (0: the default) */
+#define PGP(e) ((e) < 0 ? 0 : ((e) >> 29) & 1)    /* its products shared with the GPU (f32, FMM_GPU builds) */
 static const int STREAMS[] = {0, 3, 4, 6};       /* the stream counts the planner considers */
 #define NSTREAMS ((int)(sizeof STREAMS / sizeof STREAMS[0]))
 static int lv_leaf(int lv) { return lv <= LV_B8; }
@@ -205,6 +215,7 @@ static size_t plan_work(const int *plan, shape_t s) {
     int lv = PLV(plan[0]);
     if (lv_leaf(lv)) return 0;
     shape_t t = lv_sub(lv, s);
+    if (lv_split(lv)) return plan_work(plan + 1, t);
     size_t pad = fmm_pad(), blocks = (size_t)lv_rank(lv) * ((t.m * t.k + pad) + (t.k * t.n + pad) + (t.m * t.n + pad));
     /* a pipelined level double-buffers the scratch of the level below */
     return blocks + (PPI(plan[0]) ? 2 : 1) * plan_work(plan + 1, t);
@@ -216,6 +227,8 @@ static void plan_str(const int *plan, char *buf, size_t len) {
         int lv = PLV(plan[i]);
         char e[16];
         if (PNE(plan[i])) snprintf(e, sizeof e, "%s%dN%d", LV_NAME[lv], PST(plan[i]), PNE(plan[i]));
+        else if (PGP(plan[i]) && PST(plan[i])) snprintf(e, sizeof e, "%s%dM", LV_NAME[lv], PST(plan[i]));
+        else if (PGP(plan[i])) snprintf(e, sizeof e, "%sM", LV_NAME[lv]);
         else if (PST(plan[i])) snprintf(e, sizeof e, "%s%d", LV_NAME[lv], PST(plan[i]));
         else if (PPW(plan[i])) snprintf(e, sizeof e, "%s+%d", LV_NAME[lv], PPW(plan[i]));
         else snprintf(e, sizeof e, "%s%s", lv < 0 ? "NONE" : LV_NAME[lv], PPI(plan[i]) ? "+" : "");
@@ -255,7 +268,7 @@ static int parse_plan(const char *meth, shape_t n, int *plan) {
     shape_t sz = n;
     char *save = NULL;
     for (char *t = strtok_r(buf, "/", &save); t && k < PLAN_MAX; t = strtok_r(NULL, "/", &save)) {
-        int found = -1, st = 0, ne = 0, pipe = 0, pw = 0;
+        int found = -1, st = 0, ne = 0, pipe = 0, pw = 0, gp = 0;
         char *plus = strchr(t, '+');
         if (plus && plus > t) {
             pipe = 1;
@@ -269,14 +282,19 @@ static int parse_plan(const char *meth, shape_t n, int *plan) {
             char *rest;
             st = (int)strtol(t + 1, &rest, 10);
             if (*rest == 'N') ne = atoi(rest + 1);
+            else if (*rest == 'M') gp = 1;      /* GkM: the products shared between k streams and the GPU */
+        }
+        if (found < 0 && !strcmp(t, "GM")) {    /* GM: between Accelerate's own threading and the GPU */
+            found = LV_G;
+            gp = 1;
         }
         if (found < 0 || !lv_divides(found, sz)) return 0;
         sz = lv_sub(found, sz);
         if (found == LV_G && streams >= 0 && k > 0) st = streams;
-        if ((st || ne) && k == 0) return 0;     /* streams need a level whose products they share */
+        if ((st || ne || gp) && k == 0) return 0;     /* streams need a level whose products they share */
         if (ne && !st) return 0;
         if (pipe && lv_leaf(found)) return 0;
-        plan[k++] = found | (st << 8) | (ne << 16) | (pipe << 24) | ((pw & 0xf) << 25);
+        plan[k++] = found | (st << 8) | (ne << 16) | (pipe << 24) | ((pw & 0xf) << 25) | (gp << 29);
         if (lv_leaf(found)) return 1;
     }
     return 0;
@@ -542,17 +560,17 @@ static void calib_save(const calib_t *c, int f64) {
 static double plan_cost_in(const calib_t *c, const int *plan, shape_t s, int parent) {
     int lv = PLV(plan[0]);
     if (lv == LV_G) {
-        if (PNE(plan[0])) return -1;    /* NEON products are not calibrated */
+        if (PNE(plan[0]) || PGP(plan[0])) return -1;    /* NEON and GPU products are not calibrated */
         if (parent < 0) return PST(plan[0]) ? -1 : calib_cost(c, LV_G, s);
         return calib_cost(c, kind_gin(parent, PST(plan[0])), s);
     }
     if (lv == LV_B2) return parent < 0 && shape_sq(s) ? calib_cost(c, LV_B2, s) : -1;
-    if (lv_leaf(lv)) return -1;
+    if (lv_leaf(lv) || lv_split(lv)) return -1;
     if (!lv_divides(lv, s)) return -1;
     shape_t m = lv_sub(lv, s);
     if (PPI(plan[0])) {     /* its passes, then a pipeline of r sub-problems Y over Gk */
         int ly = PLV(plan[1]), lf = plan[2];
-        if (lv_leaf(ly) || PLV(lf) != LV_G || PST(lf) == 0 || PNE(lf) || !lv_divides(ly, m)) return -1;
+        if (lv_leaf(ly) || PLV(lf) != LV_G || PST(lf) == 0 || PNE(lf) || PGP(lf) || !lv_divides(ly, m)) return -1;
         shape_t my = lv_sub(ly, m);
         int pw = PPW(plan[0]) ? PPW(plan[0]) : fmm_pass_threads();
         double px = calib_cost(c, lv, m), st = calib_cost(c, kind_pipe(ly, PST(lf), pw, 0), my),

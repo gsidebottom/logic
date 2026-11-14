@@ -1596,3 +1596,64 @@ is 0.739 s with 2 pass threads, 0.621 with 3, 0.532 with 4.  Not done: the plann
 leaves, the library's entry points (regions must be page-aligned to be wrapped), the Rust port, f64 (Metal has
 none: f64 stays where it is, within about 8% of its GEMM-only time).  Default build unchanged (test_fmm all ok,
 errors of the old plans identical).  Not committed.
+
+**2026-11-14 (later): the GPU leaves integrated; then three questions about speed without more hardware.**  Greg:
+commit and integrate; then look for accurate speed-ups without more hardware -- an unknown scheme with a better
+ratio than <3x3x6:40>, accurate schemes with more single-block operands, something more inventive than mixing.
+INTEGRATION (C only; libfmm_gpu.a, bench_fmm_gpu, test_fmm_gpu; the default build and its cache unchanged, Rust
+still identical 26/26).  Calibration kinds GMX / GkMX (a level's products shared with the GPU) and PYkKpPMs/o
+(pipelines so shared) in their own file calib5gpu_f32.txt beside the cache, so that builds without the GPU and the
+Rust port never see them; the planner adds the leaves GM and G6M on products of 576 and up (below, plans
+interpolated between calibrated sizes ran slower than the GEMM: 2048 f32 D48/G6M 0.86x), GPU pipelines with 3 or 4
+pass threads (6 were calibrated and dropped: predicted 0.48 s at 13824, ran 0.52-0.57), and the K levels on top for
+shapes calibrated exactly; the entry points wrap the scratch once and, for a K plan, the caller's page-aligned
+matrices per call (else the best plan without a K level).  Three rules came out of the measurements, all in the
+planner: (a) the GPU plans are held to the predicted error of the fastest plan without the GPU (K32/G6M, the
+GEMM's own accuracy, had replaced R363/G6M at 3456 for a tie in time); (b) faster first, more accurate second: of
+the plans predicted within 2% of the fastest (8% with the GPU, whose plans repeat only to 10-20%: the same plan is
+slower right after CPU-only work, and keeping the GPU busy during the first passes changed nothing), one predicted
+at least 10% more accurate wins (smaller predicted differences are below the model: it ranked two plans 8% apart
+the wrong way round), and of plans predicted equal the one with the more accurate level on top (measured in f64:
+R363 over R336 6.40e-15 against 6.72e-15 the other way round at 13824); C and Rust; (c) FMM_GPU=0 plans without
+the GPU.  THE PASSES PAID FOR EVERY LINE TWICE.  A plain pass d = a + b moves 208-220 GB/s on this machine with
+two threads (probe_nt.c), the fused passes 121-130 (L: 16 blocks in, 48 out) to 155-174 (P: 48 in, 16 out): the
+more a pass writes the slower, as if each written line were first read -- which it is: a store to a line not in
+the cache fetches it.  Non-temporal stores (STNP) change nothing and strip-mining through L1 buffers loses
+10-20% (probe_strip.c), but DC ZVA, which zeroes a 64-byte line without reading it, issued for the output lines
+of a 4 KB tile just before the kernel computes it, takes the L passes to 164-168 GB/s (+25-37%) and the P passes
+up 4-7%; results identical.  In the library (fmm_impl.h rows(), FMM_ZVA=0 to switch off): the top passes of the
+13824 picks fall 17%, plans gain 0.3% in f64 and 2-4% in f32 (A/B alternately, results/pass_probes_2026-11-14.txt).
+Recalibrated at 13824 in both precisions and with the GPU; results/zva_gpu_campaign_2026-11-14.txt.  THE PICKS
+NOW (min, exact errors; before = the final campaign of 11-12):
+  f64  3456  R363/G3 0.0705 s 2.76e-15            (before SW+4/R363/G6 0.0695, 3.47e-15: 20% less error)
+       6912  R363+3/R633/G6 0.446 s 3.75e-15      (before R363+2/R633/G6 0.441, the same error)
+       13824 R363+4/R336/G3 3.274 s 6.40e-15      (before R363+2/R336/G3 3.293, the same error)
+  f32  3456  R363/G6 0.0202 s 1.28e-6             (before 0.0208)
+       6912  R363+4/R633/G6 0.136 s 2.20e-6       (before 0.141)
+       13824 R363+4/R363/G6 0.906 s 2.46e-6       (before R336+2/R363/G6 0.925, 3.34e-6: 26% less error)
+  f32 with the GPU: R363/G6M at all three, 0.012-0.014 / 0.068-0.084 / 0.53 s with 1.28e-6 / 1.76e-6 / 2.73e-6
+       (the two-level R336+4/R363/G6M runs 0.49-0.54 s at 13824 with 3.34e-6); the GPU alone 0.013 / 0.109 / 0.83.
+Q1, A BETTER SCHEME (matmul/levels/ratio_screen.py, .txt): over the 5,456 formats of Sedoglavic's table
+<3x3x6:40> is the best on traffic per unit of saving, T/(1-s) = 45.9, at ANY stream count (4x4x4:48 48.0,
+3x4x6:54 51.0, 6x6x12:280 52.7, 6x6x6:153 54.0), and the best saving within 96 streams; to beat it takes a rank
+record: <3x3x6:39>, <4x4x4:47> over the rationals or <3x4x6:53> (one below the known rank), <3x3x8:53> or
+<4x4x5:59> (two below).  A bounded numerical look (als_rank.py, .txt: regularized alternating least squares
+from random starts, 8 minutes on 8 cores) is UNINFORMATIVE: it finds <2x2x2:7> but neither <3x3x3:23> (0 of 90
+starts) nor the known <3x3x6:40> (0 of 480), so its 0 of 480 at rank 39 says nothing; a real attempt needs a real
+method (Smirnov's ALS with clamping, Levenberg-Marquardt, or a flip-graph search and a lift), not tried.  Q2, SINGLE-BLOCK OPERANDS (single_blocks.py, .txt): the
+ranks of a scheme's factors are invariants of its class, only a rank-one factor can be a single block, and at
+most g1 g2 (g2 g3) at one point: <3x3x6:40> has 24 rank-one left factors of 40 (8 column and 7 row directions on
+a 3x3 grid: at most 9 at once), no rank-one right or output factor at all (every one has rank 3); the 4x4 class
+32 of 48 on each side (at most 16; the 262 point already has 8 on the right).  With every one of them free the
+passes would move 8% (3x3x6) or 17% (4x4) less, 1-2% of a plan's time, at a point that is not the accurate one.
+An alternative basis would make g1 g2 left factors single blocks in any scheme, but its change of basis costs
+more traffic than it saves at two levels (6 n^2 against 7.9 n^2 saved only if all levels' bases are applied in
+one 162-stream pass).  Q3, MORE INVENTIVE: besides DC ZVA -- the pass threads slow the SME streams in proportion
+to the traffic they move (6 f64 streams of 768-cubes: 942 GFLOP/s alone, 663 beside 2 pass threads at 49 GB/s,
+465 beside 4 at 78; f32 4070 / 3490 / 3110), not through the cache (non-temporal stores and loads do not help)
+and not on the efficiency cores (passes at background quality of service run there at 18 GB/s and cost the
+streams nothing; that is enough for the hidden passes of the f64 picks, 17 GB/s on average, but each
+sub-problem's passes would take 95% of its GEMM time, and the gain is the 1.5-5% the pipelines lose now; not
+built).  Our own SME kernel: parity (above).  The f64 pick's GEMM-only time is 3.0 s of its 3.27: no CPU-side
+change can gain more than about 8% at two levels, and a third level needs 351 GB of traffic against 2.2-2.6 s
+of GEMM.  What would move f64 is a rank record or hardware; nothing else measured here does.

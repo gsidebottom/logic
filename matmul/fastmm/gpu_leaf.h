@@ -12,7 +12,10 @@
  * and the allocation must extend to the end of its last page (any page-granular allocation does);
  * 0 on success, -1 if there is no GPU or the region cannot be wrapped */
 int fmm_gpu_attach(const void *base, size_t bytes);
+void fmm_gpu_detach(const void *base);
 void fmm_gpu_detach_all(void);
+/* 1 if there is a GPU to share products with */
+int fmm_gpu_available(void);
 /* C[i] (m x n, leading dimension ldc) = A[i] (m x k, lda) B[i] (k x n, ldb) for i < count, every
  * block inside an attached region; 0 on success, -1 if a block is not (nothing is computed) */
 int fmm_gpu_sgemm_batch(size_t m, size_t k, size_t n, int count, const float *const *A, size_t lda,

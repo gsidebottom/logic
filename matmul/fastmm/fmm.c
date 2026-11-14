@@ -110,6 +110,28 @@ static int fmm_f64pass(void) {
     return v;
 }
 
+/* the passes claim their output lines with DC ZVA before writing them (FMM_ZVA=0: off).  A store
+ * to a line that is not in the cache first reads the line from memory, although the pass will
+ * overwrite all of it: a pass that writes 48 blocks and reads 16 so moves 112 blocks through the
+ * memory system instead of 64 (measured: 123 GB/s of its own words, where the P pass, 48 in and 16
+ * out, moves 155).  DC ZVA zeroes a whole line without reading it; claimed just ahead of the
+ * kernel, tile by tile, the same pass moves 168 GB/s (probe_strip.c).  Returns the block size in
+ * bytes that DC ZVA zeroes (64 on Apple silicon), or 0 if it is switched off or prohibited. */
+static size_t fmm_zva(void) {
+    static long v = -1;
+    if (v < 0) {
+        const char *e = getenv("FMM_ZVA");
+        uint64_t id = 0;
+#if defined(__aarch64__)
+        __asm__("mrs %0, dczid_el0" : "=r"(id));
+#else
+        id = 16;
+#endif
+        v = (e && !atoi(e)) || (id & 16) ? 0 : (long)(4u << (id & 15));
+    }
+    return (size_t)v;
+}
+
 /* the smallest block size the planner considers (FMM_MINB, default 256) */
 static size_t fmm_minb(void) {
     const char *e = getenv("FMM_MINB");
@@ -309,7 +331,9 @@ static int parse_plan(const char *meth, shape_t n, int *plan) {
  * over k GEMM streams (3, 6) with p pass threads (2, 3, 4): PYkKpPs m = the steady time per sub-problem, PYkKpPo
  * m = the pipeline's fill and drain (a pipeline of q sub-problems takes q s + o) */
 #define K_GIN 100   /* K_GIN + 16 k + level: GEMM per product inside that level, k streams */
+#define K_GGPU 300  /* K_GGPU + 16 k + level: the same with the products shared with the GPU (GkM, k = 0: GM) */
 #define K_PIPE 1000 /* K_PIPE + ((16 k + p) 2 + part) 16 + level: pipelined sub-problems */
+#define K_PIPEG 5000 /* K_PIPEG + the same: pipelined sub-problems whose products are shared with the GPU */
 #define K_ERR 9000  /* K_ERR + i: the error of ERR_PLANS[i] against the exact product at n = N_E; the last,
                      * EG, is the classical GEMM's own (a cache without it has the old entries, measured
                      * against the GEMM, and re-measures all of them) */
@@ -318,10 +342,34 @@ static int parse_plan(const char *meth, shape_t n, int *plan) {
 static const char *ERR_PLANS[NERR] = {"sw1", "dps48", "dps48x2", "r336", "r363", "r633", "classical"};
 static const char *ERR_NAMES[NERR] = {"ESW", "ED48", "ED48D48", "ER336", "ER363", "ER633", "EG"};
 #define FMM_DEFAULT_GROWTH 1.0  /* the budget max_growth = 0 means: no less accurate than the GEMM */
+#define PLAN_TIE 0.02           /* plans predicted within 2% of the fastest are ties ... */
+#define PLAN_TIE_GAIN 0.10      /* ... which a plan predicted at least 10% more accurate wins */
+#define PLAN_TIE_GPU 0.08       /* the window with the GPU, whose plans repeat to 10-20% only (the same plan runs
+                                 * slower right after CPU-only work than after another GPU plan): at 13824 the
+                                 * two-level pipeline predicted 0.50 s and the single level predicted 0.53 ran
+                                 * 0.50-0.54 and 0.53, and the single level has 18% less error */
 #define CALIB_FORMAT 5
 static const int PIPE_K[] = {3, 6}, PIPE_P[] = {2, 3, 4};  /* the pipelines the planner considers */
 #define NPIPE_K ((int)(sizeof PIPE_K / sizeof PIPE_K[0]))
 #define NPIPE_P ((int)(sizeof PIPE_P / sizeof PIPE_P[0]))
+/* with the GPU (f32, FMM_GPU builds): a level's products shared between the GPU and Accelerate's
+ * own threading (GM) or six streams (G6M), on products whose smallest dimension is at least
+ * GPU_MINB (below, a command buffer's overhead is the product's time, and plans interpolated
+ * between calibrated sizes ran slower than the GEMM: 2048 f32, D48/G6M with 512-blocks, 0.86x);
+ * pipelines of six streams and the GPU with 3 or 4 pass threads (the passes are what the faster
+ * leaf waits for; 6 pass threads were calibrated too and dropped: the synthetic pipeline predicted
+ * 0.48 s at 13824 where the plan ran 0.52-0.57, behind the 4-thread plan's 0.50); and on top the
+ * K levels, the classical product in strips of rows.  A plan's
+ * time depends on what ran just before by some 10-15% at 13824 (0.50 s after another GPU plan,
+ * 0.58 after 1.5 s of the classical GEMM; keeping the GPU busy with throwaway products during the
+ * first passes changed nothing, so it is not the GPU's clock) */
+static const int GSTREAMS[] = {0, 6}, GPIPE_P[] = {3, 4};
+#define NGSTREAMS ((int)(sizeof GSTREAMS / sizeof GSTREAMS[0]))
+#define NGPIPE_P ((int)(sizeof GPIPE_P / sizeof GPIPE_P[0]))
+#define GPIPE_K 6
+#define GPU_MINB 576
+static const int KLEVELS[] = {LV_K16, LV_K32, LV_K64};
+#define K_MINROWS 48
 /* the table's capacity: a square calibration to 13824 fills about 950 entries, each rectangular
  * shape calibrated for adds about 120 */
 #define CALIB_MAX 4096
@@ -329,9 +377,16 @@ typedef struct {
     int kind[CALIB_MAX], n;
     shape_t s[CALIB_MAX];
     double t[CALIB_MAX];
+    int gpu;    /* the planner may share products with the GPU (f32, an FMM_GPU build, a GPU, FMM_GPU != 0) */
+    int nok;    /* ... but not through a K level (the caller's matrices cannot be wrapped for the GPU) */
 } calib_t;
 
 static int kind_gin(int lv, int streams) { return K_GIN + 16 * streams + lv; }
+static int kind_ggpu(int lv, int streams) { return K_GGPU + 16 * streams + lv; }
+static int kind_pipeg(int lv, int streams, int passes, int over) {
+    return K_PIPEG + ((16 * streams + passes) * 2 + over) * 16 + lv;
+}
+static int kind_is_gpu(int kind) { return (kind >= K_GGPU && kind < K_PIPE) || (kind >= K_PIPEG && kind < K_ERR); }
 static int kind_pipe(int lv, int streams, int passes, int over) {
     return K_PIPE + ((16 * streams + passes) * 2 + over) * 16 + lv;
 }
@@ -343,8 +398,14 @@ static const char *kind_name(int kind) {
     k = (k + 1) % 4;
     if (kind >= K_ERR) return ERR_NAMES[kind - K_ERR];
     if (kind >= K_PIPE) {
-        int x = kind - K_PIPE, lv = x % 16, over = (x / 16) % 2, sp = x / 32;
-        snprintf(buf[k], sizeof buf[k], "P%sk%dp%d%c", LV_NAME[lv], sp / 16, sp % 16, over ? 'o' : 's');
+        int g = kind >= K_PIPEG, x = kind - (g ? K_PIPEG : K_PIPE), lv = x % 16, over = (x / 16) % 2, sp = x / 32;
+        snprintf(buf[k], sizeof buf[k], "P%sk%dp%d%s%c", LV_NAME[lv], sp / 16, sp % 16, g ? "M" : "", over ? 'o' : 's');
+        return buf[k];
+    }
+    if (kind >= K_GGPU) {
+        int st = (kind - K_GGPU) / 16, lv = (kind - K_GGPU) % 16;
+        if (st) snprintf(buf[k], sizeof buf[k], "G%dM%s", st, LV_NAME[lv]);
+        else snprintf(buf[k], sizeof buf[k], "GM%s", LV_NAME[lv]);
         return buf[k];
     }
     int st = (kind - K_GIN) / 16, lv = (kind - K_GIN) % 16;
@@ -365,10 +426,14 @@ static int kind_parse(const char *s) {
         if (kp - s - 1 <= 0 || kp - s - 1 >= (int)sizeof name) return -1;
         memcpy(name, s + 1, (size_t)(kp - s - 1));
         int st, pw;
-        char part;
-        if (sscanf(kp, "k%dp%d%c", &st, &pw, &part) != 3 || (part != 's' && part != 'o')) return -1;
+        char tail[4] = {0};
+        if (sscanf(kp, "k%dp%d%3s", &st, &pw, tail) != 3) return -1;
+        int g = tail[0] == 'M';
+        const char *part = tail + g;
+        if ((part[0] != 's' && part[0] != 'o') || part[1]) return -1;
         for (int v = 0; v < LV_N; v++)
-            if (!strcmp(name, LV_NAME[v])) return kind_pipe(v, st, pw, part == 'o');
+            if (!strcmp(name, LV_NAME[v]))
+                return g ? kind_pipeg(v, st, pw, part[0] == 'o') : kind_pipe(v, st, pw, part[0] == 'o');
         return -1;
     }
     if (s[0] != 'G') return -1;
@@ -377,6 +442,9 @@ static int kind_parse(const char *s) {
     while (isdigit((unsigned char)*p)) st = 10 * st + (*p++ - '0');
     for (int v = 0; v < LV_N; v++)
         if (!strcmp(p, LV_NAME[v])) return kind_gin(v, st);
+    if (*p == 'M')
+        for (int v = 0; v < LV_N; v++)
+            if (!strcmp(p + 1, LV_NAME[v])) return kind_ggpu(v, st);
     return -1;
 }
 
@@ -452,6 +520,8 @@ static void calib_need(calib_t *need, shape_t s) {
         shape_t t = lv_sub(lv, s);
         calib_put(need, lv, t, 0);
         for (int i = 0; i < NSTREAMS; i++) calib_put(need, kind_gin(lv, STREAMS[i]), t, 0);
+        if (need->gpu && shape_min(t) >= GPU_MINB)
+            for (int i = 0; i < NGSTREAMS; i++) calib_put(need, kind_ggpu(lv, GSTREAMS[i]), t, 0);
         /* a pipelined level at s: its sub-problems are levels ly on products of shape t */
         for (int fy = 0; fy < NFUSED; fy++) {
             int ly = FUSED[fy];
@@ -460,8 +530,24 @@ static void calib_need(calib_t *need, shape_t s) {
             for (int a = 0; a < NPIPE_K; a++)
                 for (int b = 0; b < NPIPE_P; b++)
                     for (int o = 0; o < 2; o++) calib_put(need, kind_pipe(ly, PIPE_K[a], PIPE_P[b], o), ty, 0);
+            if (need->gpu && shape_min(ty) >= GPU_MINB)
+                for (int b = 0; b < NGPIPE_P; b++)
+                    for (int o = 0; o < 2; o++) calib_put(need, kind_pipeg(ly, GPIPE_K, GPIPE_P[b], o), ty, 0);
         }
         calib_need(need, t);
+    }
+}
+
+/* the same for the problem itself: with the GPU also the K levels on top (their products are strips
+ * of the problem, so they are measured for this shape only and are not interpolated) */
+static void calib_need_top(calib_t *need, shape_t s) {
+    calib_need(need, s);
+    if (!need->gpu) return;
+    for (int i = 0; i < (int)(sizeof KLEVELS / sizeof KLEVELS[0]); i++) {
+        int lv = KLEVELS[i];
+        if (!lv_divides(lv, s) || lv_sub(lv, s).m < K_MINROWS) continue;
+        calib_put(need, lv, lv_sub(lv, s), 0);
+        for (int j = 0; j < NGSTREAMS; j++) calib_put(need, kind_ggpu(lv, GSTREAMS[j]), lv_sub(lv, s), 0);
     }
 }
 
@@ -485,10 +571,30 @@ static void calib_path(char *buf, size_t len, int f64) {
     snprintf(buf, len, "%s/calib5_%s.txt", dir, f64 ? "f64" : "f32");
 }
 
+/* the GPU's entries live in their own file beside the cache (calib5gpu_f32.txt): builds without
+ * the GPU and the Rust port read and rewrite the cache without knowing them */
+static void calib_path_gpu(char *buf, size_t len) {
+    calib_path(buf, len, 0);
+    char *u = strrchr(buf, '_');
+    if (u && (size_t)(u - buf) + 16 < len) strcpy(u, "gpu_f32.txt");
+}
+
+/* whether the planner may use the GPU in this precision */
+static int gpu_mode(int f64) {
+#ifdef FMM_GPU
+    const char *e = getenv("FMM_GPU");
+    return !f64 && !(e && !atoi(e)) && fmm_gpu_available();
+#else
+    (void)f64;
+    return 0;
+#endif
+}
+
 /* the cache, if it was measured on this machine with this padding, format and D48 program */
 static void calib_load(calib_t *c, int f64) {
     char path[256], line[256], kind[16];
     memset(c, 0, sizeof *c);
+    c->gpu = gpu_mode(f64);
     const char *re = getenv("FMM_RECALIB");
     if (re && atoi(re)) return;
     calib_path(path, sizeof path, f64);
@@ -514,12 +620,35 @@ static void calib_load(calib_t *c, int f64) {
     if (!ok_machine || !ok_pad || !ok_format || !ok_kernels) {
         printf("# calibration %s is from another machine, padding, format or kernels: remeasuring\n", path);
         memset(c, 0, sizeof *c);
+        c->gpu = gpu_mode(f64);
+        return;
     }
+    if (!c->gpu) return;
+    /* the GPU's entries, valid with the cache they were measured beside (same header) */
+    calib_path_gpu(path, sizeof path);
+    f = fopen(path, "r");
+    if (!f) return;
+    int n0 = c->n;
+    ok_machine = ok_pad = ok_format = ok_kernels = 0;
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\n")] = 0;
+        if (!strncmp(line, "# machine ", 10)) ok_machine = !strcmp(line + 10, machine());
+        else if (!strncmp(line, "# pad ", 6)) ok_pad = (size_t)atol(line + 6) == fmm_pad();
+        else if (!strncmp(line, "# format ", 9)) ok_format = atoi(line + 9) == CALIB_FORMAT;
+        else if (!strncmp(line, "# kernels ", 10)) ok_kernels = !strcmp(line + 10, kernels);
+        else if (line[0] != '#' && sscanf(line, "%15s %zu %zu %zu %lf", kind, &s.m, &s.k, &s.n, &t) == 5 &&
+                 kind_parse(kind) >= 0 && (kind_is_gpu(kind_parse(kind)) || lv_split(kind_parse(kind))))
+            calib_put(c, kind_parse(kind), s, t);
+    }
+    fclose(f);
+    if (!ok_machine || !ok_pad || !ok_format || !ok_kernels) c->n = n0;
 }
 
-static void calib_save(const calib_t *c, int f64) {
+/* one of the cache's two files: the entries with (gpu 1) or without (gpu 0) the GPU */
+static void calib_save_file(const calib_t *c, int f64, int gpu) {
     char path[256];
-    calib_path(path, sizeof path, f64);
+    if (gpu) calib_path_gpu(path, sizeof path);
+    else calib_path(path, sizeof path, f64);
     char *slash = strrchr(path, '/');
     if (slash) {                            /* the cache's directory, if it is new */
         *slash = 0;
@@ -528,12 +657,18 @@ static void calib_save(const calib_t *c, int f64) {
     }
     FILE *f = fopen(path, "w");
     if (!f) { perror(path); return; }
-    fprintf(f, "# bench_fmm calibration, %s, seconds; entries kind m k n t for a product of shape (m x k)(k x n): "
-               "G = one GEMM of that shape, B2 = classical blocked 2x2 (one call each); SW, D48, R336, R363, R633 = "
-               "the three passes of one such level whose products have that shape; GSW, GD48, ... = its GEMM time "
-               "per product, GkSW, GkD48, ... = the same with k GEMM streams; PYkKpPs, PYkKpPo = pipelined "
-               "sub-problems of level Y (steady time, fill and drain); E... = errors at n = N_E\n",
-            f64 ? "f64" : "f32");
+    if (gpu)
+        fprintf(f, "# bench_fmm calibration, f32, the GPU's entries (beside calib5_f32.txt): GMX, GkMX = the GEMM time per "
+                   "product of level X with its products shared between Accelerate's own threading (k streams) and the "
+                   "GPU; PYkKpPMs, PYkKpPMo = pipelined sub-problems of level Y so shared; K16, K32, K64 = the classical "
+                   "product in strips of rows (no passes: 0)\n");
+    else
+        fprintf(f, "# bench_fmm calibration, %s, seconds; entries kind m k n t for a product of shape (m x k)(k x n): "
+                   "G = one GEMM of that shape, B2 = classical blocked 2x2 (one call each); SW, D48, R336, R363, R633 = "
+                   "the three passes of one such level whose products have that shape; GSW, GD48, ... = its GEMM time "
+                   "per product, GkSW, GkD48, ... = the same with k GEMM streams; PYkKpPs, PYkKpPo = pipelined "
+                   "sub-problems of level Y (steady time, fill and drain); E... = errors at n = N_E\n",
+                f64 ? "f64" : "f32");
     fprintf(f, "# machine %s\n# pad %zu\n# format %d\n# kernels %s %d R %d SW %s %d\n", machine(), fmm_pad(), CALIB_FORMAT,
             DPS48_PROGRAM, (int)DPS48_OPS, (int)(R336_OPS + R363_OPS + R633_OPS), SW_PROGRAM, (int)SW_OPS);
     int idx[CALIB_MAX];
@@ -549,9 +684,17 @@ static void calib_save(const calib_t *c, int f64) {
         }
     for (int a = 0; a < c->n; a++) {
         int i = idx[a];
+        if ((kind_is_gpu(c->kind[i]) || lv_split(c->kind[i])) != gpu) continue;
         fprintf(f, "%s %zu %zu %zu %.9g\n", kind_name(c->kind[i]), c->s[i].m, c->s[i].k, c->s[i].n, c->t[i]);
     }
     fclose(f);
+}
+
+static void calib_save(const calib_t *c, int f64) {
+    calib_save_file(c, f64, 0);
+    int any = 0;
+    for (int i = 0; i < c->n; i++) any |= kind_is_gpu(c->kind[i]) || lv_split(c->kind[i]);
+    if (any) calib_save_file(c, f64, 1);
 }
 
 /* predicted seconds for a plan on a problem of shape s below a fused level of type parent (-1:
@@ -560,21 +703,31 @@ static void calib_save(const calib_t *c, int f64) {
 static double plan_cost_in(const calib_t *c, const int *plan, shape_t s, int parent) {
     int lv = PLV(plan[0]);
     if (lv == LV_G) {
-        if (PNE(plan[0]) || PGP(plan[0])) return -1;    /* NEON and GPU products are not calibrated */
+        if (PNE(plan[0])) return -1;    /* NEON products are not calibrated */
+        if (PGP(plan[0]))
+            return parent < 0 || !c->gpu || (!lv_split(parent) && shape_min(s) < GPU_MINB)
+                       ? -1 : calib_cost(c, kind_ggpu(parent, PST(plan[0])), s);
         if (parent < 0) return PST(plan[0]) ? -1 : calib_cost(c, LV_G, s);
         return calib_cost(c, kind_gin(parent, PST(plan[0])), s);
     }
     if (lv == LV_B2) return parent < 0 && shape_sq(s) ? calib_cost(c, LV_B2, s) : -1;
-    if (lv_leaf(lv) || lv_split(lv)) return -1;
+    if (lv_leaf(lv)) return -1;
     if (!lv_divides(lv, s)) return -1;
     shape_t m = lv_sub(lv, s);
+    if (lv_split(lv)) {     /* a K level: on top, with the GPU, its strips shared by the leaf below; no passes */
+        if (parent >= 0 || !c->gpu || c->nok || PPI(plan[0]) || PLV(plan[1]) != LV_G || !PGP(plan[1])) return -1;
+        double below = plan_cost_in(c, plan + 1, m, lv);
+        return below < 0 ? -1 : lv_rank(lv) * below;
+    }
     if (PPI(plan[0])) {     /* its passes, then a pipeline of r sub-problems Y over Gk */
         int ly = PLV(plan[1]), lf = plan[2];
-        if (lv_leaf(ly) || PLV(lf) != LV_G || PST(lf) == 0 || PNE(lf) || PGP(lf) || !lv_divides(ly, m)) return -1;
+        if (lv_leaf(ly) || lv_split(ly) || PLV(lf) != LV_G || PST(lf) == 0 || PNE(lf) || !lv_divides(ly, m)) return -1;
         shape_t my = lv_sub(ly, m);
+        if (PGP(lf) && (!c->gpu || shape_min(my) < GPU_MINB)) return -1;
         int pw = PPW(plan[0]) ? PPW(plan[0]) : fmm_pass_threads();
-        double px = calib_cost(c, lv, m), st = calib_cost(c, kind_pipe(ly, PST(lf), pw, 0), my),
-               ov = calib_cost(c, kind_pipe(ly, PST(lf), pw, 1), my);
+        double px = calib_cost(c, lv, m),
+               st = calib_cost(c, PGP(lf) ? kind_pipeg(ly, PST(lf), pw, 0) : kind_pipe(ly, PST(lf), pw, 0), my),
+               ov = calib_cost(c, PGP(lf) ? kind_pipeg(ly, PST(lf), pw, 1) : kind_pipe(ly, PST(lf), pw, 1), my);
         /* sub-problems under 1 ms are not pipelined: each step costs tens of microseconds of
          * dispatch and their calibration is noisy (2048 f64: 0.3 ms SW sub-problems were
          * predicted 2% faster than the best plan and ran 10% slower) */
@@ -590,12 +743,20 @@ static double plan_cost(const calib_t *c, const int *plan, shape_t s) { return p
 /* the first entries a plan below parent (-1: the top) can start with: G with every stream count
  * (on top: G alone and B2), then the fused levels; SW2 has the passes of D48 and one product
  * more, and B4, B8 are not calibrated */
-static int plan_firsts(int parent, int *out) {
+static int plan_firsts(const calib_t *c, int parent, int *out) {
     int k = 0;
+    if (parent >= 0 && lv_split(parent)) {  /* below a K level: the leaves that share with the GPU */
+        for (int i = 0; i < NGSTREAMS; i++) out[k++] = LV_G | (GSTREAMS[i] << 8) | (1 << 29);
+        return k;
+    }
     for (int i = 0; i < NSTREAMS; i++)
         if (parent >= 0 || STREAMS[i] == 0) out[k++] = LV_G | (STREAMS[i] << 8);
+    if (c->gpu && parent >= 0)
+        for (int i = 0; i < NGSTREAMS; i++) out[k++] = LV_G | (GSTREAMS[i] << 8) | (1 << 29);
     if (parent < 0) out[k++] = LV_B2;
     for (int i = 0; i < NFUSED; i++) out[k++] = FUSED[i];
+    if (c->gpu && !c->nok && parent < 0)
+        for (int i = 0; i < (int)(sizeof KLEVELS / sizeof KLEVELS[0]); i++) out[k++] = KLEVELS[i];
     return k;
 }
 
@@ -604,13 +765,19 @@ static int plan_firsts(int parent, int *out) {
  * cheapest plan for its products below it; -1 if nothing is calibrated */
 static double plan_best_in(const calib_t *c, shape_t s, int parent, int *plan) {
     double best = -1;
-    int firsts[16], nf = plan_firsts(parent, firsts);
+    int firsts[24], nf = plan_firsts(c, parent, firsts);
     for (int f = 0; f < nf; f++) {
         int e = firsts[f], lv = PLV(e);
         int cand[PLAN_MAX] = {e};
         double t;
         if (lv_leaf(lv)) {
             t = plan_cost_in(c, cand, s, parent);
+        } else if (lv_split(lv)) {
+            if (!lv_divides(lv, s) || lv_sub(lv, s).m < K_MINROWS) continue;
+            int sub[PLAN_MAX] = {0};
+            double below = plan_best_in(c, lv_sub(lv, s), lv, sub);
+            memcpy(cand + 1, sub, (PLAN_MAX - 1) * sizeof(int));
+            t = below < 0 ? -1 : lv_rank(lv) * below;
         } else {
             if (!lv_divides(lv, s) || shape_min(lv_sub(lv, s)) < fmm_minb()) continue;
             shape_t m = lv_sub(lv, s);
@@ -624,9 +791,10 @@ static double plan_best_in(const calib_t *c, shape_t s, int parent, int *plan) {
             memcpy(plan, cand, sizeof cand);
         }
     }
-    /* pipelined levels: X+p over Y over Gk */
+    /* pipelined levels: X+p over Y over Gk, and over GkM with the GPU */
+    if (parent >= 0 && lv_split(parent)) return best;
     for (int fx = 0; fx < NFUSED; fx++)
-        for (int fy = 0; fy < NFUSED; fy++)
+        for (int fy = 0; fy < NFUSED; fy++) {
             for (int a = 0; a < NPIPE_K; a++)
                 for (int b = 0; b < NPIPE_P; b++) {
                     int cand[PLAN_MAX] = {FUSED[fx] | (1 << 24) | (PIPE_P[b] << 25), FUSED[fy], LV_G | (PIPE_K[a] << 8)};
@@ -636,6 +804,16 @@ static double plan_best_in(const calib_t *c, shape_t s, int parent, int *plan) {
                         memcpy(plan, cand, sizeof cand);
                     }
                 }
+            for (int b = 0; c->gpu && b < NGPIPE_P; b++) {
+                int cand[PLAN_MAX] = {FUSED[fx] | (1 << 24) | (GPIPE_P[b] << 25), FUSED[fy],
+                                      LV_G | (GPIPE_K << 8) | (1 << 29)};
+                double t = plan_cost_in(c, cand, s, parent);
+                if (t >= 0 && (best < 0 || t < best)) {
+                    best = t;
+                    memcpy(plan, cand, sizeof cand);
+                }
+            }
+        }
     return best;
 }
 
@@ -650,7 +828,8 @@ typedef struct {
 
 static void plan_enum_rec(const calib_t *c, shape_t n0, shape_t n, int *plan, int depth, ranked_t *out, int *cnt,
                           int max) {
-    int firsts[16], nf = plan_firsts(depth ? PLV(plan[depth - 1]) : -1, firsts);
+    int firsts[24], nf = plan_firsts(c, depth ? PLV(plan[depth - 1]) : -1, firsts);
+    static const int ALLP[] = {2, 3, 4, 4};     /* the pass-thread counts of the pipelines, with and without the GPU */
     for (int f = 0; f < nf && *cnt < max && depth < PLAN_MAX - 1; f++) {
         int lv = PLV(firsts[f]);
         plan[depth] = firsts[f];
@@ -662,9 +841,9 @@ static void plan_enum_rec(const calib_t *c, shape_t n0, shape_t n, int *plan, in
             }
             /* the same with the level two above the leaf pipelined */
             if (depth >= 2 && PST(firsts[f]) > 0 && !lv_leaf(PLV(plan[depth - 1])) && !lv_leaf(PLV(plan[depth - 2])))
-                for (int b = 0; b < NPIPE_P && *cnt < max; b++) {
+                for (int b = 0; b < 3 && *cnt < max; b++) {
                     int keep = plan[depth - 2];
-                    plan[depth - 2] = PLV(keep) | (1 << 24) | (PIPE_P[b] << 25);
+                    plan[depth - 2] = PLV(keep) | (1 << 24) | (ALLP[b] << 25);
                     double tp = plan_cost(c, plan, n0);
                     if (tp > 0) {
                         memcpy(out[*cnt].plan, plan, sizeof out[*cnt].plan);
@@ -672,7 +851,8 @@ static void plan_enum_rec(const calib_t *c, shape_t n0, shape_t n, int *plan, in
                     }
                     plan[depth - 2] = keep;
                 }
-        } else if (lv_divides(lv, n) && shape_min(lv_sub(lv, n)) >= fmm_minb()) {
+        } else if (lv_split(lv) ? lv_divides(lv, n) && lv_sub(lv, n).m >= K_MINROWS
+                                : lv_divides(lv, n) && shape_min(lv_sub(lv, n)) >= fmm_minb()) {
             plan_enum_rec(c, n0, lv_sub(lv, n), plan, depth + 1, out, cnt, max);
         }
     }
@@ -730,8 +910,10 @@ static errmod_t err_model(const calib_t *c) {
 static double plan_growth(const errmod_t *e, const int *plan) {
     double g = 1;
     int levels = 0;
-    for (int i = 0; i < PLAN_MAX && !lv_leaf(PLV(plan[i])); i++, levels++) {
+    for (int i = 0; i < PLAN_MAX && !lv_leaf(PLV(plan[i])); i++) {
+        if (lv_split(PLV(plan[i]))) continue;   /* a K level's strips are the GEMM's own sums */
         g *= e->f[PLV(plan[i])];
+        levels++;
         if (PLV(plan[i]) == LV_SW2) levels++;   /* two 2x2 levels in one */
     }
     for (int i = 1; i < levels; i++) g *= e->rho;
@@ -751,20 +933,58 @@ static double fmm_max_growth(void) {
  * negative value no budget (the fastest plan whatever its error) */
 static double resolve_growth(double g) { return g == 0 ? FMM_DEFAULT_GROWTH : g; }
 
-/* the cheapest plan whose error growth is at most the budget, else (a budget below 1 that no
- * plan meets) the classical GEMM; -1 if nothing is calibrated */
+/* the cheapest plan with growth at most gmax (> 0), or with tie: faster first, more accurate
+ * second -- of the admissible plans predicted within PLAN_TIE of the fastest (the predictions are
+ * good to about that), one whose predicted error is at least PLAN_TIE_GAIN lower than the
+ * fastest's (smaller differences are below what the error model resolves: it ranked two plans 8%
+ * apart the wrong way round), the most accurate of those, and among plans predicted equal the one
+ * with the more accurate level on top, else the fastest; so near-ties no longer flip the choice
+ * between plans of different accuracy from one calibration to the next.
+ * -1 if no plan is admissible. */
+static double plan_pick(const calib_t *c, const errmod_t *e, shape_t s, double gmax, int tie, int *plan) {
+    static ranked_t rk[8192];
+    int cnt = plan_enum(c, s, rk, 8192);
+    for (int i = 0; i < cnt; i++)
+        if (plan_growth(e, rk[i].plan) <= gmax * (1 + 1e-9)) {
+            int pick = i;
+            double gbest = plan_growth(e, rk[i].plan) * (1 - PLAN_TIE_GAIN);
+            for (int j = i + 1; tie && j < cnt && rk[j].t <= rk[i].t * (1 + (c->gpu ? PLAN_TIE_GPU : PLAN_TIE)); j++) {
+                double g = plan_growth(e, rk[j].plan), gp = plan_growth(e, rk[pick].plan);
+                if (g < gbest * (1 - 1e-9)) { gbest = g; pick = j; }
+                /* the same levels in another order are predicted equal; measured, the more accurate
+                 * level on top gives the smaller error (f64: R363 over R336 6.40e-15 against 6.72e-15
+                 * the other way round at 13824, R363 over R633 3.75e-15 against 4.07e-15 at 6912) */
+                else if (fabs(g - gp) <= 1e-9 * gp && !lv_leaf(PLV(rk[j].plan[0])) && !lv_leaf(PLV(rk[pick].plan[0])) &&
+                         e->f[PLV(rk[j].plan[0])] < e->f[PLV(rk[pick].plan[0])] * (1 - 1e-9))
+                    pick = j;
+            }
+            memcpy(plan, rk[pick].plan, sizeof rk[pick].plan);
+            return rk[pick].t;
+        }
+    return -1;
+}
+
+/* the plan for a budget: see plan_pick; else (a budget below 1 that no plan meets) the classical
+ * GEMM; -1 if nothing is calibrated */
 static double plan_best_budget(const calib_t *c, shape_t s, double gmax, int *plan) {
     gmax = resolve_growth(gmax);
     if (gmax < 0) return plan_best(c, s, plan);
     errmod_t e = err_model(c);
     if (!e.ok) return -1;
-    static ranked_t rk[8192];
-    int cnt = plan_enum(c, s, rk, 8192);
-    for (int i = 0; i < cnt; i++)
-        if (plan_growth(&e, rk[i].plan) <= gmax * (1 + 1e-9)) {
-            memcpy(plan, rk[i].plan, sizeof rk[i].plan);
-            return rk[i].t;
-        }
+    if (c->gpu) {
+        /* the GPU must not cost accuracy: its plans are held to the predicted error of the fastest
+         * plan the same budget admits without it (with a faster leaf the fastest plans have fewer
+         * levels, so this usually binds nothing; it keeps the classical product in strips, as
+         * accurate as the GEMM and no more, from replacing a more accurate level it merely ties) */
+        calib_t *cm = (calib_t *)c;
+        int p0[PLAN_MAX];
+        cm->gpu = 0;
+        double t0 = plan_pick(c, &e, s, gmax, 0, p0);
+        cm->gpu = 1;
+        if (t0 >= 0 && plan_growth(&e, p0) < gmax) gmax = plan_growth(&e, p0);
+    }
+    double t = plan_pick(c, &e, s, gmax, 1, plan);
+    if (t >= 0) return t;
     memset(plan, 0, PLAN_MAX * sizeof *plan);
     plan[0] = LV_G;
     return calib_cost(c, LV_G, s);
@@ -828,7 +1048,7 @@ static void *api_ws;
 static size_t api_ws_bytes;
 typedef struct {
     shape_t s, spad;
-    int f64, plan[PLAN_MAX];
+    int f64, nok, plan[PLAN_MAX];
     double gmax, t;
 } api_entry;
 static api_entry api_plans[64];
@@ -846,9 +1066,9 @@ static calib_t *api_calib(int f64) {
 /* the plan for (shape, precision, budget) and the shape S >= s it runs at (padded if S > s):
  * from the plans already made, else the planner (the classical GEMM where the calibration does
  * not cover the shape); t: its predicted time, -1 if none */
-static void api_plan(shape_t s, int f64, double gmax, int *plan, shape_t *spad, double *t) {
+static void api_plan(shape_t s, int f64, double gmax, int nok, int *plan, shape_t *spad, double *t) {
     for (int i = 0; i < api_nplans; i++)
-        if (shape_eq(api_plans[i].s, s) && api_plans[i].f64 == f64 && api_plans[i].gmax == gmax) {
+        if (shape_eq(api_plans[i].s, s) && api_plans[i].f64 == f64 && api_plans[i].gmax == gmax && api_plans[i].nok == nok) {
             memcpy(plan, api_plans[i].plan, sizeof api_plans[i].plan);
             *spad = api_plans[i].spad;
             if (t) *t = api_plans[i].t;
@@ -857,7 +1077,9 @@ static void api_plan(shape_t s, int f64, double gmax, int *plan, shape_t *spad, 
     calib_t *c = api_calib(f64);
     int p[PLAN_MAX] = {LV_G};
     shape_t S = s;
+    if (c) c->nok = nok;        /* the plan without a K level, for matrices the GPU cannot wrap */
     double tt = c ? plan_best_padded(c, s, gmax, f64, p, &S) : -1;
+    if (c) c->nok = 0;
     if (tt < 0) {
         memset(p, 0, sizeof p);
         p[0] = LV_G;
@@ -869,6 +1091,7 @@ static void api_plan(shape_t s, int f64, double gmax, int *plan, shape_t *spad, 
     e->s = s;
     e->spad = S;
     e->f64 = f64;
+    e->nok = nok;
     e->gmax = gmax;
     e->t = tt;
     memcpy(e->plan, p, sizeof p);
@@ -933,7 +1156,7 @@ static const char *plan_of_shape(shape_t s, int f64, double max_growth, double *
     shape_t S;
     double t;
     pthread_mutex_lock(&api_lock);
-    api_plan(s, f64 != 0, max_growth, plan, &S, &t);
+    api_plan(s, f64 != 0, max_growth, 0, plan, &S, &t);
     plan_str(plan, buf, sizeof buf);
     if (!shape_eq(S, s)) {
         if (shape_sq(S)) snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " padded to %zu", S.m);
@@ -955,6 +1178,9 @@ const char *fmm_plan_mkn(size_t m, size_t k, size_t n, int f64, double max_growt
 
 void fmm_release(void) {
     pthread_mutex_lock(&api_lock);
+#ifdef FMM_GPU
+    fmm_gpu_detach_all();
+#endif
     free(api_ws);
     api_ws = NULL;
     api_ws_bytes = 0;

@@ -50,6 +50,26 @@ int fmm_gpu_attach(const void *base, size_t bytes) {
     return rc;
 }
 
+int fmm_gpu_available(void) {
+    pthread_mutex_lock(&g_lock);
+    int ok = gpu_init() == 0;
+    pthread_mutex_unlock(&g_lock);
+    return ok;
+}
+
+void fmm_gpu_detach(const void *base) {
+    pthread_mutex_lock(&g_lock);
+    for (int i = 0; i < g_nreg; i++)
+        if (g_base[i] == (const char *)base) {
+            g_buf[i] = g_buf[g_nreg - 1];
+            g_base[i] = g_base[g_nreg - 1];
+            g_len[i] = g_len[g_nreg - 1];
+            g_buf[--g_nreg] = nil;
+            break;
+        }
+    pthread_mutex_unlock(&g_lock);
+}
+
 void fmm_gpu_detach_all(void) {
     pthread_mutex_lock(&g_lock);
     for (int i = 0; i < g_nreg; i++) g_buf[i] = nil;

@@ -31,13 +31,47 @@ static void FN(classical_blocked)(int g, shape_t s, const T *A, size_t lda, cons
                      (int)ldb, k ? (T)1 : (T)0, C + (size_t)i * mb * ldc + (size_t)j * nb, (int)ldc);
 }
 
+/* rows r0..r1 of a fused pass from nin input blocks into nout output blocks: the kernel on the
+ * rows, or (fmm_zva) tile by tile of 4 KB per stream along each row, every output line that lies
+ * wholly inside the tile claimed with DC ZVA first, so that the kernel's stores find the line in
+ * the cache instead of fetching it from memory to overwrite it.  The kernel writes every element
+ * of every output in the tile, and only whole lines inside it are zeroed, so nothing outside the
+ * tile is touched (other threads write other rows). */
+static void FN(rows)(FN(kern_t) k, size_t cols, size_t ld_in, size_t ld_out, const T *const *in, int nin, T *const *out,
+                     int nout, size_t r0, size_t r1) {
+    size_t zb = fmm_zva();
+    if (!zb || nin > 64 || nout > 64) {
+        k(cols, ld_in, ld_out, in, out, r0, r1);
+        return;
+    }
+    const size_t W = 4096 / sizeof(T);
+    const T *pi[64];
+    T *po[64];
+    for (size_t r = r0; r < r1; r++)
+        for (size_t c0 = 0; c0 < cols; c0 += W) {
+            size_t w = c0 + W < cols ? W : cols - c0;
+            for (int i = 0; i < nin; i++) pi[i] = in[i] + r * ld_in + c0;
+            for (int q = 0; q < nout; q++) {
+                po[q] = out[q] + r * ld_out + c0;
+                uintptr_t lo = ((uintptr_t)po[q] + zb - 1) & ~(uintptr_t)(zb - 1),
+                          hi = ((uintptr_t)po[q] + w * sizeof(T)) & ~(uintptr_t)(zb - 1);
+#if defined(__aarch64__)
+                for (uintptr_t x = lo; x < hi; x += zb) __asm__ volatile("dc zva, %0" : : "r"(x) : "memory");
+#else
+                (void)lo; (void)hi;
+#endif
+            }
+            k(w, 0, 0, pi, po, 0, 1);
+        }
+}
+
 /* a fused pass over blocks of rows x cols, the rows split over the cores */
-static void FN(pass)(FN(kern_t) k, size_t rows, size_t cols, size_t ld_in, size_t ld_out, const T *const *in,
-                     T *const *out) {
+static void FN(pass)(FN(kern_t) k, size_t rows, size_t cols, size_t ld_in, size_t ld_out, const T *const *in, int nin,
+                     T *const *out, int nout) {
     size_t chunks = 64, step = (rows + chunks - 1) / chunks;
     dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
         size_t r0 = ch * step, r1 = r0 + step < rows ? r0 + step : rows;
-        if (r0 < r1) k(cols, ld_in, ld_out, in, out, r0, r1);
+        if (r0 < r1) FN(rows)(k, cols, ld_in, ld_out, in, nin, out, nout, r0, r1);
     });
 }
 
@@ -189,6 +223,7 @@ typedef struct {
     int n, nch;
     FN(kern_t) k[3];
     size_t rows[3], cols[3], ldi[3], ldo[3];
+    int nin[3], nout[3];
     const T *in[3][64];
     T *out[3][64];
     atomic_int next;
@@ -202,6 +237,8 @@ static void FN(bg_add)(FN(bg_t) *bg, FN(kern_t) k, size_t rows, size_t cols, siz
     bg->cols[p] = cols;
     bg->ldi[p] = ldi;
     bg->ldo[p] = ldo;
+    bg->nin[p] = nin;
+    bg->nout[p] = nout;
     for (int i = 0; i < nin; i++) bg->in[p][i] = in[i];
     for (int i = 0; i < nout; i++) bg->out[p][i] = out[i];
 }
@@ -213,7 +250,8 @@ static int FN(bg_chunk)(FN(bg_t) *bg) {
     int p = t / bg->nch, c = t % bg->nch;
     size_t step = (bg->rows[p] + bg->nch - 1) / bg->nch, r0 = (size_t)c * step,
            r1 = r0 + step < bg->rows[p] ? r0 + step : bg->rows[p];
-    if (r0 < r1) bg->k[p](bg->cols[p], bg->ldi[p], bg->ldo[p], bg->in[p], bg->out[p], r0, r1);
+    if (r0 < r1)
+        FN(rows)(bg->k[p], bg->cols[p], bg->ldi[p], bg->ldo[p], bg->in[p], bg->nin[p], bg->out[p], bg->nout[p], r0, r1);
     return 1;
 }
 
@@ -287,9 +325,9 @@ static void FN(pipeline)(const int *py, shape_t t, int r, T *const *SX, T *const
                     size_t rows = pass == 1 ? rows_r : rows_lp, step = (rows + nch - 1) / nch;
                     size_t c = (size_t)(tk % nch), r0 = c * step, r1 = r0 + step < rows ? r0 + step : rows;
                     if (r0 >= r1) continue;
-                    if (pass == 0) kL(ty.k, t.k, ty.k, ins, P->S[si], r0, r1);
-                    else if (pass == 1) kR(ty.n, t.n, ty.n, int_, P->Tt[si], r0, r1);
-                    else kP(ty.n, ty.n, t.n, (const T *const *)P->M[so], outc, r0, r1);
+                    if (pass == 0) FN(rows)(kL, ty.k, t.k, ty.k, ins, gy1 * gy2, P->S[si], ry, r0, r1);
+                    else if (pass == 1) FN(rows)(kR, ty.n, t.n, ty.n, int_, gy2 * gy3, P->Tt[si], ry, r0, r1);
+                    else FN(rows)(kP, ty.n, ty.n, t.n, (const T *const *)P->M[so], ry, outc, gy1 * gy3, r0, r1);
                 }
                 if (bg)                                 /* the level above's passes, while GEMMs run */
                     while (atomic_load(pga) > 0 && FN(bg_chunk)(bg)) {}
@@ -329,8 +367,8 @@ static void FN(pipeline2)(const int *pz, shape_t t, int r, T *const *SX, T *cons
     T *oc[64];
     for (int b = 0; b < gz1 * gz2; b++) ia[b] = ABLK(0, b);
     for (int b = 0; b < gz2 * gz3; b++) ib[b] = BBLK(0, b);
-    FN(pass)(kz[0], tz.m, tz.k, t.k, tz.k, ia, SZ[0]);
-    FN(pass)(kz[1], tz.k, tz.n, t.n, tz.n, ib, TZ[0]);
+    FN(pass)(kz[0], tz.m, tz.k, t.k, tz.k, ia, gz1 * gz2, SZ[0], rz);
+    FN(pass)(kz[1], tz.k, tz.n, t.n, tz.n, ib, gz2 * gz3, TZ[0], rz);
     for (int i = 0; i < r; i++) {
         FN(bg_t) bgv;
         FN(bg_t) *bg = &bgv;
@@ -351,7 +389,7 @@ static void FN(pipeline2)(const int *pz, shape_t t, int r, T *const *SX, T *cons
         FN(bg_drain)(bg);
     }
     for (int b = 0; b < gz1 * gz3; b++) oc[b] = CBLK(r - 1, b);
-    FN(pass)(kz[2], tz.m, tz.n, tz.n, t.n, (const T *const *)MZ[(r - 1) & 1], oc);
+    FN(pass)(kz[2], tz.m, tz.n, tz.n, t.n, (const T *const *)MZ[(r - 1) & 1], rz, oc, gz1 * gz3);
 #undef ABLK
 #undef BBLK
 #undef CBLK
@@ -403,9 +441,9 @@ static void FN(exec)(const int *plan, shape_t s, const T *A, size_t lda, const T
         deeper = work;
     } else {
         double t0 = now();
-        FN(pass)(k[0], t.m, t.k, lda, t.k, Ab, S);
+        FN(pass)(k[0], t.m, t.k, lda, t.k, Ab, g1 * g2, S, r);
         double t1 = now();
-        FN(pass)(k[1], t.k, t.n, ldb, t.n, Bb, Tt);
+        FN(pass)(k[1], t.k, t.n, ldb, t.n, Bb, g2 * g3, Tt, r);
         double t2 = now();
         if (sp) {
             sp->tL += t1 - t0;
@@ -430,7 +468,7 @@ static void FN(exec)(const int *plan, shape_t s, const T *A, size_t lda, const T
     }
     if (lv_split(lv)) return;
     double t3 = now();
-    FN(pass)(k[2], t.m, t.n, t.n, ldc, (const T *const *)M, Cb);
+    FN(pass)(k[2], t.m, t.n, t.n, ldc, (const T *const *)M, r, Cb, g1 * g3);
     if (sp) sp->tP += now() - t3;
 }
 
@@ -499,9 +537,9 @@ static double FN(time_plan)(const int *plan, shape_t s, const T *A, const T *B, 
 /* one fused level of type lv whose products have shape t, with GEMM products (as `streams`
  * streams), caches evicted before each run, repeated as in time_plan: the medians of its pass
  * time and of its GEMM time per product */
-static void FN(time_level)(int lv, shape_t t, int streams, const T *A, const T *B, T *C, T *work,
+static void FN(time_level)(int lv, shape_t t, int streams, int gpu, const T *A, const T *B, T *C, T *work,
                            double *passes, double *gemm) {
-    int plan[2] = {lv, LV_G | (streams << 8)};
+    int plan[2] = {lv, LV_G | (streams << 8) | (gpu << 29)};
     shape_t s = lv_up(lv, t);
     double tp[15], tg[15], tot = 0;
     int cnt = 0;
@@ -531,9 +569,9 @@ static void FN(time_level)(int lv, shape_t t, int streams, const T *A, const T *
  * plan of 48 sub-problems multiplies it: 16384 f32 predicted 1.580 s, ran 1.718 s) */
 #define PIPE_Q1 2
 #define PIPE_Q2 10
-static void FN(time_pipe)(int ly, shape_t ty, int k, int p, const T *A, const T *B, T *C, T *work, double *steady,
-                          double *over) {
-    int py[2] = {ly, LV_G | (k << 8)};
+static void FN(time_pipe)(int ly, shape_t ty, int k, int p, int gpu, const T *A, const T *B, T *C, T *work,
+                          double *steady, double *over) {
+    int py[2] = {ly, LV_G | (k << 8) | (gpu << 29)};
     shape_t t = lv_up(ly, ty);
     T *SX[PIPE_Q2], *TX[PIPE_Q2], *MX[PIPE_Q2];
     for (int q = 0; q < PIPE_Q2; q++) {
@@ -638,7 +676,8 @@ static int FN(calibrate)(calib_t *c, shape_t s0, const T *A, const T *B, T *C) {
     calib_t *need = calloc(1, sizeof(calib_t));     /* 150 KB: not on a possibly small stack */
     int *todo = calloc(CALIB_MAX, sizeof(int));
     if (!need || !todo) { free(need); free(todo); return -1; }
-    calib_need(need, s0);
+    need->gpu = c->gpu;
+    calib_need_top(need, s0);
     size_t wmax = 0;
     int missing = 0;
     for (int i = 0; i < need->n; i++) {
@@ -651,7 +690,7 @@ static int FN(calibrate)(calib_t *c, shape_t s0, const T *A, const T *B, T *C) {
             continue;
         }
         if (kind >= K_PIPE) {               /* a pipeline: measured with its steady entry */
-            int x = kind - K_PIPE, ly = x % 16;
+            int x = kind - (kind >= K_PIPEG ? K_PIPEG : K_PIPE), ly = x % 16;
             if ((x / 16) % 2) continue;
             todo[i] = calib_get(c, kind, s) < 0 || calib_get(c, kind + 16, s) < 0;
             if (!todo[i]) continue;
@@ -663,8 +702,11 @@ static int FN(calibrate)(calib_t *c, shape_t s0, const T *A, const T *B, T *C) {
         }
         if (kind >= K_GIN) continue;
         todo[i] = calib_get(c, kind, s) < 0;
-        for (int k = 0; !lv_leaf(kind) && k < NSTREAMS; k++)
+        for (int k = 0; !lv_leaf(kind) && !lv_split(kind) && k < NSTREAMS; k++)
             if (calib_get(c, kind_gin(kind, STREAMS[k]), s) < 0) todo[i] = 1;
+        for (int k = 0; !lv_leaf(kind) && k < NGSTREAMS; k++)      /* the GPU's entries the planner asked for */
+            if (calib_get(need, kind_ggpu(kind, GSTREAMS[k]), s) >= 0 && calib_get(c, kind_ggpu(kind, GSTREAMS[k]), s) < 0)
+                todo[i] = 1;
         if (!todo[i]) continue;
         missing++;
         int plan[2] = {kind, LV_G};
@@ -675,6 +717,14 @@ static int FN(calibrate)(calib_t *c, shape_t s0, const T *A, const T *B, T *C) {
     printf("# calibrating %d entries (%s)\n", missing, sizeof(T) == 4 ? "f32" : "f64");
     T *work = alloc_t((wmax + 16) * sizeof(T));
     memset(work, 0, (wmax + 16) * sizeof(T));
+#if HAVE_GPU_SIDE
+    if (c->gpu) {       /* the GPU reads and writes the scratch and, for the K levels, the matrices themselves */
+        fmm_gpu_attach(work, (wmax + 16) * sizeof(T));
+        fmm_gpu_attach(A, s0.m * s0.k * sizeof(T));
+        fmm_gpu_attach(B, s0.k * s0.n * sizeof(T));
+        fmm_gpu_attach(C, s0.m * s0.n * sizeof(T));
+    }
+#endif
     int errors_done = 0;
     for (int i = 0; i < need->n; i++) {
         int kind = need->kind[i];
@@ -685,9 +735,9 @@ static int FN(calibrate)(calib_t *c, shape_t s0, const T *A, const T *B, T *C) {
             continue;
         }
         if (kind >= K_PIPE) {
-            int x = kind - K_PIPE, ly = x % 16, sp = x / 32;
+            int gp = kind >= K_PIPEG, x = kind - (gp ? K_PIPEG : K_PIPE), ly = x % 16, sp = x / 32;
             double st, ov;
-            FN(time_pipe)(ly, s, sp / 16, sp % 16, A, B, C, work, &st, &ov);
+            FN(time_pipe)(ly, s, sp / 16, sp % 16, gp, A, B, C, work, &st, &ov);
             calib_put(c, kind, s, st);
             calib_put(c, kind + 16, s, ov);
             printf("#   %-10s m=%zux%zux%zu %.6f s   fill+drain %.6f s\n", kind_name(kind), s.m, s.k, s.n, st, ov);
@@ -698,10 +748,12 @@ static int FN(calibrate)(calib_t *c, shape_t s0, const T *A, const T *B, T *C) {
             printf("#   %-4s m=%zux%zux%zu %.6f s\n", kind_name(kind), s.m, s.k, s.n, t);
         } else {
             printf("#   %-4s m=%zux%zux%zu", kind_name(kind), s.m, s.k, s.n);
-            for (int k = 0; k < NSTREAMS; k++) {
+            if (lv_split(kind)) calib_put(c, kind, s, 0);       /* no passes */
+            for (int k = 0; !lv_split(kind) && k < NSTREAMS; k++) {
+                if (calib_get(c, kind, s) >= 0 && calib_get(c, kind_gin(kind, STREAMS[k]), s) >= 0) continue;
                 double tp, tg;
-                FN(time_level)(kind, s, STREAMS[k], A, B, C, work, &tp, &tg);
-                if (k == 0) {
+                FN(time_level)(kind, s, STREAMS[k], 0, A, B, C, work, &tp, &tg);
+                if (calib_get(c, kind, s) < 0) {
                     calib_put(c, kind, s, tp);
                     printf(" %.6f s ", tp);
                 }
@@ -709,10 +761,22 @@ static int FN(calibrate)(calib_t *c, shape_t s0, const T *A, const T *B, T *C) {
                 printf("  %s %.6f", kind_name(kind_gin(kind, STREAMS[k])), tg);
                 fflush(stdout);
             }
+            for (int k = 0; k < NGSTREAMS; k++) {
+                int kg = kind_ggpu(kind, GSTREAMS[k]);
+                if (calib_get(need, kg, s) < 0 || calib_get(c, kg, s) >= 0) continue;
+                double tp, tg;
+                FN(time_level)(kind, s, GSTREAMS[k], 1, A, B, C, work, &tp, &tg);
+                calib_put(c, kg, s, tg);
+                printf("  %s %.6f", kind_name(kg), tg);
+                fflush(stdout);
+            }
             printf("\n");
         }
         fflush(stdout);
     }
+#if HAVE_GPU_SIDE
+    if (c->gpu) fmm_gpu_detach(work);
+#endif
     free(work);
     free(need);
     free(todo);
@@ -730,9 +794,26 @@ static int FN(api_gemm)(shape_t s, const T *A, size_t lda, const T *B, size_t ld
         return 0;
     }
     pthread_mutex_lock(&api_lock);
-    api_plan(s, sizeof(T) == 8, gmax, plan, &S, NULL);
+    api_plan(s, sizeof(T) == 8, gmax, 0, plan, &S, NULL);
+    int wrapped = 0;
+#if HAVE_GPU_SIDE
+    /* a K level's products are strips of A, B and C themselves: the GPU needs them wrapped, which
+     * takes page-aligned matrices; otherwise the best plan without a K level runs */
+    if (lv_split(PLV(plan[0])) && shape_eq(S, s)) {
+        wrapped = fmm_gpu_attach(A, ((s.m - 1) * lda + s.k) * sizeof(T)) == 0 &&
+                  fmm_gpu_attach(B, ((s.k - 1) * ldb + s.n) * sizeof(T)) == 0 &&
+                  fmm_gpu_attach(C, ((s.m - 1) * ldc + s.n) * sizeof(T)) == 0;
+        if (!wrapped) {
+            fmm_gpu_detach(A); fmm_gpu_detach(B); fmm_gpu_detach(C);
+            api_plan(s, sizeof(T) == 8, gmax, 1, plan, &S, NULL);
+        }
+    }
+#endif
     size_t bytes = FN(padded_work)(plan, s, S) * sizeof(T);
     if (bytes > api_ws_bytes) {
+#if HAVE_GPU_SIDE
+        if (api_ws) fmm_gpu_detach(api_ws);
+#endif
         free(api_ws);
         api_ws = NULL;
         api_ws_bytes = 0;
@@ -742,8 +823,15 @@ static int FN(api_gemm)(shape_t s, const T *A, size_t lda, const T *B, size_t ld
             return -1;
         }
         api_ws_bytes = bytes;
+#if HAVE_GPU_SIDE
+        fmm_gpu_attach(api_ws, bytes);     /* the scratch, for the levels' products */
+#endif
     }
     FN(exec_padded)(plan, s, S, A, lda, B, ldb, C, ldc, (T *)api_ws, NULL);
+#if HAVE_GPU_SIDE
+    if (wrapped) { fmm_gpu_detach(A); fmm_gpu_detach(B); fmm_gpu_detach(C); }
+#endif
+    (void)wrapped;
     pthread_mutex_unlock(&api_lock);
     return 0;
 }

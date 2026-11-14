@@ -1,0 +1,71 @@
+# /Users/greg/Downloads/fmm_sota.json: 2026-11-09T14:57:19, 5456 formats
+reference <3x3x6:40>: saving 0.7407 traffic 11.89 streams 58 T/(1-s) 45.9 T/-ln s 39.6
+
+best T/(1-s) with at most 64 streams per pass:
+   <3x3x6:40>  saving 0.7407  traffic  11.89  streams    58  T/(1-s)   45.9  T/-ln s   39.6
+   <4x4x4:48>  saving 0.7500  traffic  12.00  streams    64  T/(1-s)   48.0  T/-ln s   41.7
+   <3x4x4:38>  saving 0.7917  traffic  11.71  streams    54  T/(1-s)   56.2  T/-ln s   50.1
+   <3x3x4:29>  saving 0.8056  traffic  11.06  streams    41  T/(1-s)   56.9  T/-ln s   51.1
+   <2x3x3:15>  saving 0.8333  traffic   9.67  streams    24  T/(1-s)   58.0  T/-ln s   53.0
+   <2x4x5:32>  saving 0.8000  traffic  11.80  streams    52  T/(1-s)   59.0  T/-ln s   52.9
+   <3x3x5:36>  saving 0.8000  traffic  11.80  streams    51  T/(1-s)   59.0  T/-ln s   52.9
+   <2x4x4:26>  saving 0.8125  traffic  11.12  streams    42  T/(1-s)   59.3  T/-ln s   53.6
+best T/(1-s) with at most 96 streams per pass:
+   <3x3x6:40>  saving 0.7407  traffic  11.89  streams    58  T/(1-s)   45.9  T/-ln s   39.6
+   <4x4x4:48>  saving 0.7500  traffic  12.00  streams    64  T/(1-s)   48.0  T/-ln s   41.7
+   <3x4x6:54>  saving 0.7500  traffic  12.75  streams    78  T/(1-s)   51.0  T/-ln s   44.3
+   <3x4x7:63>  saving 0.7500  traffic  13.50  streams    91  T/(1-s)   54.0  T/-ln s   46.9
+   <4x4x5:61>  saving 0.7625  traffic  12.91  streams    81  T/(1-s)   54.4  T/-ln s   47.6
+   <3x4x4:38>  saving 0.7917  traffic  11.71  streams    54  T/(1-s)   56.2  T/-ln s   50.1
+   <3x3x4:29>  saving 0.8056  traffic  11.06  streams    41  T/(1-s)   56.9  T/-ln s   51.1
+   <3x4x5:47>  saving 0.7833  traffic  12.40  streams    67  T/(1-s)   57.2  T/-ln s   50.8
+best T/(1-s) with at most 160 streams per pass:
+   <3x3x6:40>  saving 0.7407  traffic  11.89  streams    58  T/(1-s)   45.9  T/-ln s   39.6
+   <4x4x4:48>  saving 0.7500  traffic  12.00  streams    64  T/(1-s)   48.0  T/-ln s   41.7
+   <3x4x6:54>  saving 0.7500  traffic  12.75  streams    78  T/(1-s)   51.0  T/-ln s   44.3
+   <3x4x7:63>  saving 0.7500  traffic  13.50  streams    91  T/(1-s)   54.0  T/-ln s   46.9
+   <4x6x6:105>  saving 0.7292  traffic  14.67  streams   141  T/(1-s)   54.2  T/-ln s   46.4
+   <4x4x5:61>  saving 0.7625  traffic  12.91  streams    81  T/(1-s)   54.4  T/-ln s   47.6
+   <3x6x6:80>  saving 0.7407  traffic  14.11  streams   116  T/(1-s)   54.4  T/-ln s   47.0
+   <4x4x9:104>  saving 0.7222  traffic  15.28  streams   140  T/(1-s)   55.0  T/-ln s   46.9
+best T/(1-s) with at most any number of streams per pass:
+   <3x3x6:40>  saving 0.7407  traffic  11.89  streams    58  T/(1-s)   45.9  T/-ln s   39.6
+   <4x4x4:48>  saving 0.7500  traffic  12.00  streams    64  T/(1-s)   48.0  T/-ln s   41.7
+   <3x4x6:54>  saving 0.7500  traffic  12.75  streams    78  T/(1-s)   51.0  T/-ln s   44.3
+   <6x6x12:280>  saving 0.6481  traffic  18.56  streams   352  T/(1-s)   52.7  T/-ln s   42.8
+   <3x4x7:63>  saving 0.7500  traffic  13.50  streams    91  T/(1-s)   54.0  T/-ln s   46.9
+   <6x6x6:153>  saving 0.7083  traffic  15.75  streams   189  T/(1-s)   54.0  T/-ln s   45.7
+   <4x6x6:105>  saving 0.7292  traffic  14.67  streams   141  T/(1-s)   54.2  T/-ln s   46.4
+   <4x4x5:61>  saving 0.7625  traffic  12.91  streams    81  T/(1-s)   54.4  T/-ln s   47.6
+
+best saving per level with at most 64 / 96 / 160 streams:
+  <= 64: <3x3x6:40> 0.7407, <4x4x4:48> 0.7500, <3x4x4:38> 0.7917, <2x4x5:32> 0.8000, <3x3x5:36> 0.8000
+  <= 96: <3x3x6:40> 0.7407, <4x4x4:48> 0.7500, <3x4x6:54> 0.7500, <3x4x7:63> 0.7500, <4x4x5:61> 0.7625
+  <= 160: <4x4x10:115> 0.7188, <4x4x9:104> 0.7222, <4x6x6:105> 0.7292, <5x5x6:110> 0.7333, <4x5x8:118> 0.7375
+
+rank needed to beat <3x3x6:40> (s < 0.7407), formats whose passes would stay within 80 streams at that rank:
+   format      known  needed  gap  streams at needed   known lower bound on the gap: open
+   <3x3x6>      40     39    1     57
+   <4x4x4>      48     47    1     63
+   <3x4x6>      54     53    1     77
+   <2x2x2>       7      5    2      9
+   <2x3x3>      15     13    2     22
+   <3x3x8>      55     53    2     77
+   <4x4x5>      61     59    2     79
+   <2x2x3>      11      8    3     14
+   <2x2x4>      14     11    3     19
+   <2x3x4>      20     17    3     29
+   <2x3x5>      25     22    3     37
+   <3x3x4>      29     26    3     38
+   <2x4x4>      26     23    3     39
+   <3x3x5>      36     33    3     48
+   <2x4x5>      32     29    3     49
+   <3x4x4>      38     35    3     51
+   <2x5x5>      40     37    3     62
+   <3x4x5>      47     44    3     64
+   <3x3x7>      49     46    3     67
+   <2x5x6>      47     44    3     74
+   <3x5x5>      58     55    3     80
+   <2x2x5>      18     14    4     24
+   <3x3x3>      23     19    4     28
+   <2x2x6>      21     17    4     29

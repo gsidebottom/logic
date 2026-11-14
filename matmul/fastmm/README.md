@@ -83,6 +83,44 @@ k x n), `fmm_calibrate`, `fmm_calibrate_mkn`, `fmm_plan`, `fmm_plan_mkn`, `fmm_r
 (`fmm::sgemm`, `fmm::dgemm`, ...), the same plans and the same results bit for bit, and its own
 README.
 
+The planner takes the fastest plan within the error budget and, of the plans predicted within 2%
+of it, one predicted at least 10% more accurate, or of equal prediction with the more accurate
+level on top (faster first, more accurate second; C and Rust alike).  The passes claim their
+output lines with `DC ZVA` before writing them (`FMM_ZVA=0` to switch it off): a store to a line
+that is not in the cache first reads it from memory, so a pass that writes 48 blocks and reads 16
+moved 112 blocks; claimed, its bandwidth rises from 123 to 168 GB/s (`probe_strip.c`), which is
+worth 2-4% on the f32 plans and 0.3% in f64, with the same results (C only so far).
+
+## With the GPU (single precision)
+
+`make build/libfmm_gpu.a build/bench_fmm_gpu build/test_fmm_gpu`; link `build/libfmm_gpu.a
+-framework Accelerate -framework Foundation -framework Metal -framework MetalPerformanceShaders`.
+Metal Performance Shaders' f32 matrix product is bit for bit Accelerate's sgemm (both are the
+k-ordered chain of fused multiply-adds), and on unified memory it reads and writes the library's
+scratch blocks where they are (`gpu_leaf.m`).  So a level's products can be shared: the GEMM takes
+them from one end and the GPU from the other (leaves `GM`: Accelerate's own threading and the
+GPU; `G6M`: six streams and the GPU), 7-9 TFLOP/s together against 3.3-3.8.  The planner uses
+these leaves on products of 576 and up, and without any level the classical product in strips of
+rows (`K16`, `K32`, `K64`: in place, the GEMM's own result; needs page-aligned matrices).  A GPU
+plan is held to the predicted error of the fastest plan without the GPU, so it never costs
+accuracy; with a leaf this fast the best plans have fewer levels, and at 6912 the error falls.
+Measured 2026-11-14 (`results/zva_gpu_campaign_2026-11-14.txt`, exact errors):
+
+| n | without the GPU | with it | GPU alone | Accelerate |
+|---|---|---|---|---|
+| 3456 | `R363/G6` 0.0202 s, err 1.28e-6 | `R363/G6M` 0.012-0.014 s, the same result | 0.013 s | 0.0245 s |
+| 6912 | `R363+4/R633/G6` 0.136 s, 2.20e-6 | `R363/G6M` 0.068-0.084 s, 1.76e-6 | 0.109 s | 0.195 s |
+| 13824 | `R363+4/R363/G6` 0.906 s, 2.46e-6 | `R363/G6M` 0.53 s, 2.73e-6 | 0.83 s | 1.55 s |
+
+(The planner's picks.  At 13824 the pick before these changes was `R336+2/R363/G6`, 0.925 s with
+error 3.34e-6; the two-level `R336+4/R363/G6M` runs 0.49-0.54 s with that error.)  The ranges are
+the same plan at different places in a run: a plan with the GPU runs 10-20% slower right after
+CPU-only work than after another GPU plan (not the GPU's clock: keeping it busy during the first
+passes changed nothing), which is why the planner treats GPU plans predicted within 8% as ties
+and takes the more accurate.  There is no f64 on Metal: double precision is unchanged.
+Not ported to Rust.  `FMM_GPU=0` plans without the GPU; its calibration entries live beside the
+cache in `calib5gpu_f32.txt`.
+
 ## Files
 
 - `fmm.c`, `fmm_impl.h`, `fmm.h`: the library (planner, executor, calibration, pipelined
@@ -97,8 +135,11 @@ README.
 - `altsim.py`: f32 rounding of ordinary and alternative-basis rank-48 programs by block-level
   interpretation; `growth.py`: the growth factors gamma_{p,q} of a scheme; `paper_acc262.py`:
   the accuracy paper's tables and figures; `summarize_var.py`: summaries of the variant campaigns.
-- `gpu_gemm.m`: Apple's GPU as a GEMM (MPSGraph), for comparison; `probe_threads.c`,
-  `probe_overlap.c`, `neon_test.c`: machine probes.
+- `gpu_gemm.m`: Apple's GPU as a GEMM (MPSGraph), for comparison; `gpu_leaf.h`, `gpu_leaf.m`: the
+  GPU as a second engine for a level's products; `gpu_share.m`: its probe; `probe_threads.c`,
+  `probe_overlap.c`, `neon_test.c`: machine probes; `probe_nt.c`, `probe_strip.c`: what the passes
+  cost the memory system (non-temporal stores, strip-mining, DC ZVA); `sme_gemm.h`, `sme_test.c`:
+  our own SME (FMOPA) kernel against Accelerate, a probe.
 - `rust/`: the Rust crate, with its README.
 
 ## Numbers quoted elsewhere

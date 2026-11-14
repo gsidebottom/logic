@@ -1,0 +1,32 @@
+3x3x6_40_DPS-accurate: r=40
+   left factors  rank1:24 rank2:16;  right rank3:40;  output rank3:40;  both left and right rank one: 0
+   rank-one left factors use 8 column and 7 row directions (grid 3 x 3); right: 0 and 0 (grid 3 x 6)
+   single blocks at this point: L 0, R 0, P 0;  traffic 11.89 n^2; with every possible single block (L 9, R 0) at best 10.89 (8% less)
+3x3x6_40: r=40
+   left factors  rank1:24 rank2:16;  right rank3:40;  output rank3:40;  both left and right rank one: 0
+   rank-one left factors use 8 column and 7 row directions (grid 3 x 3); right: 0 and 0 (grid 3 x 6)
+   single blocks at this point: L 0, R 0, P 0;  traffic 11.89 n^2; with every possible single block (L 9, R 0) at best 10.89 (8% less)
+4x4x4_48_accurate_262: r=48
+   left factors  rank1:32 rank2:16;  right rank1:32 rank2:16;  output rank1:32 rank2:16;  both left and right rank one: 32
+   rank-one left factors use 8 column and 9 row directions (grid 4 x 4); right: 8 and 8 (grid 4 x 4)
+   single blocks at this point: L 0, R 8, P 0;  traffic 12.00 n^2; with every possible single block (L 16, R 16) at best 10.00 (17% less)
+4x4x4_48_accurate: r=48
+   left factors  rank1:32 rank2:16;  right rank1:32 rank2:16;  output rank1:32 rank2:16;  both left and right rank one: 32
+   rank-one left factors use 11 column and 9 row directions (grid 4 x 4); right: 8 and 10 (grid 4 x 4)
+   single blocks at this point: L 0, R 0, P 8;  traffic 12.00 n^2; with every possible single block (L 16, R 16) at best 10.00 (17% less)
+2x2x2_7_DPS-accurate: r=7
+   left factors  rank1:6 rank2:1;  right rank1:6 rank2:1;  output rank1:6 rank2:1;  both left and right rank one: 6
+   rank-one left factors use 3 column and 3 row directions (grid 2 x 2); right: 3 and 3 (grid 2 x 2)
+   single blocks at this point: L 1, R 1, P 1;  traffic 8.25 n^2; with every possible single block (L 4, R 4) at best 6.25 (24% less)
+2x2x2_7_DPS-evenpow-12.2034: r=7
+   left factors  rank1:6 rank2:1;  right rank1:6 rank2:1;  output rank1:6 rank2:1;  both left and right rank one: 6
+   rank-one left factors use 3 column and 3 row directions (grid 2 x 2); right: 3 and 3 (grid 2 x 2)
+   single blocks at this point: L 0, R 0, P 0;  traffic 8.25 n^2; with every possible single block (L 4, R 4) at best 6.25 (24% less)
+2x2x2_7_Winograd: r=7
+   left factors  rank1:6 rank2:1;  right rank1:6 rank2:1;  output rank1:6 rank2:1;  both left and right rank one: 6
+   rank-one left factors use 3 column and 3 row directions (grid 2 x 2); right: 4 and 3 (grid 2 x 2)
+   single blocks at this point: L 3, R 3, P 3;  traffic 8.25 n^2; with every possible single block (L 4, R 4) at best 6.25 (24% less)
+2x2x2_7_Strassen: r=7
+   left factors  rank1:6 rank2:1;  right rank1:6 rank2:1;  output rank1:6 rank2:1;  both left and right rank one: 6
+   rank-one left factors use 4 column and 3 row directions (grid 2 x 2); right: 4 and 3 (grid 2 x 2)
+   single blocks at this point: L 2, R 2, P 2;  traffic 8.25 n^2; with every possible single block (L 4, R 4) at best 6.25 (24% less)

@@ -1,0 +1,120 @@
+# what the passes cost the memory system and the SME units; 2026-11-14; Apple M4 Pro
+## (1) probe_overlap: 6 GEMM streams (768-cube) beside w threads running D48's L pass; -q i: pass threads on the
+##     performance cores, -q b: at background quality of service (efficiency cores only); alone, then together
+f64 m=768  0 SME streams + 2 pass threads (qos i):  GEMM     0.0 GFLOP/s   pass   60.0 GB/s
+f64 m=768  6 SME streams + 2 pass threads (qos i):  GEMM   663.3 GFLOP/s   pass   48.9 GB/s
+f64 m=768  0 SME streams + 4 pass threads (qos i):  GEMM     0.0 GFLOP/s   pass   89.8 GB/s
+f64 m=768  6 SME streams + 4 pass threads (qos i):  GEMM   465.4 GFLOP/s   pass   78.4 GB/s
+f64 m=768  0 SME streams + 2 pass threads (qos b):  GEMM     0.0 GFLOP/s   pass   10.3 GB/s
+f64 m=768  6 SME streams + 2 pass threads (qos b):  GEMM   941.9 GFLOP/s   pass   18.8 GB/s
+f64 m=768  0 SME streams + 4 pass threads (qos b):  GEMM     0.0 GFLOP/s   pass   11.6 GB/s
+f64 m=768  6 SME streams + 4 pass threads (qos b):  GEMM   937.5 GFLOP/s   pass   18.3 GB/s
+f32 m=768  0 SME streams + 2 pass threads (qos i):  GEMM     0.0 GFLOP/s   pass   58.8 GB/s
+f32 m=768  6 SME streams + 2 pass threads (qos i):  GEMM  3487.2 GFLOP/s   pass   54.0 GB/s
+f32 m=768  0 SME streams + 4 pass threads (qos i):  GEMM     0.0 GFLOP/s   pass   87.8 GB/s
+f32 m=768  6 SME streams + 4 pass threads (qos i):  GEMM  3107.8 GFLOP/s   pass   81.2 GB/s
+f32 m=768  0 SME streams + 2 pass threads (qos b):  GEMM     0.0 GFLOP/s   pass    9.5 GB/s
+f32 m=768  6 SME streams + 2 pass threads (qos b):  GEMM  4073.7 GFLOP/s   pass   16.7 GB/s
+f32 m=768  0 SME streams + 4 pass threads (qos b):  GEMM     0.0 GFLOP/s   pass   12.2 GB/s
+f32 m=768  6 SME streams + 4 pass threads (qos b):  GEMM  4064.7 GFLOP/s   pass   17.5 GB/s
+## (2) probe_nt: the same beside a plain pass d = a + b (two blocks read, one written); mode 0 ordinary stores,
+##     1 non-temporal stores (STNP), 2 non-temporal loads too (LDNP)
+f64 m=768 mode 0 qos i  6 SME streams + 0 pass threads:  GEMM   924.9 GFLOP/s   pass    0.0 GB/s
+f64 m=768 mode 0 qos i  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass  207.8 GB/s
+f64 m=768 mode 0 qos i  6 SME streams + 2 pass threads:  GEMM   315.7 GFLOP/s   pass  145.5 GB/s
+f64 m=768 mode 0 qos i  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass  219.3 GB/s
+f64 m=768 mode 0 qos i  6 SME streams + 4 pass threads:  GEMM   266.7 GFLOP/s   pass  151.2 GB/s
+f64 m=768 mode 1 qos i  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass  208.8 GB/s
+f64 m=768 mode 1 qos i  6 SME streams + 2 pass threads:  GEMM   322.3 GFLOP/s   pass  147.0 GB/s
+f64 m=768 mode 1 qos i  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass  220.4 GB/s
+f64 m=768 mode 1 qos i  6 SME streams + 4 pass threads:  GEMM   274.0 GFLOP/s   pass  153.6 GB/s
+f64 m=768 mode 2 qos i  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass  215.7 GB/s
+f64 m=768 mode 2 qos i  6 SME streams + 2 pass threads:  GEMM   293.1 GFLOP/s   pass  189.4 GB/s
+f64 m=768 mode 2 qos i  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass  223.0 GB/s
+f64 m=768 mode 2 qos i  6 SME streams + 4 pass threads:  GEMM   263.7 GFLOP/s   pass  191.5 GB/s
+f32 m=768 mode 0 qos i  6 SME streams + 0 pass threads:  GEMM  4150.6 GFLOP/s   pass    0.0 GB/s
+f32 m=768 mode 0 qos i  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass  207.4 GB/s
+f32 m=768 mode 0 qos i  6 SME streams + 2 pass threads:  GEMM  2584.1 GFLOP/s   pass  184.0 GB/s
+f32 m=768 mode 0 qos i  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass  219.2 GB/s
+f32 m=768 mode 0 qos i  6 SME streams + 4 pass threads:  GEMM  1312.4 GFLOP/s   pass  192.0 GB/s
+f32 m=768 mode 1 qos i  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass  207.8 GB/s
+f32 m=768 mode 1 qos i  6 SME streams + 2 pass threads:  GEMM  2061.1 GFLOP/s   pass  183.6 GB/s
+f32 m=768 mode 1 qos i  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass  220.2 GB/s
+f32 m=768 mode 1 qos i  6 SME streams + 4 pass threads:  GEMM  1332.3 GFLOP/s   pass  192.1 GB/s
+f32 m=768 mode 2 qos i  0 SME streams + 2 pass threads:  GEMM     0.0 GFLOP/s   pass  214.7 GB/s
+f32 m=768 mode 2 qos i  6 SME streams + 2 pass threads:  GEMM  3214.6 GFLOP/s   pass  191.7 GB/s
+f32 m=768 mode 2 qos i  0 SME streams + 4 pass threads:  GEMM     0.0 GFLOP/s   pass  221.9 GB/s
+f32 m=768 mode 2 qos i  6 SME streams + 4 pass threads:  GEMM  3088.3 GFLOP/s   pass  199.8 GB/s
+## (3) probe_strip (first version): the library's kernels over all cores, direct or strip-mined through L1 buffers
+##     (W elements per burst; inputs, outputs or both buffered)
+f64 D48 L  16 -> 48   n=6912  direct  121.1 GB/s |  W=64: both   86.1 in  115.3 out  107.0  W=128: both  101.6 in  120.9 out  106.4  W=256: both  107.2 in  104.5 out  110.1  W=512: both   95.7 in  121.2 out   95.4
+f64 D48 P  48 -> 16   n=6912  direct  155.1 GB/s |  W=64: both  115.8 in  141.1 out  135.8  W=128: both  122.7 in  145.3 out  144.4  W=256: both  133.1 in  157.7 out  157.3  W=512: both  123.5 in  144.4 out  139.2
+f64 R363 L  18 -> 40  n=6912  direct  129.9 GB/s |  W=64: both  102.1 in  120.8 out  113.9  W=128: both  105.7 in  131.0 out  110.8  W=256: both  111.5 in  127.8 out  121.4  W=512: both  102.3 in  131.2 out  100.6
+f64 R363 P  40 -> 9   n=6912  direct  174.4 GB/s |  W=64: both  120.6 in  144.4 out  164.9  W=128: both  131.8 in  145.0 out  168.5  W=256: both  135.7 in  170.6 out  168.2  W=512: both  131.0 in  163.4 out  164.7
+f64 SW L    4 -> 7    n=6912  direct  141.2 GB/s |  W=64: both  139.9 in  140.7 out  140.2  W=128: both  138.7 in  140.3 out  139.8  W=256: both  137.3 in  139.4 out  139.3  W=512: both  137.9 in  139.5 out  139.1
+f32 D48 L  16 -> 48   n=6912  direct  123.5 GB/s |  W=64: both   97.7 in  106.9 out   96.5  W=128: both  100.3 in  113.7 out  104.2  W=256: both  103.2 in  118.0 out  105.0  W=512: both  107.2 in  117.7 out  116.2
+f32 D48 P  48 -> 16   n=6912  direct  146.4 GB/s |  W=64: both  116.5 in  126.7 out  115.6  W=128: both  113.7 in  140.8 out  125.2  W=256: both  127.5 in  141.5 out  154.0  W=512: both  133.7 in  154.5 out  147.1
+f32 R363 L  18 -> 40  n=6912  direct  127.8 GB/s |  W=64: both   97.8 in  108.9 out   97.3  W=128: both  101.7 in  118.6 out  110.4  W=256: both  105.0 in  125.4 out  108.9  W=512: both  112.5 in  125.5 out  119.7
+f32 R363 P  40 -> 9   n=6912  direct  141.5 GB/s |  W=64: both  117.3 in  130.8 out  117.5  W=128: both  115.7 in  142.9 out  159.7  W=256: both  128.7 in  144.4 out  163.8  W=512: both  138.9 in  170.5 out  164.1
+f32 SW L    4 -> 7    n=6912  direct  140.4 GB/s |  W=64: both  138.8 in  140.7 out  140.0  W=128: both  138.9 in  140.2 out  139.7  W=256: both  138.6 in  140.1 out  139.7  W=512: both  137.6 in  139.4 out  138.6
+## (4) probe_strip: tiles of W elements, with and without claiming the output lines by DC ZVA
+f64 D48 L  16 -> 48   n=6912  direct  122.9 GB/s |  W=64: tiled  122.6 zva  164.0  W=128: tiled  120.4 zva  166.5  W=256: tiled  123.1 zva  168.3  W=512: tiled  123.1 zva  168.0  W=1024: tiled  123.3 zva  161.2
+f64 D48 P  48 -> 16   n=6912  direct  155.1 GB/s |  W=64: tiled  153.0 zva  157.8  W=128: tiled  153.4 zva  160.4  W=256: tiled  153.8 zva  162.1  W=512: tiled  154.2 zva  162.9  W=1024: tiled  154.8 zva  163.7
+f64 R363 L  18 -> 40  n=6912  direct  130.3 GB/s |  W=64: tiled  129.0 zva  154.2  W=128: tiled  129.5 zva  157.6  W=256: tiled  129.7 zva  160.9  W=512: tiled  130.0 zva  163.5  W=1024: tiled  129.9 zva  160.0
+f64 R363 P  40 -> 9   n=6912  direct  174.7 GB/s |  W=64: tiled  174.0 zva  180.1  W=128: tiled  174.6 zva  182.3  W=256: tiled  174.7 zva  184.4  W=512: tiled  174.5 zva  186.3  W=1024: tiled  174.8 zva  187.4
+f64 SW L    4 -> 7    n=6912  direct  141.4 GB/s |  W=64: tiled  141.3 zva  140.9  W=128: tiled  140.7 zva  140.6  W=256: tiled  141.1 zva  140.5  W=512: tiled  140.9 zva  140.6  W=1024: tiled  141.4 zva  143.8
+f32 D48 L  16 -> 48   n=6912  direct  124.0 GB/s |  W=64: tiled  119.5 zva  140.5  W=128: tiled  121.7 zva  149.4  W=256: tiled  122.8 zva  159.7  W=512: tiled  123.1 zva  165.2  W=1024: tiled  123.7 zva  167.7
+f32 D48 P  48 -> 16   n=6912  direct  148.6 GB/s |  W=64: tiled  145.3 zva  148.4  W=128: tiled  145.9 zva  151.2  W=256: tiled  147.4 zva  153.0  W=512: tiled  147.4 zva  154.0  W=1024: tiled  147.8 zva  155.1
+f32 R363 L  18 -> 40  n=6912  direct  129.2 GB/s |  W=64: tiled  123.4 zva  140.0  W=128: tiled  126.2 zva  151.3  W=256: tiled  126.3 zva  158.5  W=512: tiled  128.0 zva  164.2  W=1024: tiled  128.1 zva  167.5
+f32 R363 P  40 -> 9   n=6912  direct  140.5 GB/s |  W=64: tiled  138.3 zva  149.6  W=128: tiled  139.9 zva  152.8  W=256: tiled  141.1 zva  153.2  W=512: tiled  144.9 zva  155.0  W=1024: tiled  144.5 zva  155.7
+f32 SW L    4 -> 7    n=6912  direct  138.8 GB/s |  W=64: tiled  139.4 zva  139.3  W=128: tiled  139.5 zva  139.0  W=256: tiled  139.3 zva  139.1  W=512: tiled  139.1 zva  139.1  W=1024: tiled  139.1 zva  139.2
+## (5) whole plans, FMM_ZVA=0 against 1, alternately: f64 13824
+== FMM_ZVA=0
+plan=R363+2/R336/G3 n=13824  f64  min   3.3053 s  med   3.3145 s   1594.1 GFLOP/s(2mkn)  speedup 0.000  relerr 1.33e-14  split L 0.039 R 0.040 gemm 3.185 P 0.049  plan R363+2/R336/G3  pred 3.189 s (-3.8%)  perr 4.42
+plan=R363/G6 n=13824  f64  min   4.7856 s  med   4.8469 s   1090.1 GFLOP/s(2mkn)  speedup 0.000  relerr 1.30e-14  split L 0.039 R 0.040 gemm 4.707 P 0.050  plan R363/G6  pred 4.768 s (-1.6%)  perr 4.44e-15
+plan=SW/R363+3/R633/G6 n=13824  f64  min   3.2362 s  med   3.2398 s   1630.8 GFLOP/s(2mkn)  speedup 0.000  relerr 1.36e-14  split L 0.097 R 0.098 gemm 2.932 P 0.113  plan SW/R363+3/R633/G6  pred 3.252 s (+0.4%)  per
+== FMM_ZVA=1
+plan=R363+2/R336/G3 n=13824  f64  min   3.3022 s  med   3.3659 s   1569.7 GFLOP/s(2mkn)  speedup 0.000  relerr 1.33e-14  split L 0.033 R 0.033 gemm 3.242 P 0.049  plan R363+2/R336/G3  pred 3.189 s (-5.3%)  perr 4.42
+plan=R363/G6 n=13824  f64  min   4.6946 s  med   4.7076 s   1122.4 GFLOP/s(2mkn)  speedup 0.000  relerr 1.30e-14  split L 0.033 R 0.032 gemm 4.595 P 0.047  plan R363/G6  pred 4.768 s (+1.3%)  perr 4.44e-15
+plan=SW/R363+3/R633/G6 n=13824  f64  min   3.2487 s  med   3.2509 s   1625.3 GFLOP/s(2mkn)  speedup 0.000  relerr 1.36e-14  split L 0.088 R 0.087 gemm 2.973 P 0.108  plan SW/R363+3/R633/G6  pred 3.252 s (+0.0%)  per
+== FMM_ZVA=0
+plan=R363+2/R336/G3 n=13824  f64  min   3.3225 s  med   3.3314 s   1586.0 GFLOP/s(2mkn)  speedup 0.000  relerr 1.33e-14  split L 0.040 R 0.040 gemm 3.202 P 0.051  plan R363+2/R336/G3  pred 3.189 s (-4.3%)  perr 4.42
+plan=R363/G6 n=13824  f64  min   4.7036 s  med   4.7067 s   1122.6 GFLOP/s(2mkn)  speedup 0.000  relerr 1.30e-14  split L 0.039 R 0.039 gemm 4.592 P 0.050  plan R363/G6  pred 4.768 s (+1.3%)  perr 4.44e-15
+plan=SW/R363+3/R633/G6 n=13824  f64  min   3.2356 s  med   3.2386 s   1631.5 GFLOP/s(2mkn)  speedup 0.000  relerr 1.36e-14  split L 0.098 R 0.098 gemm 2.931 P 0.112  plan SW/R363+3/R633/G6  pred 3.252 s (+0.4%)  per
+== FMM_ZVA=1
+plan=R363+2/R336/G3 n=13824  f64  min   3.3172 s  med   3.3221 s   1590.5 GFLOP/s(2mkn)  speedup 0.000  relerr 1.33e-14  split L 0.033 R 0.032 gemm 3.205 P 0.050  plan R363+2/R336/G3  pred 3.189 s (-4.0%)  perr 4.42
+plan=R363/G6 n=13824  f64  min   4.7058 s  med   4.7298 s   1117.1 GFLOP/s(2mkn)  speedup 0.000  relerr 1.30e-14  split L 0.034 R 0.033 gemm 4.622 P 0.046  plan R363/G6  pred 4.768 s (+0.8%)  perr 4.44e-15
+plan=SW/R363+3/R633/G6 n=13824  f64  min   3.2216 s  med   3.2287 s   1636.4 GFLOP/s(2mkn)  speedup 0.000  relerr 1.36e-14  split L 0.088 R 0.088 gemm 2.946 P 0.107  plan SW/R363+3/R633/G6  pred 3.252 s (+0.7%)  per
+## (5) the same, f32 13824 and 6912 (bench_fmm_gpu)
+== FMM_ZVA=0
+plan=R363+6/R336/G6M n=13824  f32  min   0.5227 s  med   0.5288 s   9992.5 GFLOP/s(2mkn)  speedup 0.000  relerr 6.43e-06  split L 0.019 R 0.019 gemm 0.471 P 0.028  plan R363+6/R336
+plan=R363/G6M n=13824  f32  min   0.5624 s  med   0.5733 s   9216.7 GFLOP/s(2mkn)  speedup 0.000  relerr 6.70e-06  split L 0.019 R 0.020 gemm 0.514 P 0.029  plan R363/G6M  pred 0.5
+plan=R363+4/R336/G6M n=13824  f32  min   0.4965 s  med   0.5006 s  10554.4 GFLOP/s(2mkn)  speedup 0.000  relerr 6.43e-06  split L 0.019 R 0.019 gemm 0.433 P 0.028  plan R363+4/R336
+plan=R336+2/R363/G6 n=13824  f32  min   0.9293 s  med   0.9395 s   5623.9 GFLOP/s(2mkn)  speedup 0.000  relerr 6.16e-06  split L 0.035 R 0.020 gemm 0.866 P 0.018  plan R336+2/R363/
+== FMM_ZVA=1
+plan=R363+6/R336/G6M n=13824  f32  min   0.4994 s  med   0.5613 s   9413.0 GFLOP/s(2mkn)  speedup 0.000  relerr 6.43e-06  split L 0.017 R 0.016 gemm 0.508 P 0.028  plan R363+6/R336
+plan=R363/G6M n=13824  f32  min   0.5564 s  med   0.6053 s   8728.4 GFLOP/s(2mkn)  speedup 0.000  relerr 6.70e-06  split L 0.017 R 0.016 gemm 0.529 P 0.028  plan R363/G6M  pred 0.5
+plan=R363+4/R336/G6M n=13824  f32  min   0.4748 s  med   0.4866 s  10858.0 GFLOP/s(2mkn)  speedup 0.000  relerr 6.43e-06  split L 0.016 R 0.016 gemm 0.425 P 0.028  plan R363+4/R336
+plan=R336+2/R363/G6 n=13824  f32  min   0.9551 s  med   0.9783 s   5400.6 GFLOP/s(2mkn)  speedup 0.000  relerr 6.16e-06  split L 0.027 R 0.016 gemm 0.915 P 0.018  plan R336+2/R363/
+== FMM_ZVA=0
+plan=R363+6/R336/G6M n=13824  f32  min   0.5784 s  med   0.6309 s   8374.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.43e-06  split L 0.020 R 0.020 gemm 0.565 P 0.029  plan R363+6/R336
+plan=R363/G6M n=13824  f32  min   0.5759 s  med   0.6044 s   8741.9 GFLOP/s(2mkn)  speedup 0.000  relerr 6.70e-06  split L 0.019 R 0.020 gemm 0.534 P 0.030  plan R363/G6M  pred 0.5
+plan=R363+4/R336/G6M n=13824  f32  min   0.5074 s  med   0.5119 s  10321.6 GFLOP/s(2mkn)  speedup 0.000  relerr 6.43e-06  split L 0.019 R 0.019 gemm 0.447 P 0.029  plan R363+4/R336
+plan=R336+2/R363/G6 n=13824  f32  min   0.9829 s  med   1.0054 s   5255.1 GFLOP/s(2mkn)  speedup 0.000  relerr 6.16e-06  split L 0.035 R 0.020 gemm 0.925 P 0.018  plan R336+2/R363/
+== FMM_ZVA=1
+plan=R363+6/R336/G6M n=13824  f32  min   0.5136 s  med   0.5299 s   9970.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.43e-06  split L 0.017 R 0.016 gemm 0.496 P 0.027  plan R363+6/R336
+plan=R363/G6M n=13824  f32  min   0.5762 s  med   0.5921 s   8923.3 GFLOP/s(2mkn)  speedup 0.000  relerr 6.70e-06  split L 0.017 R 0.016 gemm 0.531 P 0.028  plan R363/G6M  pred 0.5
+plan=R363+4/R336/G6M n=13824  f32  min   0.4864 s  med   0.4938 s  10700.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.43e-06  split L 0.016 R 0.016 gemm 0.431 P 0.027  plan R363+4/R336
+plan=R336+2/R363/G6 n=13824  f32  min   0.9578 s  med   0.9640 s   5481.1 GFLOP/s(2mkn)  speedup 0.000  relerr 6.16e-06  split L 0.027 R 0.017 gemm 0.908 P 0.017  plan R336+2/R363/
+== FMM_ZVA=0
+plan=R363/G6M n=6912   f32  min   0.0775 s  med   0.0815 s   8102.3 GFLOP/s(2mkn)  speedup 0.000  relerr 4.18e-06  split L 0.005 R 0.005 gemm 0.066 P 0.007  plan R363/G6M  pred 0.0
+plan=R363+4/R633/G6 n=6912   f32  min   0.1427 s  med   0.1462 s   4516.3 GFLOP/s(2mkn)  speedup 0.000  relerr 4.14e-06  split L 0.005 R 0.005 gemm 0.129 P 0.007  plan R363+4/R633/
+== FMM_ZVA=1
+plan=R363/G6M n=6912   f32  min   0.0760 s  med   0.0781 s   8454.1 GFLOP/s(2mkn)  speedup 0.000  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.064 P 0.007  plan R363/G6M  pred 0.0
+plan=R363+4/R633/G6 n=6912   f32  min   0.1393 s  med   0.1395 s   4733.1 GFLOP/s(2mkn)  speedup 0.000  relerr 4.14e-06  split L 0.004 R 0.004 gemm 0.124 P 0.007  plan R363+4/R633/
+== FMM_ZVA=0
+plan=R363/G6M n=6912   f32  min   0.0776 s  med   0.0797 s   8289.6 GFLOP/s(2mkn)  speedup 0.000  relerr 4.18e-06  split L 0.005 R 0.005 gemm 0.065 P 0.007  plan R363/G6M  pred 0.0
+plan=R363+4/R633/G6 n=6912   f32  min   0.1414 s  med   0.1419 s   4653.3 GFLOP/s(2mkn)  speedup 0.000  relerr 4.14e-06  split L 0.005 R 0.005 gemm 0.125 P 0.007  plan R363+4/R633/
+== FMM_ZVA=1
+plan=R363/G6M n=6912   f32  min   0.0761 s  med   0.0807 s   8185.9 GFLOP/s(2mkn)  speedup 0.000  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.065 P 0.007  plan R363/G6M  pred 0.0
+plan=R363+4/R633/G6 n=6912   f32  min   0.1371 s  med   0.1379 s   4788.1 GFLOP/s(2mkn)  speedup 0.000  relerr 4.14e-06  split L 0.004 R 0.004 gemm 0.123 P 0.007  plan R363+4/R633/

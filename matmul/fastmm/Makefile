@@ -15,8 +15,25 @@ build/bench_fmm_gpu: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h
 	clang -O2 -fobjc-arc -Wall -c gpu_leaf.m -o build/gpu_leaf.o
 	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -DFMM_GPU -Ibuild bench_fmm.c build/gpu_leaf.o -framework Accelerate -framework Foundation -framework Metal -framework MetalPerformanceShaders -o $@
 
+# the library with the GPU: link with -framework Accelerate -framework Foundation -framework Metal
+# -framework MetalPerformanceShaders
+build/libfmm_gpu.a: fmm.c fmm_impl.h fmm.h neon_gemm.h gpu_leaf.h gpu_leaf.m build/kernels.h
+	mkdir -p build && clang -O2 -fobjc-arc -Wall -c gpu_leaf.m -o build/gpu_leaf.o && clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -DFMM_GPU -Ibuild -c fmm.c -o build/fmm_gpu.o && ar rcs $@ build/fmm_gpu.o build/gpu_leaf.o
+
+build/test_fmm_gpu: test_fmm.c fmm.h build/libfmm_gpu.a
+	clang -O3 -mcpu=apple-m4 -Wall test_fmm.c build/libfmm_gpu.a -framework Accelerate -framework Foundation -framework Metal -framework MetalPerformanceShaders -o $@
+
 build/gpu_share: gpu_share.m
 	mkdir -p build && clang -O2 -fobjc-arc -Wall -Wno-deprecated-declarations gpu_share.m -framework Foundation -framework Metal -framework MetalPerformanceShaders -framework Accelerate -o $@
+
+# what the passes cost the memory system: a plain pass beside SME streams with ordinary and non-temporal
+# stores (probe_nt), and the library's kernels direct, tiled, and with their output lines claimed by DC ZVA
+# (probe_strip); results/pass_probes_2026-11-14.txt
+build/probe_nt: probe_nt.c
+	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall probe_nt.c -framework Accelerate -o $@
+
+build/probe_strip: probe_strip.c build/kernels.h
+	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild probe_strip.c -o $@
 
 # the SME leaf kernel of sme_gemm.h against Accelerate on a level's products
 build/sme_test: sme_test.c sme_gemm.h

@@ -32,7 +32,30 @@
  * (minutes).  Calls are serialized: each uses the whole machine.  The workspace (up to about
  * 10 n^2 elements) is kept between calls until fmm_release.
  *
- * Link: libfmm.a -framework Accelerate.
+ * Faster first, more accurate second: of the plans predicted within 2% of the fastest within the
+ * budget (8% with the GPU, whose timings repeat less well), the planner takes one predicted at
+ * least 10% more accurate, or of equal prediction with the more accurate level on top.
+ *
+ * The passes claim their output lines with DC ZVA before writing them, so that a store does not
+ * first fetch from memory a line it is about to overwrite (FMM_ZVA=0 switches it off; the results
+ * are the same either way).
+ *
+ * With the GPU (libfmm_gpu.a, single precision only: Metal has no f64).  Metal Performance
+ * Shaders' f32 matrix product is the same k-ordered chain of fused multiply-adds as Accelerate's
+ * sgemm, bit for bit, and on unified memory it reads and writes the library's scratch blocks where
+ * they are.  A level's products are then shared: the GEMM (Accelerate's own threading, leaf GM, or
+ * six streams, G6M) takes them from one end and the GPU from the other, at 7-9 TFLOP/s together
+ * against 3.3-3.8 for the streams.  The planner uses these leaves on products whose smallest
+ * dimension is at least 576, and, with no level at all, the classical product cut into 16, 32 or
+ * 64 strips of rows (K16, K32, K64: in place, the GEMM's own result), which needs page-aligned
+ * matrices (16384) to be wrapped for the GPU and a calibration for that very shape; otherwise the
+ * best plan without a K level runs.  A plan with the GPU is held to the predicted error of the
+ * fastest plan the same budget admits without it, so the GPU never costs accuracy; with a faster
+ * leaf the fastest plans have fewer levels, and their error is the same or lower.  The GPU's entries of the
+ * calibration live beside the cache in calib5gpu_f32.txt; FMM_GPU=0 plans without the GPU.
+ *
+ * Link: libfmm.a -framework Accelerate, or libfmm_gpu.a -framework Accelerate -framework Foundation
+ * -framework Metal -framework MetalPerformanceShaders.
  */
 #ifndef FMM_H
 #define FMM_H

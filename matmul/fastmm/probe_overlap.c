@@ -4,7 +4,9 @@
  * padded blocks out, the rows split among the threads, pass after pass).  Reports GEMM GFLOP/s
  * and pass GB/s alone and together.
  *
- *   probe_overlap [-t f|d] [-n 1024] [-k 3] [-w 7] [-s 3]
+ *   probe_overlap [-t f|d] [-n 1024] [-k 3] [-w 7] [-s 3] [-q i|u|b]
+ * -q: the pass threads' quality of service (i user-interactive, the default; u utility; b background:
+ * efficiency cores only)
  */
 #define ACCELERATE_NEW_LAPACK
 #include <Accelerate/Accelerate.h>
@@ -29,7 +31,7 @@ static void *alloc_t(size_t bytes) {
     return p;
 }
 
-static int f64;
+static int f64, pass_qos = 'i';
 static size_t n = 1024;
 static atomic_int stop;
 #define PAD 1040
@@ -46,7 +48,10 @@ typedef struct {
 
 static void *worker(void *p) {
     worker_t *w = p;
-    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    /* -q b: the pass threads at background quality of service, which macOS runs on the efficiency
+     * cores only (their own cluster and L2, away from the SME streams' performance clusters) */
+    pthread_set_qos_class_self_np(w->pass && pass_qos == 'b' ? QOS_CLASS_BACKGROUND
+                                  : w->pass && pass_qos == 'u' ? QOS_CLASS_UTILITY : QOS_CLASS_USER_INTERACTIVE, 0);
     double t0 = now();
     if (w->pass) {
         long rows = 0;
@@ -88,6 +93,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "-k")) k = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "-w")) wn = atoi(argv[i + 1]);
         else if (!strcmp(argv[i], "-s")) secs = atof(argv[i + 1]);
+        else if (!strcmp(argv[i], "-q")) pass_qos = argv[i + 1][0];
     }
     size_t es = f64 ? 8 : 4;
     char *in = alloc_t(16 * n * n * es), *out = alloc_t(48 * (n * n + PAD) * es);
@@ -122,8 +128,8 @@ int main(int argc, char **argv) {
         }
         double wall = now() - t0;
         double gbs = (double)atomic_load(&rows_done) * pass_bytes_per_row / wall / 1e9;
-        printf("%s m=%zu  %d SME streams + %d pass threads:  GEMM %7.1f GFLOP/s   pass %6.1f GB/s\n",
-               f64 ? "f64" : "f32", n, ks, ws, gs, gbs);
+        printf("%s m=%zu  %d SME streams + %d pass threads (qos %c):  GEMM %7.1f GFLOP/s   pass %6.1f GB/s\n",
+               f64 ? "f64" : "f32", n, ks, ws, pass_qos, gs, gbs);
         fflush(stdout);
     }
     return 0;

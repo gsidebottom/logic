@@ -1,0 +1,12 @@
+# vdescend (Rust), 2026-11-14: validation from the classical algorithms, then <3x4x6>
+# trivial:2x2x2: <2x2x2:8>, 16 runs from seed 1, 150 steps, kick 0.3, bound 30, 8 threads
+# summary: 7 products exact: 12, 8 products exact: 4
+# trivial:2x2x3: <2x2x3:12>, 16 runs from seed 1, 300 steps, kick 0.3, bound 30, 8 threads
+# summary: 11 products exact: 8, 12 products exact: 8
+# trivial:2x3x3: <2x3x3:18>, 8 runs from seed 1, 400 steps, kick 0.3, bound 30, 8 threads
+# summary: 16 products exact: 1, 17 products exact: 5, 18 products exact: 2
+# trivial:3x3x3: <3x3x3:27>, 8 runs from seed 1, 300 steps, kick 0.3, bound 30, 8 threads
+# summary: 24 products exact: 2, 25 products exact: 4, 26 products exact: 1, 27 products exact: 1
+# <3x4x6:54> (Perminov's ternary scheme), 5 runs of 400 steps:
+# 3x4x6_m54_ZT.json: <3x4x6:54>, 5 runs from seed 7, 400 steps, kick 0.3, bound 30, 5 threads
+# summary: 54 products exact: 5

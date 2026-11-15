@@ -1,0 +1,78 @@
+
+=== 346: 54, plus near
+# symflip3 <3x4x6> over F3: group of order 1, start of rank 54 (54 summands fixed by the group), 8 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 8), save at 53
+# debug: merges tried 67987885 done 67987885; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 54 (500 schemes in the pool), 1428.2 M flips and 68.02 M plus transitions in 74652 walks, 480 s
+
+=== 346: 54, plus wide
+# symflip3 <3x4x6> over F3: group of order 1, start of rank 54 (54 summands fixed by the group), 5 min, 10 threads, stall 20000, plus 1 (every 500 flips, margin 16), save at 53
+# debug: merges tried 43233353 done 43233353; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 54 (500 schemes in the pool), 919.3 M flips and 43.26 M plus transitions in 47956 walks, 300 s
+
+=== 346: 56
+# symflip3 <3x4x6> over F3: group of order 1, start of rank 56 (56 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.5 (every 5000 flips, margin 6), save at 55
+# debug: merges tried 244028 done 244028; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 56 (500 schemes in the pool), 1324.9 M flips and 0.26 M plus transitions in 65812 walks, 180 s
+
+=== 346: 57
+# symflip3 <3x4x6> over F3: group of order 1, start of rank 57 (57 summands fixed by the group), 2 min, 10 threads, stall 20000, plus 0.5 (every 5000 flips, margin 6), save at 56
+# debug: merges tried 200532 done 200532; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 57 (500 schemes in the pool), 1106.2 M flips and 0.22 M plus transitions in 54899 walks, 120 s
+
+=== 346: std plain
+# symflip3 <3x4x6> over F3: group of order 1, start of rank 72 (72 summands fixed by the group), 4 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 4), save at 55
+# debug: merges tried 13842 done 13842; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 72 (500 schemes in the pool), 2095.0 M flips and 0.00 M plus transitions in 104170 walks, 240 s
+
+=== 346: std Z3
+# symflip3 <3x4x6> over F3: group of order 3, start of rank 72 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 8), save at 55
+# debug: merges tried 4421 done 4373; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 452656
+# done: lowest rank 72 (500 schemes in the pool), 639.5 M flips and 0.00 M plus transitions in 31898 walks, 180 s
+
+=== 346: std Z2xZ2
+# symflip3 <3x4x6> over F3: group of order 4, start of rank 72 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 10), save at 55
+[thread 1] rank 70 (0 fixed summands) after 15 s
+[thread 6] rank 68 (0 fixed summands) after 60 s
+# debug: merges tried 2332 done 2295; refused: zero coefficient 0, not in scheme 0, k mismatch 1138659, rank growth 465126286
+# done: lowest rank 68 (500 schemes in the pool), 301.5 M flips and 0.00 M plus transitions in 14985 walks, 180 s
+
+=== 346: std Z6
+# symflip3 <3x4x6> over F3: group of order 6, start of rank 72 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 14), save at 55
+[thread 5] rank 69 (0 fixed summands) after 60 s
+[thread 7] rank 66 (0 fixed summands) after 112 s
+# debug: merges tried 27125 done 2522; refused: zero coefficient 0, not in scheme 0, k mismatch 3493383, rank growth 49120799
+# done: lowest rank 66 (500 schemes in the pool), 321.5 M flips and 0.00 M plus transitions in 16025 walks, 180 s
+
+=== 336: 40 DPS, plus near
+# symflip3 <3x3x6> over F3: group of order 1, start of rank 40 (40 summands fixed by the group), 6 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 8), save at 39
+# debug: merges tried 94050068 done 94050068; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 40 (2 schemes in the pool), 739.0 M flips and 94.06 M plus transitions in 41610 walks, 360 s
+
+=== 336: 40 DPS, plus wide
+# symflip3 <3x3x6> over F3: group of order 1, start of rank 40 (40 summands fixed by the group), 4 min, 10 threads, stall 20000, plus 1 (every 500 flips, margin 16), save at 39
+# debug: merges tried 63681452 done 63681452; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 40 (2 schemes in the pool), 501.9 M flips and 63.69 M plus transitions in 28210 walks, 240 s
+
+=== 336: 40 original
+# symflip3 <3x3x6> over F3: group of order 1, start of rank 40 (40 summands fixed by the group), 4 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 8), save at 39
+# debug: merges tried 62275308 done 62275308; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 40 (2 schemes in the pool), 489.1 M flips and 62.28 M plus transitions in 27539 walks, 240 s
+
+=== 336: 42
+# symflip3 <3x3x6> over F3: group of order 1, start of rank 42 (42 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.5 (every 5000 flips, margin 6), save at 41
+# debug: merges tried 294390 done 294390; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 42 (500 schemes in the pool), 1581.5 M flips and 0.32 M plus transitions in 78817 walks, 180 s
+
+=== 336: 43
+# symflip3 <3x3x6> over F3: group of order 1, start of rank 43 (43 summands fixed by the group), 2 min, 10 threads, stall 20000, plus 0.5 (every 5000 flips, margin 6), save at 42
+# debug: merges tried 211666 done 211666; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 43 (500 schemes in the pool), 1181.0 M flips and 0.24 M plus transitions in 58634 walks, 120 s
+
+=== 336: std plain
+# symflip3 <3x3x6> over F3: group of order 1, start of rank 54 (54 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 4), save at 41
+[thread 1] rank 53 (53 fixed summands) after 4 s
+[thread 4] rank 52 (52 fixed summands) after 112 s
+[thread 2] rank 51 (51 fixed summands) after 154 s
+# debug: merges tried 14008 done 14008; refused: zero coefficient 0, not in scheme 0, k mismatch 0, rank growth 0
+# done: lowest rank 51 (500 schemes in the pool), 2105.8 M flips and 0.00 M plus transitions in 104465 walks, 180 s
+=== CAMPAIGN3 DONE

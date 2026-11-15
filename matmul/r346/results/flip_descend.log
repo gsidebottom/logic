@@ -1,0 +1,4 @@
+c flip descend: <3,4,6> from 3 seeds of ranks 54..57 (pool matmul/r346/seeds), save<=53, write<=53, lift<=54, 5 threads, 40 min, group-moves 0 shuffles 2
+c [   1506s] reductions 0 | landings 0 | distinct [] | trajectories 15657 | diffuse-flips 186.0M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+c [   1566s] reductions 0 | landings 0 | distinct [] | trajectories 16260 | diffuse-flips 193.1M | group g1 0 g2sep 0 g2shared 0 shuffles 0 saved 0 g3 0
+exit 143

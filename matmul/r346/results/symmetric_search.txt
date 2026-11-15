@@ -1,0 +1,28 @@
+# searches among schemes with the symmetries of the known <3x4x6:54> (vdescend --sym), 2026-11-14
+# the scheme (AlphaEvolve's; Sedoglavic's table entry and Perminov's ternary 54 have the same type and 8 moduli) has a symmetry
+# group of order 6: S3, elements of order 3 with no fixed product (18 orbits) and of order 2 with two (26 pairs + 2)
+## validation: the known scheme, perturbed, in the symmetric unknowns
+order 3, 18 orbits, noise 5% / 20% / 50% of the rms entry: 6 of 6 / 6 of 6 / 6 of 6 starts return to an exact 54
+order 2, 26 pairs + 2 fixed (types mmp, pmm), noise 10%: 4 of 4
+## rank 54 from random starts, order 3, 18 orbits (972 unknowns)
+rank 54 (18 orbits of 3 + 0 fixed): 0 of 400 starts EXACT; the others' max |F|: min 8.47e-5, median 5.05e-1, max 1.03e0; 1472 s
+rank 54 (18 orbits of 3 + 0 fixed): 0 of 40 starts EXACT; the others' max |F|: min 5.59e-4, median 5.16e-1, max 9.29e-1; 119 s
+## rank 53 from the known scheme: order 3, one orbit dropped and two fixed products added (noise 10%, 30%); two orbits dropped and five added (20%)
+rank 53 (17 orbits of 3 + 2 fixed): 0 of 72 starts EXACT; the others' max |F|: min 3.49e-2, median 4.05e-1, max 7.18e-1; 756 s
+rank 53 (17 orbits of 3 + 2 fixed): 0 of 72 starts EXACT; the others' max |F|: min 1.45e-2, median 3.92e-1, max 4.83e-1; 662 s
+rank 53 (16 orbits of 3 + 5 fixed): 0 of 72 starts EXACT; the others' max |F|: min 1.34e-1, median 6.46e-1, max 9.10e-1; 370 s
+## rank 53 from the known scheme: order 2, the 26 pairs and ONE fixed product (types mmp, pmm at 10% and 30%; ppp, mpm at 20%)
+mmp_0.1: rank 53 (26 orbits of 2 + 1 fixed): 0 of 9 starts EXACT; the others' max |F|: min 3.27e-1, median 9.19e-1, max 9.20e-1; 154 s
+pmm_0.1: rank 53 (26 orbits of 2 + 1 fixed): 0 of 9 starts EXACT; the others' max |F|: min 1.60e-1, median 1.74e-1, max 3.46e-1; 128 s
+mmp_0.3: rank 53 (26 orbits of 2 + 1 fixed): 0 of 9 starts EXACT; the others' max |F|: min 2.47e-1, median 3.52e-1, max 8.83e-1; 161 s
+pmm_0.3: rank 53 (26 orbits of 2 + 1 fixed): 0 of 9 starts EXACT; the others' max |F|: min 1.62e-1, median 2.10e-1, max 3.00e-1; 139 s
+ppp_0.2: rank 53 (26 orbits of 2 + 1 fixed): 0 of 9 starts EXACT; the others' max |F|: min 2.98e-1, median 8.34e-1, max 8.60e-1; 147 s
+mpm_0.2: rank 53 (26 orbits of 2 + 1 fixed): 0 of 9 starts EXACT; the others' max |F|: min 2.42e-1, median 8.81e-1, max 9.23e-1; 131 s
+## the constrained search (--cnorm: |x|^2 <= c per product, multiplier by bisection), random starts
+<3x3x3:23> (no symmetry) c = 6 / 9 / 14: 30 / 21 / 12 of 40 starts EXACT (penalty: 32 of 40)
+<3x3x4:29> (no symmetry) c = 6 / 9 / 14: 1 / 0 / 1 of 80 (penalty: 3-4 of 80)
+symmetric (order 3) 18 orbits + 0 fixed, constrained norm^2 <= 8 per product: 0 of 100 starts EXACT; the others' max |F|: min 1.40e-1, median 5.12e-1, max 9.43e-1; 114 s
+symmetric (order 3) 18 orbits + 0 fixed, constrained norm^2 <= 11 per product: 0 of 100 starts EXACT; the others' max |F|: min 1.42e-1, median 4.61e-1, max 9.42e-1; 128 s
+symmetric (order 3) 17 orbits + 2 fixed, constrained norm^2 <= 8 per product: 0 of 100 starts EXACT; the others' max |F|: min 1.99e-1, median 5.02e-1, max 9.39e-1; 80 s
+
+[exited with code 0]

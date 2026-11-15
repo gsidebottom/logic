@@ -1,0 +1,20 @@
+# kresr: <3x3x6:40> from matmul/r346/schemes/3x3x6_m40_orig.json; candidates from --all; 2 warm + 3 random starts, and k warm + 30 random where those come within 0.05
+# k=3: 9880 subsets; 9880 proved irreducible (independent factors and Kronecker products in a slot); 0 REDUCED; 0 open (best |F| inf); 0 s
+# k=4: 91390 subsets; 91390 proved irreducible (independent factors and Kronecker products in a slot); 0 REDUCED; 0 open (best |F| inf); 0 s
+# k=5: 658008 subsets; 658008 proved irreducible (independent factors and Kronecker products in a slot); 0 REDUCED; 0 open (best |F| inf); 2 s
+# k=6: 3838380 subsets; 3838332 proved irreducible (independent factors and Kronecker products in a slot); 0 REDUCED; 48 open (best |F| 1.97e0); 21 s
+# k=7: 18643560 subsets; 18641192 proved irreducible (independent factors and Kronecker products in a slot); 0 REDUCED; 2368 open (best |F| 8.02e-1); 167 s
+# k=8: 76904685 subsets; 76848210 proved irreducible (independent factors and Kronecker products in a slot); 0 REDUCED; 56475 open (best |F| 5.13e-1); 1940 s
+#   open k=6 flattening ranks [5, 5, 5]: 48
+#   open k=7 flattening ranks [5, 6, 6]: 352
+#   open k=7 flattening ranks [6, 6, 6]: 2016
+#   open k=8 flattening ranks [5, 6, 7]: 12
+#   open k=8 flattening ranks [5, 7, 6]: 12
+#   open k=8 flattening ranks [5, 7, 7]: 960
+#   open k=8 flattening ranks [6, 6, 7]: 48
+#   open k=8 flattening ranks [6, 7, 6]: 48
+#   open k=8 flattening ranks [6, 7, 7]: 13392
+#   open k=8 flattening ranks [7, 6, 7]: 144
+#   open k=8 flattening ranks [7, 7, 6]: 144
+#   open k=8 flattening ranks [7, 7, 7]: 41715
+# done, 1940 s

@@ -1,0 +1,13 @@
+# kresr: <3x4x6:54> from matmul/r346/schemes/3x4x6_m54_perminov_ZT.json; candidates from /private/tmp/claude-501/-Users-greg-projects-logic/3d45768d-4e94-4613-987d-3cadfd01d9af/scratchpad/kresr/l54_k8.txt; 2 warm + 3 random starts, and k warm + 30 random where those come within 0.05
+open k=8 flattening ranks [7, 6, 7] best |F| 7.25e-1 idx=0,4,26,32,40,44,48,50
+open k=8 flattening ranks [6, 7, 7] best |F| 6.41e-1 idx=0,1,4,11,26,32,44,46
+open k=8 flattening ranks [6, 7, 7] best |F| 6.41e-1 idx=0,1,4,11,26,32,44,49
+open k=8 flattening ranks [6, 7, 6] best |F| 6.36e-1 idx=0,1,4,11,26,32,44,50
+open k=8 flattening ranks [7, 7, 7] best |F| 6.23e-1 idx=0,1,2,4,7,32,42,44
+open k=8 flattening ranks [6, 7, 7] best |F| 3.99e-1 idx=0,4,11,15,17,26,32,44
+open k=8 flattening ranks [6, 7, 7] best |F| 3.99e-1 idx=0,4,11,17,19,26,32,44
+open k=8 flattening ranks [6, 7, 7] best |F| 3.94e-1 idx=0,4,11,17,21,26,32,44
+open k=8 flattening ranks [6, 7, 7] best |F| 3.82e-1 idx=0,1,4,11,17,26,32,44
+# 200000 lines, 1876 s
+# 400000 lines, 3728 s
+# 600000 lines, 5718 s

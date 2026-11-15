@@ -1,0 +1,5 @@
+c census d=0: skipped (sizes)
+c census d=1: dim G 54 of 54, rank-one elements 54 (extra 0)
+c census d=2: dim G 54 of 54, rank-one elements 54 (extra 0)
+c kres: <3,4,6> rank 54 from matmul/r346/seeds/3x4x6_m54_ZT.bits; factor span dims 12,24,18; k = 9..9; R only candidates; decided, maxdelta 2 / alt 1
+c k=9: 5317936260 subsets; reduce: 16629135 candidates, 16629135 refuted, 0 REDUCIBLE, 0 open; alt: 0 candidates (+ the reduce candidates), 0 unique, 0 with ALTERNATIVES, 0 open; 1508.8 s

@@ -1657,3 +1657,19 @@ sub-problem's passes would take 95% of its GEMM time, and the gain is the 1.5-5%
 built).  Our own SME kernel: parity (above).  The f64 pick's GEMM-only time is 3.0 s of its 3.27: no CPU-side
 change can gain more than about 8% at two levels, and a third level needs 351 GB of traffic against 2.2-2.6 s
 of GEMM.  What would move f64 is a rank record or hardware; nothing else measured here does.
+
+**Non-dyadic constants cost nothing measurable (2026-11-14; Greg: would a lower-rank scheme with non-dyadic constants be
+fast and accurate enough?).**  Test (matmul/fastmm/nondyadic.py, run_nondyadic.sh, summarize_nondyadic.py): the
+<3x3x6:40> level's direct-sum programs with product k rescaled, S_k by a_k, T_k by b_k, M_k by 1/(a_k b_k): the same
+scheme and growth factor, other constants.  Controls a = b = 1 and random powers of two reproduce the direct-sum
+build's exact errors digit for digit in all 80 runs (the harness measures the constants and nothing else).  nd3
+(a = 3, b = 1/3) and ndr (a_k, b_k random in 1/3, 3/5, 5/7, 7/5, 5/3, 3: all 960 coefficients of the three
+programs changed, different constants mixed in every sum), five plans (R336/G, R363/G, R633/G, R336/R363/G,
+R363+3/R633/G6), n = 3456 and 6912, f32 and f64, four random instances each, max-norm error against the exact
+product: error relative to the dyadic programs, geometric mean over the 20 plan-size-precision cells, nd3 0.994
+(cells 0.94-1.05), ndr 1.000 (0.95-1.05); single instances 0.84-1.16, the scatter of a max-norm error.  Pass time
+0.999 and 0.996 of the dyadic programs'.  So a scheme's constants being non-dyadic costs neither time nor
+accuracy at this resolution (about 5% a cell); what a new scheme pays is its growth factor and its rank.  Scope:
+one scheme, uniform inputs, constants within a factor 3 of one, clang's default contraction.  Also noted: the f64
+passes of the f32 path (FMM_F64PASS) already exist for the 4x4 level, so "wider accumulation in the passes" is not
+a new idea here.  results/nondyadic_2026-11-14.txt, _summary.txt.

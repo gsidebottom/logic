@@ -3769,3 +3769,93 @@ Built `matmul/brent.py` (generator/verifier/CNF emitter) and `matmul/sls.py`
 - Scheme database: algebra.uni-linz.ac.at/research/matrix-multiplication/.
 - Bläser. *On the complexity of the multiplication of matrices of small
   formats.* J. Complexity 19(1):43–60, 2003. (rank ≥ 19.)
+
+- **<3x4x6:53> tried, and a new method: descent on the variety of decompositions (2026-11-14).**  Why 53: the
+  multiplier's best level is <3x3x6:40>, and over Sedoglavic's table only a rank record beats it; <3x4x6:53> is one
+  below the known rank (matmul/levels/ratio_screen.py).  Existing tools, on Perminov's ternary 54 / 56 / 57
+  (matmul/r346/seeds, mod 2): the flip-graph descent made no reduction in 193 million flips (26 min, 5 threads);
+  the k-subset re-solve (src/bin/kres8.rs = kres.rs with 512-bit Kronecker products, 12 x 24 = 288 > 256) is exact
+  to k = 9: no 53 within 9 products of the 54 and no other 54 (k = 9: 5.3e9 subsets, 16.6 M candidates, all
+  refuted, 25 min on 3 threads); the 54's span holds exactly its 54 rank-one elements.  NEW (matmul/vdescent,
+  src/bin/vdescend.rs): the rank-r decompositions are a real variety; its tangent space at a scheme beyond the
+  rescalings and the group orbit are moduli, continuous families of inequivalent schemes.  Counts: Strassen 0,
+  <3x3x6:40> 0 (rigid), DPS's <4x4x4:48> 10, <3x4x6:54> 8 (all 54 products move), :56 29, :57 44, the classical
+  algorithms 18 (2x2) and 144 (3x3).  The method walks the moduli down a potential that is unbounded below where
+  two products become mergeable (parallel in two factors), with random moves at stalls, merging and polishing to
+  |F| = 0.  Two lessons: a sparsity penalty on norms does nothing (the classical algorithm is a local minimum), and
+  the descent must exclude the group orbit (it "descended" by squashing coordinates, norms x1000).  Validation
+  from the classical algorithms: <2x2x2> 7 in 12 of 16 runs, <2x2x3> 11 in 8 of 16, <2x3x3> 16-17 (record 15),
+  <3x3x3> 24-25 (record 23): finds Strassen, one short at the next sizes.  On <3x4x6:54>: 5 runs of 400 steps, no
+  pair closer than D = 0.02 at bounded norms, no 53; a dimension count agrees (a merge asks 11+ conditions, the
+  family has 8 parameters).  Python prototype first (six processes at 100% for minutes, load 78: Greg's rule
+  since, anything over a minute in Rust); the Rust port replaces the eigendecomposition by one Cholesky and is
+  ~20x faster per step.  Then (Greg: yes, try it) the numerical search, in Rust from the start
+  (vdescend --search RANK / --warm D: regularized LM, mu lowered at stalls; normal matrix + one Cholesky per
+  iteration, 0.13-0.3 s at n = 2916): <2x2x2:7> 37/40 starts, <2x2x3:11> 32/40, <2x3x3:15> 24/40, <3x3x3:23> 32/40 in
+  6 s (the plain ALS of matmul/levels/als_rank.py had 0/90), <3x3x4:29> about 4% of starts; controls correct
+  (<2x2x2:6>, <2x3x3:14> never; <2x2x3:10>, <3x3x3:22> only to 4e-5: border rank); but 0 of 60+ at <3x4x4:38>, 0/30
+  at <3x3x6:40>, and warm starts (the 56 less two products + 10% noise) do not recover the known 54 (0 of 10, |F|
+  0.3-0.8).  A variant steering mu to hold a fixed norm bound did worse.  So the search has no power at
+  <3x4x6>, and its one run at 53 (the 54 less one product, 0 of 20, |F| 0.15-0.60) says nothing
+  (matmul/r346/results/lm_search_validation.txt).  A stopped batch's shell loop kept launching the next job after each
+  kill and ran 20 min beside a timing run: kill the loop's shell, not its child.  CLAMPING added (Greg: yes; --sparse:
+  sparsify = pressure along the orbit under a log-sum penalty + smallest entries frozen at zero on probation;
+  rationalize = torus normalization by a robust linear fit in logs, then Z/den test and the Brent equations in
+  integers; discretize = nonzero entries clamped to +-1, +-1/2, +-2 one at a time with re-solves): a finisher that
+  works on small formats (exact over Z: 27 of 27 found <2x2x2:7>, 29/31 <2x2x3:11>, 5/21 <2x3x3:15>, 2/30
+  <3x3x3:23>; the rest 66-76% zeros with non-simple entries) and does not extend the reach (<3x3x4:29> still ~1-4%
+  of starts, nothing from <3x4x4:38>); sparsity pressure INSIDE the search made it worse (23: 0-12/40 against 32).
+  THE LONG SHOTS (Greg: let's try them).  (1) Other 54s: AlphaEvolve's and Sedoglavic's table entry were on disk
+  (matmul/r346/schemes); both have the ternary scheme's type (18 each of factor ranks (2,2,2), (1,2,1), (1,1,2))
+  and 8 moduli: one scheme, no second class.  (2) Symmetry: its group has order 6 (S3; matmul/r346/sym/autgroup.py,
+  by frames of the rank-one factors' directions): order-3 elements with no fixed product (18 orbits), order-2
+  with two (26 pairs + 2).  vdescend --sym searches among schemes invariant under one element: unknowns = orbit
+  representatives + fixed products in the action's eigenspaces (sign types for order 2), x = P x_red, LM on J P
+  (972 unknowns of 2916 for order 3).  Near the known scheme it has power: the 54 with 5-50% noise returns to an
+  exact 54 in 18 of 18 starts (order 2: 4 of 4).  At 53 nothing: 17 orbits + 2 fixed from the known one 0 of 144
+  (best |F| 0.015), 16 + 5: 0 of 72, order 2 26 pairs + 1 fixed: 0 of 54 (best 0.16); random symmetric starts do
+  not find the known 54 (0 of 440).  (3) TPC's constrained LM proper (--cnorm: |x|^2 <= c, multiplier by
+  bisection): works, no better than the penalty (<3x3x3:23> 30/40 vs 32/40, <3x3x4:29> 0-1/80 vs 3-4/80).
+  (4) A FLIP GRAPH WITH A SYMMETRY IMPOSED (src/bin/symflip.rs, F2; Greg asked): walks among schemes invariant
+  under a group of (X, Y, Z) triples, flips/merges/plus transitions applied to all images at once (pairs grouped
+  by first member, refused unless all summands distinct; an orbit sharing two factors merges to a fixed summand);
+  group = index permutations (--gen) or the start's own symmetries (--aut: GL_3 x GL_4 run through, Z solved);
+  shared pool of lowest-rank schemes; every new low checked against tensor and group.  Checks: <2x2x2> 7 (plain,
+  Z2); <3x3x3> 23 plain and under Z2 (3 fixed), 24 under Z3.  OVER F2 THE 54 HAS 18 SYMMETRIES (9 of order 2 with
+  two fixed summands, 8 of order 3 with none; autgroup.py's real search, X a signed permutation, gave 6: missed
+  or mod-2 only, not settled).  The 54 has no two summands sharing a factor: walks from it need plus transitions;
+  a first campaign whose split was merged straight back made NO flip from the 54 and was void (log not kept).
+  Campaign (matmul/r346/sym/run_symflip.zsh, results/symflip_2026-11-14.log; 3 min x 10 threads an arm): from the
+  standard 72: plain 60, Z3 60, Z2xZ2 60, Z6 60, two Z2 63, S3 68 (symmetric walks make 1/5-1/10 of the flips, no
+  better at equal time).  From the 54 (220-430 M flips + 2-50 M plus an arm): NO 53 under none, a Z2, each of the
+  four Z3, order 9, an S3, all 18; one Z3 and the order-9 group reach 24 other 54s (saved, sym/found/), all of the
+  known type with 18 symmetries, sharing no summand with it: images of the one scheme as far as these invariants
+  go (equivalence not proved).  From the 56 (own group order 2): no 55.  Kauers-Moosbauer's schemes
+  (arXiv:2306.00882, github.com/jakobmoosbauer/flips) are on disk (matmul/perminov_cache/repo/schemes/known/
+  jakobmoosbauer_flips): their <3x4x6> is the 56, not a second 54.
+  (5) THE FLIP GRAPH OVER F3 (src/bin/symflip3.rs, 2026-11-15; rectangular, the square-only flip23p/flip48p
+  engine does not cover it).  Reason: odd-denominator schemes reduce mod 2 (seen by the F2 searches), schemes
+  needing halves reduce mod 3.  Normalized factor triples with a coefficient, lambda = +-1; with a group a move is
+  an identity summed over the group (refused when it raises the rank, as a flip of a summand with its own image
+  does).  Checks: 7, 11, 15, 23 on <2x2x2>, <2x2x3>, <2x3x3>, <3x3x3>; symmetric 7 (Z2) and 24 (Z2, Z3).  Seeds
+  mod 3: matmul/r346/seeds/*.trits (to_trits.py); DPS's <3x3x6:40> reduces mod 3.  Campaign (run_symflip3.zsh,
+  results/symflip3_2026-11-15.log): NO 53 from the 54 (8 + 5 min, 2.3 G flips, 111 M plus; the pool fills with
+  other 54s, all of the known type sharing 29-49 summands with it in steps of five = F3 points of the known
+  8-parameter family); NO 39 from either <3x3x6:40> (14 min, 1.7 G flips; no other 40 either, rigid as its moduli
+  count says); the walk also finds nothing below the 56, 57, 42, 43 although 54 and 40 exist mod 3, so these
+  nulls cover neighbourhoods only; from the standard schemes F3 descends far worse than F2 (<3x4x6> plain: no
+  reduction in 2.1 G flips; <3x3x6> 54 -> 51).
+  (6) THE k-SUBSET RE-SOLVE IN CHARACTERISTIC 0 (src/bin/kresr.rs, 2026-11-15; Greg: real k-subset search).
+  kres is exact over F2 and blind to rewrites needing halves or irrationals.  kresr: stage 1 exact (independent
+  factors AND independent Kronecker products in a slot, ranks mod 2^61 - 1 <= ranks over Q, prove the k products'
+  sum has rank k in characteristic 0); stage 2 numerical (sum compressed to its factor spans, rank k - 1 fit by
+  LM, light pass then full pass within 0.05; a miss = open, not refuted).  Candidates = kres8's R lines for
+  integral schemes (a Q-dependency gives one mod 2), --all otherwise.  Gate: standard <2x3x3>, all 72 + 729
+  subsets kres finds reducible or leaves open are reduced (1e-14).  RESULTS: both <3x3x6:40> (DPS, original;
+  identical counts): k <= 5 all 759,278 subsets PROVED irreducible; k = 6/7/8: 48 / 2,368 / 56,475 of 3.8 M /
+  18.6 M / 76.9 M not proved, none reduced, best residuals 0.82 / 0.51 / 0.34.  <3x4x6:54>: k = 5..8, 9 / 909 /
+  38,358 / 963,324 candidates, none reduced, best 0.85 / 0.49 / 0.40 / 0.38 (exact stage proves only 36 + 2,010
+  there).  NO LOCAL REDUCTION WITHIN 8 PRODUCTS OVER R for either, as far as the search sees (proof to k = 5 for
+  the 40).  matmul/r346/sym/run_kresr.zsh, to_kres.py, results/kresr_*.log.  With the F2 flip graph, kres8, the
+  moduli descent, the LM search, the symmetric and the F3 flip graphs this is the seventh null around these
+  schemes; the rank hunt for the multiplier's sake stops here.  Not committed.

@@ -1,0 +1,650 @@
+# non-dyadic constants on the <3x3x6:40> level; 2026-11-14 23:36; Apple M4 Pro
+## rdirect n=3456 f seed=0  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0248 s  med   0.0248 s   3329.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  err64 3.04e-06
+plan=R336/G n=3456   f32  min   0.0267 s  med   0.0269 s   3071.8 GFLOP/s(2mkn)  speedup 0.922  relerr 3.03e-06  split L 0.002 R 0.002 gemm 0.023 P 0.002  plan R336/G  err64 1.77e-06
+plan=R363/G n=3456   f32  min   0.0268 s  med   0.0268 s   3080.3 GFLOP/s(2mkn)  speedup 0.925  relerr 3.24e-06  split L 0.002 R 0.002 gemm 0.021 P 0.003  plan R363/G  err64 1.23e-06
+plan=R633/G n=3456   f32  min   0.0278 s  med   0.0279 s   2961.6 GFLOP/s(2mkn)  speedup 0.889  relerr 2.81e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.76e-06
+plan=R336/R363/G n=3456   f32  min   0.0701 s  med   0.0756 s   1091.8 GFLOP/s(2mkn)  speedup 0.328  relerr 3.06e-06  split L 0.015 R 0.011 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.75e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0599 s  med   0.0626 s   1319.1 GFLOP/s(2mkn)  speedup 0.396  relerr 3.06e-06  split L 0.002 R 0.002 gemm 0.056 P 0.003  plan R363+3/R633/G6  err64 1.60e-06
+## nd_ctl n=3456 f seed=0  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0247 s  med   0.0248 s   3329.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  err64 3.04e-06
+plan=R336/G n=3456   f32  min   0.0267 s  med   0.0269 s   3063.9 GFLOP/s(2mkn)  speedup 0.920  relerr 3.03e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.77e-06
+plan=R363/G n=3456   f32  min   0.0267 s  med   0.0267 s   3090.6 GFLOP/s(2mkn)  speedup 0.928  relerr 3.24e-06  split L 0.002 R 0.002 gemm 0.020 P 0.003  plan R363/G  err64 1.23e-06
+plan=R633/G n=3456   f32  min   0.0275 s  med   0.0278 s   2969.7 GFLOP/s(2mkn)  speedup 0.892  relerr 2.81e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.76e-06
+plan=R336/R363/G n=3456   f32  min   0.0730 s  med   0.0730 s   1130.4 GFLOP/s(2mkn)  speedup 0.339  relerr 3.06e-06  split L 0.015 R 0.011 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.75e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0585 s  med   0.0598 s   1381.0 GFLOP/s(2mkn)  speedup 0.415  relerr 3.06e-06  split L 0.002 R 0.002 gemm 0.054 P 0.002  plan R363+3/R633/G6  err64 1.60e-06
+## nd_p2 n=3456 f seed=0  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0247 s  med   0.0247 s   3344.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  err64 3.04e-06
+plan=R336/G n=3456   f32  min   0.0268 s  med   0.0269 s   3072.6 GFLOP/s(2mkn)  speedup 0.919  relerr 3.03e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.77e-06
+plan=R363/G n=3456   f32  min   0.0268 s  med   0.0268 s   3081.0 GFLOP/s(2mkn)  speedup 0.921  relerr 3.24e-06  split L 0.002 R 0.002 gemm 0.020 P 0.003  plan R363/G  err64 1.23e-06
+plan=R633/G n=3456   f32  min   0.0278 s  med   0.0281 s   2943.0 GFLOP/s(2mkn)  speedup 0.880  relerr 2.81e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.76e-06
+plan=R336/R363/G n=3456   f32  min   0.0735 s  med   0.0745 s   1108.5 GFLOP/s(2mkn)  speedup 0.331  relerr 3.06e-06  split L 0.014 R 0.011 gemm 0.040 P 0.009  plan R336/R363/G  err64 1.75e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0591 s  med   0.0594 s   1390.7 GFLOP/s(2mkn)  speedup 0.416  relerr 3.06e-06  split L 0.002 R 0.002 gemm 0.054 P 0.003  plan R363+3/R633/G6  err64 1.60e-06
+## nd_nd3 n=3456 f seed=0  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0249 s  med   0.0279 s   2961.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.027 P 0.000  plan G  err64 3.04e-06
+plan=R336/G n=3456   f32  min   0.0267 s  med   0.0269 s   3065.0 GFLOP/s(2mkn)  speedup 1.035  relerr 2.88e-06  split L 0.002 R 0.002 gemm 0.022 P 0.004  plan R336/G  err64 1.68e-06
+plan=R363/G n=3456   f32  min   0.0262 s  med   0.0266 s   3104.9 GFLOP/s(2mkn)  speedup 1.048  relerr 3.10e-06  split L 0.002 R 0.003 gemm 0.021 P 0.003  plan R363/G  err64 1.27e-06
+plan=R633/G n=3456   f32  min   0.0278 s  med   0.0279 s   2963.0 GFLOP/s(2mkn)  speedup 1.000  relerr 3.03e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.86e-06
+plan=R336/R363/G n=3456   f32  min   0.0714 s  med   0.0744 s   1109.0 GFLOP/s(2mkn)  speedup 0.374  relerr 3.13e-06  split L 0.015 R 0.011 gemm 0.039 P 0.008  plan R336/R363/G  err64 1.60e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0593 s  med   0.0605 s   1363.8 GFLOP/s(2mkn)  speedup 0.460  relerr 2.95e-06  split L 0.002 R 0.002 gemm 0.055 P 0.002  plan R363+3/R633/G6  err64 1.64e-06
+## nd_ndr n=3456 f seed=0  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0245 s  med   0.0276 s   2991.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.027 P 0.000  plan G  err64 3.04e-06
+plan=R336/G n=3456   f32  min   0.0265 s  med   0.0275 s   2998.6 GFLOP/s(2mkn)  speedup 1.002  relerr 3.17e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.71e-06
+plan=R363/G n=3456   f32  min   0.0265 s  med   0.0267 s   3087.5 GFLOP/s(2mkn)  speedup 1.032  relerr 2.88e-06  split L 0.002 R 0.002 gemm 0.020 P 0.003  plan R363/G  err64 1.26e-06
+plan=R633/G n=3456   f32  min   0.0277 s  med   0.0278 s   2969.9 GFLOP/s(2mkn)  speedup 0.993  relerr 2.88e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.68e-06
+plan=R336/R363/G n=3456   f32  min   0.0698 s  med   0.0721 s   1144.9 GFLOP/s(2mkn)  speedup 0.383  relerr 3.21e-06  split L 0.015 R 0.010 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.66e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0595 s  med   0.0597 s   1382.5 GFLOP/s(2mkn)  speedup 0.462  relerr 3.06e-06  split L 0.002 R 0.002 gemm 0.054 P 0.002  plan R363+3/R633/G6  err64 1.78e-06
+## rdirect n=3456 f seed=1  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0247 s  med   0.0249 s   3319.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.026 P 0.000  plan G  err64 2.86e-06
+plan=R336/G n=3456   f32  min   0.0266 s  med   0.0269 s   3068.2 GFLOP/s(2mkn)  speedup 0.924  relerr 2.99e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.75e-06
+plan=R363/G n=3456   f32  min   0.0265 s  med   0.0268 s   3085.6 GFLOP/s(2mkn)  speedup 0.930  relerr 2.99e-06  split L 0.002 R 0.002 gemm 0.020 P 0.002  plan R363/G  err64 1.48e-06
+plan=R633/G n=3456   f32  min   0.0276 s  med   0.0280 s   2945.9 GFLOP/s(2mkn)  speedup 0.888  relerr 3.14e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.78e-06
+plan=R336/R363/G n=3456   f32  min   0.0710 s  med   0.0739 s   1117.7 GFLOP/s(2mkn)  speedup 0.337  relerr 2.99e-06  split L 0.015 R 0.011 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.77e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0596 s  med   0.0618 s   1335.5 GFLOP/s(2mkn)  speedup 0.402  relerr 3.07e-06  split L 0.002 R 0.002 gemm 0.055 P 0.003  plan R363+3/R633/G6  err64 1.63e-06
+## nd_ctl n=3456 f seed=1  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0246 s  med   0.0277 s   2976.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.027 P 0.000  plan G  err64 2.86e-06
+plan=R336/G n=3456   f32  min   0.0268 s  med   0.0271 s   3047.4 GFLOP/s(2mkn)  speedup 1.024  relerr 2.99e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R336/G  err64 1.75e-06
+plan=R363/G n=3456   f32  min   0.0267 s  med   0.0269 s   3064.5 GFLOP/s(2mkn)  speedup 1.029  relerr 2.99e-06  split L 0.002 R 0.002 gemm 0.021 P 0.003  plan R363/G  err64 1.48e-06
+plan=R633/G n=3456   f32  min   0.0275 s  med   0.0277 s   2983.4 GFLOP/s(2mkn)  speedup 1.002  relerr 3.14e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.78e-06
+plan=R336/R363/G n=3456   f32  min   0.0725 s  med   0.0742 s   1112.4 GFLOP/s(2mkn)  speedup 0.374  relerr 2.99e-06  split L 0.014 R 0.012 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.77e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0586 s  med   0.0615 s   1341.9 GFLOP/s(2mkn)  speedup 0.451  relerr 3.07e-06  split L 0.002 R 0.002 gemm 0.055 P 0.003  plan R363+3/R633/G6  err64 1.63e-06
+## nd_p2 n=3456 f seed=1  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0245 s  med   0.0246 s   3352.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  err64 2.86e-06
+plan=R336/G n=3456   f32  min   0.0267 s  med   0.0269 s   3066.8 GFLOP/s(2mkn)  speedup 0.915  relerr 2.99e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.75e-06
+plan=R363/G n=3456   f32  min   0.0267 s  med   0.0268 s   3077.4 GFLOP/s(2mkn)  speedup 0.918  relerr 2.99e-06  split L 0.002 R 0.002 gemm 0.020 P 0.003  plan R363/G  err64 1.48e-06
+plan=R633/G n=3456   f32  min   0.0275 s  med   0.0277 s   2981.8 GFLOP/s(2mkn)  speedup 0.889  relerr 3.14e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.78e-06
+plan=R336/R363/G n=3456   f32  min   0.0715 s  med   0.0744 s   1110.3 GFLOP/s(2mkn)  speedup 0.331  relerr 2.99e-06  split L 0.015 R 0.011 gemm 0.040 P 0.009  plan R336/R363/G  err64 1.77e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0580 s  med   0.0614 s   1343.7 GFLOP/s(2mkn)  speedup 0.401  relerr 3.07e-06  split L 0.002 R 0.002 gemm 0.054 P 0.003  plan R363+3/R633/G6  err64 1.63e-06
+## nd_nd3 n=3456 f seed=1  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0246 s  med   0.0246 s   3350.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  err64 2.86e-06
+plan=R336/G n=3456   f32  min   0.0269 s  med   0.0270 s   3059.2 GFLOP/s(2mkn)  speedup 0.913  relerr 2.84e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.76e-06
+plan=R363/G n=3456   f32  min   0.0268 s  med   0.0268 s   3076.9 GFLOP/s(2mkn)  speedup 0.918  relerr 2.92e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R363/G  err64 1.37e-06
+plan=R633/G n=3456   f32  min   0.0277 s  med   0.0281 s   2935.0 GFLOP/s(2mkn)  speedup 0.876  relerr 2.92e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.77e-06
+plan=R336/R363/G n=3456   f32  min   0.0718 s  med   0.0724 s   1141.0 GFLOP/s(2mkn)  speedup 0.341  relerr 2.92e-06  split L 0.014 R 0.011 gemm 0.039 P 0.008  plan R336/R363/G  err64 1.65e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0588 s  med   0.0604 s   1365.8 GFLOP/s(2mkn)  speedup 0.408  relerr 2.99e-06  split L 0.002 R 0.002 gemm 0.054 P 0.003  plan R363+3/R633/G6  err64 1.74e-06
+## nd_ndr n=3456 f seed=1  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0247 s  med   0.0249 s   3312.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.026 P 0.000  plan G  err64 2.86e-06
+plan=R336/G n=3456   f32  min   0.0269 s  med   0.0269 s   3072.1 GFLOP/s(2mkn)  speedup 0.927  relerr 3.07e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.79e-06
+plan=R363/G n=3456   f32  min   0.0263 s  med   0.0268 s   3080.7 GFLOP/s(2mkn)  speedup 0.930  relerr 2.99e-06  split L 0.002 R 0.002 gemm 0.020 P 0.002  plan R363/G  err64 1.28e-06
+plan=R633/G n=3456   f32  min   0.0277 s  med   0.0279 s   2956.4 GFLOP/s(2mkn)  speedup 0.892  relerr 2.95e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.76e-06
+plan=R336/R363/G n=3456   f32  min   0.0728 s  med   0.0732 s   1127.6 GFLOP/s(2mkn)  speedup 0.340  relerr 3.22e-06  split L 0.016 R 0.010 gemm 0.039 P 0.008  plan R336/R363/G  err64 1.92e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0584 s  med   0.0585 s   1410.8 GFLOP/s(2mkn)  speedup 0.426  relerr 3.07e-06  split L 0.002 R 0.002 gemm 0.053 P 0.003  plan R363+3/R633/G6  err64 1.65e-06
+## rdirect n=3456 f seed=2  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0252 s  med   0.0279 s   2959.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.027 P 0.000  plan G  err64 2.75e-06
+plan=R336/G n=3456   f32  min   0.0270 s  med   0.0275 s   3000.4 GFLOP/s(2mkn)  speedup 1.014  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R336/G  err64 1.88e-06
+plan=R363/G n=3456   f32  min   0.0271 s  med   0.0276 s   2994.5 GFLOP/s(2mkn)  speedup 1.012  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.021 P 0.003  plan R363/G  err64 1.46e-06
+plan=R633/G n=3456   f32  min   0.0276 s  med   0.0279 s   2960.8 GFLOP/s(2mkn)  speedup 1.000  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.77e-06
+plan=R336/R363/G n=3456   f32  min   0.0721 s  med   0.0743 s   1110.8 GFLOP/s(2mkn)  speedup 0.375  relerr 2.98e-06  split L 0.015 R 0.011 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.74e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0587 s  med   0.0594 s   1390.2 GFLOP/s(2mkn)  speedup 0.470  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.053 P 0.003  plan R363+3/R633/G6  err64 1.79e-06
+## nd_ctl n=3456 f seed=2  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0245 s  med   0.0246 s   3350.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.026 P 0.000  plan G  err64 2.75e-06
+plan=R336/G n=3456   f32  min   0.0267 s  med   0.0268 s   3085.0 GFLOP/s(2mkn)  speedup 0.921  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.88e-06
+plan=R363/G n=3456   f32  min   0.0267 s  med   0.0267 s   3092.3 GFLOP/s(2mkn)  speedup 0.923  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.020 P 0.002  plan R363/G  err64 1.46e-06
+plan=R633/G n=3456   f32  min   0.0278 s  med   0.0279 s   2963.1 GFLOP/s(2mkn)  speedup 0.884  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.77e-06
+plan=R336/R363/G n=3456   f32  min   0.0712 s  med   0.0725 s   1139.2 GFLOP/s(2mkn)  speedup 0.340  relerr 2.98e-06  split L 0.014 R 0.010 gemm 0.040 P 0.008  plan R336/R363/G  err64 1.74e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0596 s  med   0.0609 s   1354.7 GFLOP/s(2mkn)  speedup 0.404  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.055 P 0.003  plan R363+3/R633/G6  err64 1.79e-06
+## nd_p2 n=3456 f seed=2  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0246 s  med   0.0246 s   3360.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  err64 2.75e-06
+plan=R336/G n=3456   f32  min   0.0268 s  med   0.0270 s   3060.3 GFLOP/s(2mkn)  speedup 0.911  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.88e-06
+plan=R363/G n=3456   f32  min   0.0268 s  med   0.0272 s   3037.2 GFLOP/s(2mkn)  speedup 0.904  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.021 P 0.003  plan R363/G  err64 1.46e-06
+plan=R633/G n=3456   f32  min   0.0276 s  med   0.0278 s   2965.4 GFLOP/s(2mkn)  speedup 0.882  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.77e-06
+plan=R336/R363/G n=3456   f32  min   0.0745 s  med   0.0756 s   1092.2 GFLOP/s(2mkn)  speedup 0.325  relerr 2.98e-06  split L 0.015 R 0.012 gemm 0.040 P 0.009  plan R336/R363/G  err64 1.74e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0620 s  med   0.0621 s   1328.4 GFLOP/s(2mkn)  speedup 0.395  relerr 3.05e-06  split L 0.002 R 0.002 gemm 0.056 P 0.002  plan R363+3/R633/G6  err64 1.79e-06
+## nd_nd3 n=3456 f seed=2  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0245 s  med   0.0246 s   3358.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.027 P 0.000  plan G  err64 2.75e-06
+plan=R336/G n=3456   f32  min   0.0269 s  med   0.0270 s   3057.9 GFLOP/s(2mkn)  speedup 0.911  relerr 2.76e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.69e-06
+plan=R363/G n=3456   f32  min   0.0267 s  med   0.0268 s   3083.2 GFLOP/s(2mkn)  speedup 0.918  relerr 2.98e-06  split L 0.002 R 0.002 gemm 0.021 P 0.003  plan R363/G  err64 1.54e-06
+plan=R633/G n=3456   f32  min   0.0278 s  med   0.0278 s   2966.7 GFLOP/s(2mkn)  speedup 0.883  relerr 2.98e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.72e-06
+plan=R336/R363/G n=3456   f32  min   0.0709 s  med   0.0728 s   1133.9 GFLOP/s(2mkn)  speedup 0.338  relerr 2.98e-06  split L 0.014 R 0.010 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.66e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0599 s  med   0.0611 s   1350.2 GFLOP/s(2mkn)  speedup 0.402  relerr 3.27e-06  split L 0.002 R 0.002 gemm 0.055 P 0.003  plan R363+3/R633/G6  err64 1.70e-06
+## nd_ndr n=3456 f seed=2  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0248 s  med   0.0249 s   3310.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.026 P 0.000  plan G  err64 2.75e-06
+plan=R336/G n=3456   f32  min   0.0269 s  med   0.0271 s   3045.6 GFLOP/s(2mkn)  speedup 0.920  relerr 2.90e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.67e-06
+plan=R363/G n=3456   f32  min   0.0270 s  med   0.0270 s   3058.6 GFLOP/s(2mkn)  speedup 0.924  relerr 2.76e-06  split L 0.002 R 0.002 gemm 0.020 P 0.003  plan R363/G  err64 1.28e-06
+plan=R633/G n=3456   f32  min   0.0278 s  med   0.0283 s   2914.2 GFLOP/s(2mkn)  speedup 0.880  relerr 3.41e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.70e-06
+plan=R336/R363/G n=3456   f32  min   0.0728 s  med   0.0748 s   1103.4 GFLOP/s(2mkn)  speedup 0.333  relerr 2.90e-06  split L 0.015 R 0.011 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.70e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0624 s  med   0.0647 s   1275.1 GFLOP/s(2mkn)  speedup 0.385  relerr 2.98e-06  split L 0.002 R 0.002 gemm 0.059 P 0.002  plan R363+3/R633/G6  err64 1.63e-06
+## rdirect n=3456 f seed=3  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0246 s  med   0.0282 s   2930.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.027 P 0.000  plan G  err64 2.50e-06
+plan=R336/G n=3456   f32  min   0.0267 s  med   0.0271 s   3044.6 GFLOP/s(2mkn)  speedup 1.039  relerr 2.96e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.50e-06
+plan=R363/G n=3456   f32  min   0.0266 s  med   0.0272 s   3038.0 GFLOP/s(2mkn)  speedup 1.037  relerr 2.59e-06  split L 0.002 R 0.002 gemm 0.021 P 0.003  plan R363/G  err64 1.21e-06
+plan=R633/G n=3456   f32  min   0.0280 s  med   0.0281 s   2942.0 GFLOP/s(2mkn)  speedup 1.004  relerr 2.52e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.66e-06
+plan=R336/R363/G n=3456   f32  min   0.0734 s  med   0.0736 s   1121.8 GFLOP/s(2mkn)  speedup 0.383  relerr 2.89e-06  split L 0.015 R 0.011 gemm 0.040 P 0.009  plan R336/R363/G  err64 1.53e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0595 s  med   0.0595 s   1388.2 GFLOP/s(2mkn)  speedup 0.474  relerr 2.69e-06  split L 0.002 R 0.002 gemm 0.054 P 0.003  plan R363+3/R633/G6  err64 1.62e-06
+## nd_ctl n=3456 f seed=3  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0252 s  med   0.0284 s   2909.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.027 P 0.000  plan G  err64 2.50e-06
+plan=R336/G n=3456   f32  min   0.0267 s  med   0.0269 s   3071.2 GFLOP/s(2mkn)  speedup 1.056  relerr 2.96e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.50e-06
+plan=R363/G n=3456   f32  min   0.0268 s  med   0.0270 s   3058.8 GFLOP/s(2mkn)  speedup 1.051  relerr 2.59e-06  split L 0.002 R 0.002 gemm 0.021 P 0.003  plan R363/G  err64 1.21e-06
+plan=R633/G n=3456   f32  min   0.0279 s  med   0.0281 s   2939.0 GFLOP/s(2mkn)  speedup 1.010  relerr 2.52e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.66e-06
+plan=R336/R363/G n=3456   f32  min   0.0728 s  med   0.0731 s   1128.6 GFLOP/s(2mkn)  speedup 0.388  relerr 2.89e-06  split L 0.014 R 0.012 gemm 0.040 P 0.009  plan R336/R363/G  err64 1.53e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0624 s  med   0.0644 s   1282.8 GFLOP/s(2mkn)  speedup 0.441  relerr 2.69e-06  split L 0.002 R 0.002 gemm 0.057 P 0.003  plan R363+3/R633/G6  err64 1.62e-06
+## nd_p2 n=3456 f seed=3  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0248 s  med   0.0248 s   3331.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.026 P 0.000  plan G  err64 2.50e-06
+plan=R336/G n=3456   f32  min   0.0268 s  med   0.0270 s   3061.9 GFLOP/s(2mkn)  speedup 0.919  relerr 2.96e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.50e-06
+plan=R363/G n=3456   f32  min   0.0268 s  med   0.0268 s   3077.3 GFLOP/s(2mkn)  speedup 0.924  relerr 2.59e-06  split L 0.002 R 0.002 gemm 0.020 P 0.003  plan R363/G  err64 1.21e-06
+plan=R633/G n=3456   f32  min   0.0278 s  med   0.0278 s   2968.0 GFLOP/s(2mkn)  speedup 0.891  relerr 2.52e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.66e-06
+plan=R336/R363/G n=3456   f32  min   0.0740 s  med   0.0762 s   1083.6 GFLOP/s(2mkn)  speedup 0.325  relerr 2.89e-06  split L 0.015 R 0.012 gemm 0.040 P 0.009  plan R336/R363/G  err64 1.53e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0599 s  med   0.0627 s   1316.9 GFLOP/s(2mkn)  speedup 0.395  relerr 2.69e-06  split L 0.002 R 0.002 gemm 0.056 P 0.003  plan R363+3/R633/G6  err64 1.62e-06
+## nd_nd3 n=3456 f seed=3  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0246 s  med   0.0248 s   3329.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.026 P 0.000  plan G  err64 2.50e-06
+plan=R336/G n=3456   f32  min   0.0268 s  med   0.0269 s   3068.8 GFLOP/s(2mkn)  speedup 0.922  relerr 2.89e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.57e-06
+plan=R363/G n=3456   f32  min   0.0269 s  med   0.0269 s   3065.5 GFLOP/s(2mkn)  speedup 0.921  relerr 2.56e-06  split L 0.002 R 0.002 gemm 0.021 P 0.003  plan R363/G  err64 1.16e-06
+plan=R633/G n=3456   f32  min   0.0278 s  med   0.0278 s   2969.3 GFLOP/s(2mkn)  speedup 0.892  relerr 2.76e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.50e-06
+plan=R336/R363/G n=3456   f32  min   0.0719 s  med   0.0727 s   1135.5 GFLOP/s(2mkn)  speedup 0.341  relerr 2.62e-06  split L 0.015 R 0.010 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.46e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0590 s  med   0.0609 s   1356.4 GFLOP/s(2mkn)  speedup 0.407  relerr 2.62e-06  split L 0.002 R 0.002 gemm 0.055 P 0.003  plan R363+3/R633/G6  err64 1.53e-06
+## nd_ndr n=3456 f seed=3  23:36
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f32  min   0.0257 s  med   0.0277 s   2984.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.028 P 0.000  plan G  err64 2.50e-06
+plan=R336/G n=3456   f32  min   0.0269 s  med   0.0269 s   3063.8 GFLOP/s(2mkn)  speedup 1.027  relerr 2.76e-06  split L 0.002 R 0.002 gemm 0.021 P 0.002  plan R336/G  err64 1.55e-06
+plan=R363/G n=3456   f32  min   0.0266 s  med   0.0272 s   3030.3 GFLOP/s(2mkn)  speedup 1.015  relerr 2.62e-06  split L 0.002 R 0.002 gemm 0.021 P 0.003  plan R363/G  err64 1.30e-06
+plan=R633/G n=3456   f32  min   0.0279 s  med   0.0283 s   2913.8 GFLOP/s(2mkn)  speedup 0.976  relerr 2.49e-06  split L 0.002 R 0.002 gemm 0.022 P 0.002  plan R633/G  err64 1.63e-06
+plan=R336/R363/G n=3456   f32  min   0.0734 s  med   0.0745 s   1108.2 GFLOP/s(2mkn)  speedup 0.371  relerr 2.69e-06  split L 0.015 R 0.012 gemm 0.039 P 0.009  plan R336/R363/G  err64 1.56e-06
+plan=R363+3/R633/G6 n=3456   f32  min   0.0595 s  med   0.0611 s   1351.0 GFLOP/s(2mkn)  speedup 0.453  relerr 3.03e-06  split L 0.002 R 0.002 gemm 0.054 P 0.003  plan R363+3/R633/G6  err64 1.80e-06
+## rdirect n=3456 d seed=0  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+# compensated f64 reference in 1.6 s
+classical  n=3456   f64  min   0.0989 s  med   0.0989 s    834.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.099 P 0.000  plan G  err64 4.75e-15
+plan=R336/G n=3456   f64  min   0.0859 s  med   0.0875 s    943.5 GFLOP/s(2mkn)  speedup 1.131  relerr 5.02e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R336/G  err64 3.14e-15
+plan=R363/G n=3456   f64  min   0.0801 s  med   0.0835 s    988.8 GFLOP/s(2mkn)  speedup 1.185  relerr 4.96e-15  split L 0.004 R 0.004 gemm 0.071 P 0.004  plan R363/G  err64 2.85e-15
+plan=R633/G n=3456   f64  min   0.0874 s  med   0.0884 s    933.9 GFLOP/s(2mkn)  speedup 1.119  relerr 5.30e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R633/G  err64 3.50e-15
+plan=R336/R363/G n=3456   f64  min   0.1811 s  med   0.1829 s    451.3 GFLOP/s(2mkn)  speedup 0.541  relerr 5.16e-15  split L 0.024 R 0.015 gemm 0.128 P 0.016  plan R336/R363/G  err64 3.18e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1433 s  med   0.1440 s    573.2 GFLOP/s(2mkn)  speedup 0.687  relerr 5.97e-15  split L 0.004 R 0.004 gemm 0.132 P 0.004  plan R363+3/R633/G6  err64 3.04e-15
+## nd_ctl n=3456 d seed=0  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0986 s  med   0.0989 s    834.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.104 P 0.000  plan G  err64 4.75e-15
+plan=R336/G n=3456   f64  min   0.0864 s  med   0.0878 s    940.0 GFLOP/s(2mkn)  speedup 1.126  relerr 5.02e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R336/G  err64 3.14e-15
+plan=R363/G n=3456   f64  min   0.0805 s  med   0.0809 s   1020.4 GFLOP/s(2mkn)  speedup 1.223  relerr 4.96e-15  split L 0.004 R 0.004 gemm 0.069 P 0.004  plan R363/G  err64 2.85e-15
+plan=R633/G n=3456   f64  min   0.0885 s  med   0.0897 s    920.7 GFLOP/s(2mkn)  speedup 1.103  relerr 5.30e-15  split L 0.004 R 0.004 gemm 0.079 P 0.004  plan R633/G  err64 3.50e-15
+plan=R336/R363/G n=3456   f64  min   0.1819 s  med   0.1861 s    443.6 GFLOP/s(2mkn)  speedup 0.532  relerr 5.16e-15  split L 0.025 R 0.016 gemm 0.128 P 0.016  plan R336/R363/G  err64 3.18e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1429 s  med   0.1441 s    573.1 GFLOP/s(2mkn)  speedup 0.687  relerr 5.97e-15  split L 0.004 R 0.004 gemm 0.132 P 0.004  plan R363+3/R633/G6  err64 3.04e-15
+## nd_p2 n=3456 d seed=0  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0978 s  med   0.0984 s    838.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.100 P 0.000  plan G  err64 4.75e-15
+plan=R336/G n=3456   f64  min   0.0865 s  med   0.0876 s    942.9 GFLOP/s(2mkn)  speedup 1.124  relerr 5.02e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R336/G  err64 3.14e-15
+plan=R363/G n=3456   f64  min   0.0807 s  med   0.0811 s   1017.8 GFLOP/s(2mkn)  speedup 1.213  relerr 4.96e-15  split L 0.004 R 0.004 gemm 0.069 P 0.004  plan R363/G  err64 2.85e-15
+plan=R633/G n=3456   f64  min   0.0897 s  med   0.0899 s    918.4 GFLOP/s(2mkn)  speedup 1.095  relerr 5.30e-15  split L 0.004 R 0.004 gemm 0.078 P 0.004  plan R633/G  err64 3.50e-15
+plan=R336/R363/G n=3456   f64  min   0.1818 s  med   0.1825 s    452.5 GFLOP/s(2mkn)  speedup 0.539  relerr 5.16e-15  split L 0.024 R 0.015 gemm 0.127 P 0.015  plan R336/R363/G  err64 3.18e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1425 s  med   0.1456 s    566.9 GFLOP/s(2mkn)  speedup 0.676  relerr 5.97e-15  split L 0.004 R 0.004 gemm 0.133 P 0.004  plan R363+3/R633/G6  err64 3.04e-15
+## nd_nd3 n=3456 d seed=0  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0988 s  med   0.0995 s    830.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.106 P 0.000  plan G  err64 4.75e-15
+plan=R336/G n=3456   f64  min   0.0863 s  med   0.0864 s    955.2 GFLOP/s(2mkn)  speedup 1.151  relerr 4.89e-15  split L 0.004 R 0.004 gemm 0.075 P 0.004  plan R336/G  err64 3.34e-15
+plan=R363/G n=3456   f64  min   0.0815 s  med   0.0818 s   1009.4 GFLOP/s(2mkn)  speedup 1.216  relerr 5.09e-15  split L 0.004 R 0.004 gemm 0.070 P 0.004  plan R363/G  err64 2.56e-15
+plan=R633/G n=3456   f64  min   0.0878 s  med   0.0890 s    927.7 GFLOP/s(2mkn)  speedup 1.118  relerr 5.02e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R633/G  err64 3.02e-15
+plan=R336/R363/G n=3456   f64  min   0.1837 s  med   0.1844 s    447.6 GFLOP/s(2mkn)  speedup 0.539  relerr 4.89e-15  split L 0.024 R 0.016 gemm 0.128 P 0.016  plan R336/R363/G  err64 3.05e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1446 s  med   0.1454 s    567.7 GFLOP/s(2mkn)  speedup 0.684  relerr 5.84e-15  split L 0.004 R 0.004 gemm 0.134 P 0.004  plan R363+3/R633/G6  err64 3.19e-15
+## nd_ndr n=3456 d seed=0  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0989 s  med   0.1007 s    819.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.101 P 0.000  plan G  err64 4.75e-15
+plan=R336/G n=3456   f64  min   0.0854 s  med   0.0886 s    931.5 GFLOP/s(2mkn)  speedup 1.137  relerr 5.36e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R336/G  err64 3.38e-15
+plan=R363/G n=3456   f64  min   0.0811 s  med   0.0822 s   1004.7 GFLOP/s(2mkn)  speedup 1.226  relerr 5.30e-15  split L 0.004 R 0.004 gemm 0.070 P 0.004  plan R363/G  err64 2.40e-15
+plan=R633/G n=3456   f64  min   0.0882 s  med   0.0886 s    931.4 GFLOP/s(2mkn)  speedup 1.136  relerr 5.16e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R633/G  err64 3.24e-15
+plan=R336/R363/G n=3456   f64  min   0.1812 s  med   0.1823 s    452.8 GFLOP/s(2mkn)  speedup 0.552  relerr 4.89e-15  split L 0.024 R 0.016 gemm 0.127 P 0.016  plan R336/R363/G  err64 3.28e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1439 s  med   0.1443 s    571.9 GFLOP/s(2mkn)  speedup 0.698  relerr 4.89e-15  split L 0.004 R 0.004 gemm 0.133 P 0.004  plan R363+3/R633/G6  err64 3.19e-15
+## rdirect n=3456 d seed=1  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+# compensated f64 reference in 1.6 s
+classical  n=3456   f64  min   0.0984 s  med   0.1018 s    810.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.106 P 0.000  plan G  err64 4.87e-15
+plan=R336/G n=3456   f64  min   0.0863 s  med   0.0879 s    939.4 GFLOP/s(2mkn)  speedup 1.159  relerr 5.29e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R336/G  err64 3.17e-15
+plan=R363/G n=3456   f64  min   0.0807 s  med   0.0822 s   1004.4 GFLOP/s(2mkn)  speedup 1.239  relerr 5.15e-15  split L 0.004 R 0.004 gemm 0.071 P 0.004  plan R363/G  err64 2.87e-15
+plan=R633/G n=3456   f64  min   0.0871 s  med   0.0886 s    931.3 GFLOP/s(2mkn)  speedup 1.149  relerr 5.43e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R633/G  err64 3.38e-15
+plan=R336/R363/G n=3456   f64  min   0.1782 s  med   0.1790 s    461.2 GFLOP/s(2mkn)  speedup 0.569  relerr 5.01e-15  split L 0.025 R 0.015 gemm 0.124 P 0.015  plan R336/R363/G  err64 3.53e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1467 s  med   0.1470 s    561.7 GFLOP/s(2mkn)  speedup 0.693  relerr 5.99e-15  split L 0.004 R 0.004 gemm 0.135 P 0.004  plan R363+3/R633/G6  err64 3.39e-15
+## nd_ctl n=3456 d seed=1  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0986 s  med   0.0986 s    837.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.099 P 0.000  plan G  err64 4.87e-15
+plan=R336/G n=3456   f64  min   0.0880 s  med   0.0883 s    934.7 GFLOP/s(2mkn)  speedup 1.116  relerr 5.29e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R336/G  err64 3.17e-15
+plan=R363/G n=3456   f64  min   0.0801 s  med   0.0823 s   1003.3 GFLOP/s(2mkn)  speedup 1.198  relerr 5.15e-15  split L 0.004 R 0.004 gemm 0.071 P 0.004  plan R363/G  err64 2.87e-15
+plan=R633/G n=3456   f64  min   0.0874 s  med   0.0885 s    933.0 GFLOP/s(2mkn)  speedup 1.114  relerr 5.43e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R633/G  err64 3.38e-15
+plan=R336/R363/G n=3456   f64  min   0.1747 s  med   0.1807 s    456.8 GFLOP/s(2mkn)  speedup 0.546  relerr 5.01e-15  split L 0.024 R 0.015 gemm 0.124 P 0.015  plan R336/R363/G  err64 3.53e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1447 s  med   0.1465 s    563.5 GFLOP/s(2mkn)  speedup 0.673  relerr 5.99e-15  split L 0.004 R 0.004 gemm 0.135 P 0.004  plan R363+3/R633/G6  err64 3.39e-15
+## nd_p2 n=3456 d seed=1  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0965 s  med   0.0985 s    838.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.098 P 0.000  plan G  err64 4.87e-15
+plan=R336/G n=3456   f64  min   0.0847 s  med   0.0859 s    961.4 GFLOP/s(2mkn)  speedup 1.147  relerr 5.29e-15  split L 0.004 R 0.004 gemm 0.075 P 0.004  plan R336/G  err64 3.17e-15
+plan=R363/G n=3456   f64  min   0.0803 s  med   0.0804 s   1027.4 GFLOP/s(2mkn)  speedup 1.225  relerr 5.15e-15  split L 0.004 R 0.004 gemm 0.070 P 0.004  plan R363/G  err64 2.87e-15
+plan=R633/G n=3456   f64  min   0.0864 s  med   0.0878 s    940.6 GFLOP/s(2mkn)  speedup 1.122  relerr 5.43e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R633/G  err64 3.38e-15
+plan=R336/R363/G n=3456   f64  min   0.1718 s  med   0.1732 s    476.7 GFLOP/s(2mkn)  speedup 0.569  relerr 5.01e-15  split L 0.023 R 0.015 gemm 0.120 P 0.015  plan R336/R363/G  err64 3.53e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1442 s  med   0.1470 s    561.5 GFLOP/s(2mkn)  speedup 0.670  relerr 5.99e-15  split L 0.004 R 0.004 gemm 0.135 P 0.004  plan R363+3/R633/G6  err64 3.39e-15
+## nd_nd3 n=3456 d seed=1  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0984 s  med   0.0986 s    837.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.099 P 0.000  plan G  err64 4.87e-15
+plan=R336/G n=3456   f64  min   0.0856 s  med   0.0862 s    957.2 GFLOP/s(2mkn)  speedup 1.143  relerr 5.57e-15  split L 0.004 R 0.004 gemm 0.075 P 0.004  plan R336/G  err64 3.13e-15
+plan=R363/G n=3456   f64  min   0.0803 s  med   0.0812 s   1017.2 GFLOP/s(2mkn)  speedup 1.215  relerr 5.01e-15  split L 0.004 R 0.004 gemm 0.069 P 0.004  plan R363/G  err64 2.51e-15
+plan=R633/G n=3456   f64  min   0.0868 s  med   0.0872 s    946.3 GFLOP/s(2mkn)  speedup 1.130  relerr 5.29e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R633/G  err64 3.41e-15
+plan=R336/R363/G n=3456   f64  min   0.1785 s  med   0.1787 s    462.1 GFLOP/s(2mkn)  speedup 0.552  relerr 5.57e-15  split L 0.024 R 0.015 gemm 0.124 P 0.015  plan R336/R363/G  err64 3.39e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1463 s  med   0.1495 s    552.2 GFLOP/s(2mkn)  speedup 0.660  relerr 5.29e-15  split L 0.004 R 0.004 gemm 0.137 P 0.004  plan R363+3/R633/G6  err64 3.31e-15
+## nd_ndr n=3456 d seed=1  23:36
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0978 s  med   0.0983 s    840.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.098 P 0.000  plan G  err64 4.87e-15
+plan=R336/G n=3456   f64  min   0.0854 s  med   0.0866 s    953.4 GFLOP/s(2mkn)  speedup 1.135  relerr 5.43e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R336/G  err64 3.67e-15
+plan=R363/G n=3456   f64  min   0.0813 s  med   0.0821 s   1005.2 GFLOP/s(2mkn)  speedup 1.197  relerr 5.43e-15  split L 0.004 R 0.004 gemm 0.071 P 0.004  plan R363/G  err64 2.61e-15
+plan=R633/G n=3456   f64  min   0.0870 s  med   0.0875 s    943.5 GFLOP/s(2mkn)  speedup 1.123  relerr 5.43e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R633/G  err64 3.19e-15
+plan=R336/R363/G n=3456   f64  min   0.1769 s  med   0.1772 s    465.8 GFLOP/s(2mkn)  speedup 0.555  relerr 5.57e-15  split L 0.024 R 0.015 gemm 0.123 P 0.016  plan R336/R363/G  err64 3.27e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1484 s  med   0.1494 s    552.6 GFLOP/s(2mkn)  speedup 0.658  relerr 5.57e-15  split L 0.004 R 0.004 gemm 0.138 P 0.004  plan R363+3/R633/G6  err64 3.27e-15
+## rdirect n=3456 d seed=2  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+# compensated f64 reference in 1.6 s
+classical  n=3456   f64  min   0.0971 s  med   0.0998 s    827.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.100 P 0.000  plan G  err64 5.55e-15
+plan=R336/G n=3456   f64  min   0.0845 s  med   0.0858 s    962.3 GFLOP/s(2mkn)  speedup 1.163  relerr 6.22e-15  split L 0.004 R 0.004 gemm 0.074 P 0.004  plan R336/G  err64 3.38e-15
+plan=R363/G n=3456   f64  min   0.0804 s  med   0.0835 s    988.2 GFLOP/s(2mkn)  speedup 1.195  relerr 5.68e-15  split L 0.004 R 0.004 gemm 0.071 P 0.004  plan R363/G  err64 2.31e-15
+plan=R633/G n=3456   f64  min   0.0878 s  med   0.0884 s    934.0 GFLOP/s(2mkn)  speedup 1.129  relerr 5.95e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R633/G  err64 3.28e-15
+plan=R336/R363/G n=3456   f64  min   0.1780 s  med   0.1784 s    462.7 GFLOP/s(2mkn)  speedup 0.559  relerr 5.82e-15  split L 0.024 R 0.016 gemm 0.123 P 0.016  plan R336/R363/G  err64 2.99e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1478 s  med   0.1488 s    555.0 GFLOP/s(2mkn)  speedup 0.671  relerr 5.82e-15  split L 0.004 R 0.004 gemm 0.137 P 0.004  plan R363+3/R633/G6  err64 3.09e-15
+## nd_ctl n=3456 d seed=2  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0968 s  med   0.0975 s    847.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.102 P 0.000  plan G  err64 5.55e-15
+plan=R336/G n=3456   f64  min   0.0870 s  med   0.0881 s    937.5 GFLOP/s(2mkn)  speedup 1.107  relerr 6.22e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R336/G  err64 3.38e-15
+plan=R363/G n=3456   f64  min   0.0806 s  med   0.0807 s   1023.5 GFLOP/s(2mkn)  speedup 1.208  relerr 5.68e-15  split L 0.004 R 0.004 gemm 0.070 P 0.004  plan R363/G  err64 2.31e-15
+plan=R633/G n=3456   f64  min   0.0875 s  med   0.0882 s    935.5 GFLOP/s(2mkn)  speedup 1.104  relerr 5.95e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R633/G  err64 3.28e-15
+plan=R336/R363/G n=3456   f64  min   0.1779 s  med   0.1795 s    460.0 GFLOP/s(2mkn)  speedup 0.543  relerr 5.82e-15  split L 0.024 R 0.016 gemm 0.123 P 0.016  plan R336/R363/G  err64 2.99e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1485 s  med   0.1491 s    553.8 GFLOP/s(2mkn)  speedup 0.654  relerr 5.82e-15  split L 0.004 R 0.004 gemm 0.137 P 0.004  plan R363+3/R633/G6  err64 3.09e-15
+## nd_p2 n=3456 d seed=2  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0972 s  med   0.0981 s    841.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.098 P 0.000  plan G  err64 5.55e-15
+plan=R336/G n=3456   f64  min   0.0847 s  med   0.0863 s    956.4 GFLOP/s(2mkn)  speedup 1.137  relerr 6.22e-15  split L 0.004 R 0.004 gemm 0.074 P 0.004  plan R336/G  err64 3.38e-15
+plan=R363/G n=3456   f64  min   0.0806 s  med   0.0809 s   1020.6 GFLOP/s(2mkn)  speedup 1.213  relerr 5.68e-15  split L 0.004 R 0.004 gemm 0.071 P 0.004  plan R363/G  err64 2.31e-15
+plan=R633/G n=3456   f64  min   0.0879 s  med   0.0892 s    925.1 GFLOP/s(2mkn)  speedup 1.100  relerr 5.95e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R633/G  err64 3.28e-15
+plan=R336/R363/G n=3456   f64  min   0.1762 s  med   0.1773 s    465.6 GFLOP/s(2mkn)  speedup 0.554  relerr 5.82e-15  split L 0.024 R 0.015 gemm 0.123 P 0.015  plan R336/R363/G  err64 2.99e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1453 s  med   0.1485 s    556.0 GFLOP/s(2mkn)  speedup 0.661  relerr 5.82e-15  split L 0.004 R 0.004 gemm 0.136 P 0.004  plan R363+3/R633/G6  err64 3.09e-15
+## nd_nd3 n=3456 d seed=2  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0977 s  med   0.0995 s    829.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.099 P 0.000  plan G  err64 5.55e-15
+plan=R336/G n=3456   f64  min   0.0862 s  med   0.0876 s    942.2 GFLOP/s(2mkn)  speedup 1.136  relerr 5.95e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R336/G  err64 3.67e-15
+plan=R363/G n=3456   f64  min   0.0803 s  med   0.0806 s   1024.2 GFLOP/s(2mkn)  speedup 1.235  relerr 5.68e-15  split L 0.004 R 0.004 gemm 0.069 P 0.004  plan R363/G  err64 2.20e-15
+plan=R633/G n=3456   f64  min   0.0872 s  med   0.0878 s    940.5 GFLOP/s(2mkn)  speedup 1.134  relerr 6.36e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R633/G  err64 3.25e-15
+plan=R336/R363/G n=3456   f64  min   0.1787 s  med   0.1803 s    458.0 GFLOP/s(2mkn)  speedup 0.552  relerr 5.82e-15  split L 0.025 R 0.016 gemm 0.124 P 0.016  plan R336/R363/G  err64 2.93e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1462 s  med   0.1464 s    564.0 GFLOP/s(2mkn)  speedup 0.680  relerr 5.75e-15  split L 0.004 R 0.004 gemm 0.136 P 0.004  plan R363+3/R633/G6  err64 3.04e-15
+## nd_ndr n=3456 d seed=2  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0972 s  med   0.0980 s    842.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.098 P 0.000  plan G  err64 5.55e-15
+plan=R336/G n=3456   f64  min   0.0871 s  med   0.0874 s    944.4 GFLOP/s(2mkn)  speedup 1.120  relerr 6.90e-15  split L 0.004 R 0.004 gemm 0.076 P 0.003  plan R336/G  err64 3.18e-15
+plan=R363/G n=3456   f64  min   0.0823 s  med   0.0847 s    974.9 GFLOP/s(2mkn)  speedup 1.157  relerr 5.68e-15  split L 0.004 R 0.004 gemm 0.072 P 0.005  plan R363/G  err64 2.45e-15
+plan=R633/G n=3456   f64  min   0.0874 s  med   0.0884 s    934.3 GFLOP/s(2mkn)  speedup 1.109  relerr 5.55e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R633/G  err64 3.16e-15
+plan=R336/R363/G n=3456   f64  min   0.1787 s  med   0.1798 s    459.2 GFLOP/s(2mkn)  speedup 0.545  relerr 5.14e-15  split L 0.025 R 0.016 gemm 0.124 P 0.016  plan R336/R363/G  err64 3.14e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1490 s  med   0.1495 s    552.2 GFLOP/s(2mkn)  speedup 0.655  relerr 5.41e-15  split L 0.004 R 0.004 gemm 0.138 P 0.004  plan R363+3/R633/G6  err64 3.08e-15
+## rdirect n=3456 d seed=3  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+# compensated f64 reference in 1.5 s
+classical  n=3456   f64  min   0.0988 s  med   0.1012 s    815.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.101 P 0.000  plan G  err64 5.01e-15
+plan=R336/G n=3456   f64  min   0.0852 s  med   0.0853 s    968.2 GFLOP/s(2mkn)  speedup 1.187  relerr 5.01e-15  split L 0.004 R 0.004 gemm 0.075 P 0.004  plan R336/G  err64 2.97e-15
+plan=R363/G n=3456   f64  min   0.0812 s  med   0.0820 s   1006.8 GFLOP/s(2mkn)  speedup 1.235  relerr 5.13e-15  split L 0.004 R 0.004 gemm 0.070 P 0.004  plan R363/G  err64 2.23e-15
+plan=R633/G n=3456   f64  min   0.0866 s  med   0.0870 s    949.4 GFLOP/s(2mkn)  speedup 1.164  relerr 5.07e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R633/G  err64 2.92e-15
+plan=R336/R363/G n=3456   f64  min   0.1772 s  med   0.1793 s    460.5 GFLOP/s(2mkn)  speedup 0.565  relerr 5.64e-15  split L 0.025 R 0.016 gemm 0.123 P 0.015  plan R336/R363/G  err64 2.93e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1461 s  med   0.1469 s    561.9 GFLOP/s(2mkn)  speedup 0.689  relerr 5.76e-15  split L 0.004 R 0.004 gemm 0.135 P 0.004  plan R363+3/R633/G6  err64 2.76e-15
+## nd_ctl n=3456 d seed=3  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0987 s  med   0.0988 s    835.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.100 P 0.000  plan G  err64 5.01e-15
+plan=R336/G n=3456   f64  min   0.0859 s  med   0.0885 s    932.4 GFLOP/s(2mkn)  speedup 1.116  relerr 5.01e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R336/G  err64 2.97e-15
+plan=R363/G n=3456   f64  min   0.0807 s  med   0.0820 s   1006.5 GFLOP/s(2mkn)  speedup 1.204  relerr 5.13e-15  split L 0.004 R 0.004 gemm 0.070 P 0.004  plan R363/G  err64 2.23e-15
+plan=R633/G n=3456   f64  min   0.0863 s  med   0.0868 s    951.1 GFLOP/s(2mkn)  speedup 1.138  relerr 5.07e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R633/G  err64 2.92e-15
+plan=R336/R363/G n=3456   f64  min   0.1743 s  med   0.1778 s    464.3 GFLOP/s(2mkn)  speedup 0.556  relerr 5.64e-15  split L 0.025 R 0.015 gemm 0.122 P 0.015  plan R336/R363/G  err64 2.93e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1479 s  med   0.1489 s    554.6 GFLOP/s(2mkn)  speedup 0.664  relerr 5.76e-15  split L 0.004 R 0.004 gemm 0.137 P 0.004  plan R363+3/R633/G6  err64 2.76e-15
+## nd_p2 n=3456 d seed=3  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0988 s  med   0.0995 s    829.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.104 P 0.000  plan G  err64 5.01e-15
+plan=R336/G n=3456   f64  min   0.0868 s  med   0.0875 s    943.6 GFLOP/s(2mkn)  speedup 1.137  relerr 5.01e-15  split L 0.004 R 0.004 gemm 0.076 P 0.003  plan R336/G  err64 2.97e-15
+plan=R363/G n=3456   f64  min   0.0803 s  med   0.0808 s   1021.4 GFLOP/s(2mkn)  speedup 1.231  relerr 5.13e-15  split L 0.004 R 0.004 gemm 0.069 P 0.004  plan R363/G  err64 2.23e-15
+plan=R633/G n=3456   f64  min   0.0865 s  med   0.0888 s    929.4 GFLOP/s(2mkn)  speedup 1.120  relerr 5.07e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R633/G  err64 2.92e-15
+plan=R336/R363/G n=3456   f64  min   0.1761 s  med   0.1781 s    463.6 GFLOP/s(2mkn)  speedup 0.559  relerr 5.64e-15  split L 0.024 R 0.016 gemm 0.124 P 0.015  plan R336/R363/G  err64 2.93e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1457 s  med   0.1457 s    566.5 GFLOP/s(2mkn)  speedup 0.683  relerr 5.76e-15  split L 0.004 R 0.004 gemm 0.135 P 0.004  plan R363+3/R633/G6  err64 2.76e-15
+## nd_nd3 n=3456 d seed=3  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0977 s  med   0.0994 s    830.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.099 P 0.000  plan G  err64 5.01e-15
+plan=R336/G n=3456   f64  min   0.0866 s  med   0.0884 s    933.7 GFLOP/s(2mkn)  speedup 1.124  relerr 4.88e-15  split L 0.004 R 0.004 gemm 0.077 P 0.004  plan R336/G  err64 3.09e-15
+plan=R363/G n=3456   f64  min   0.0804 s  med   0.0820 s   1007.0 GFLOP/s(2mkn)  speedup 1.212  relerr 5.01e-15  split L 0.004 R 0.004 gemm 0.070 P 0.004  plan R363/G  err64 2.37e-15
+plan=R633/G n=3456   f64  min   0.0864 s  med   0.0878 s    940.5 GFLOP/s(2mkn)  speedup 1.132  relerr 4.88e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R633/G  err64 2.96e-15
+plan=R336/R363/G n=3456   f64  min   0.1741 s  med   0.1762 s    468.4 GFLOP/s(2mkn)  speedup 0.564  relerr 5.01e-15  split L 0.025 R 0.014 gemm 0.122 P 0.015  plan R336/R363/G  err64 2.80e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1467 s  med   0.1472 s    560.9 GFLOP/s(2mkn)  speedup 0.675  relerr 5.13e-15  split L 0.004 R 0.004 gemm 0.136 P 0.004  plan R363+3/R633/G6  err64 2.72e-15
+## nd_ndr n=3456 d seed=3  23:37
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=3456   f64  min   0.0988 s  med   0.0990 s    833.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.099 P 0.000  plan G  err64 5.01e-15
+plan=R336/G n=3456   f64  min   0.0856 s  med   0.0857 s    963.6 GFLOP/s(2mkn)  speedup 1.156  relerr 5.39e-15  split L 0.004 R 0.004 gemm 0.075 P 0.003  plan R336/G  err64 3.13e-15
+plan=R363/G n=3456   f64  min   0.0826 s  med   0.0829 s    996.3 GFLOP/s(2mkn)  speedup 1.195  relerr 5.39e-15  split L 0.004 R 0.004 gemm 0.071 P 0.004  plan R363/G  err64 2.47e-15
+plan=R633/G n=3456   f64  min   0.0872 s  med   0.0878 s    940.2 GFLOP/s(2mkn)  speedup 1.128  relerr 5.26e-15  split L 0.004 R 0.004 gemm 0.076 P 0.004  plan R633/G  err64 2.97e-15
+plan=R336/R363/G n=3456   f64  min   0.1715 s  med   0.1766 s    467.5 GFLOP/s(2mkn)  speedup 0.561  relerr 5.39e-15  split L 0.024 R 0.015 gemm 0.122 P 0.015  plan R336/R363/G  err64 2.80e-15
+plan=R363+3/R633/G6 n=3456   f64  min   0.1476 s  med   0.1485 s    556.0 GFLOP/s(2mkn)  speedup 0.667  relerr 4.51e-15  split L 0.004 R 0.004 gemm 0.137 P 0.004  plan R363+3/R633/G6  err64 2.76e-15
+## rdirect n=6912 f seed=0  23:37
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1956 s  med   0.1977 s   3341.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.197 P 0.000  plan G  err64 3.85e-06
+plan=R336/G n=6912   f32  min   0.1723 s  med   0.1754 s   3764.5 GFLOP/s(2mkn)  speedup 1.127  relerr 3.96e-06  split L 0.008 R 0.007 gemm 0.152 P 0.007  plan R336/G  err64 2.25e-06
+plan=R363/G n=6912   f32  min   0.1609 s  med   0.1668 s   3958.5 GFLOP/s(2mkn)  speedup 1.185  relerr 4.50e-06  split L 0.007 R 0.007 gemm 0.142 P 0.009  plan R363/G  err64 1.69e-06
+plan=R633/G n=6912   f32  min   0.1700 s  med   0.1732 s   3812.6 GFLOP/s(2mkn)  speedup 1.141  relerr 3.96e-06  split L 0.008 R 0.008 gemm 0.149 P 0.007  plan R633/G  err64 2.16e-06
+plan=R336/R363/G n=6912   f32  min   0.2570 s  med   0.2613 s   2527.2 GFLOP/s(2mkn)  speedup 0.756  relerr 4.18e-06  split L 0.043 R 0.025 gemm 0.164 P 0.029  plan R336/R363/G  err64 2.01e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2847 s  med   0.2886 s   2288.1 GFLOP/s(2mkn)  speedup 0.685  relerr 4.05e-06  split L 0.007 R 0.008 gemm 0.264 P 0.010  plan R363+3/R633/G6  err64 2.11e-06
+## nd_ctl n=6912 f seed=0  23:37
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1964 s  med   0.1967 s   3357.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.216 P 0.000  plan G  err64 3.85e-06
+plan=R336/G n=6912   f32  min   0.1742 s  med   0.1744 s   3787.4 GFLOP/s(2mkn)  speedup 1.128  relerr 3.96e-06  split L 0.009 R 0.007 gemm 0.151 P 0.007  plan R336/G  err64 2.25e-06
+plan=R363/G n=6912   f32  min   0.1623 s  med   0.1671 s   3952.6 GFLOP/s(2mkn)  speedup 1.177  relerr 4.50e-06  split L 0.007 R 0.007 gemm 0.142 P 0.009  plan R363/G  err64 1.69e-06
+plan=R633/G n=6912   f32  min   0.1687 s  med   0.1723 s   3833.1 GFLOP/s(2mkn)  speedup 1.142  relerr 3.96e-06  split L 0.008 R 0.009 gemm 0.150 P 0.007  plan R633/G  err64 2.16e-06
+plan=R336/R363/G n=6912   f32  min   0.2606 s  med   0.2615 s   2525.7 GFLOP/s(2mkn)  speedup 0.752  relerr 4.18e-06  split L 0.043 R 0.025 gemm 0.164 P 0.030  plan R336/R363/G  err64 2.01e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2822 s  med   0.2860 s   2309.0 GFLOP/s(2mkn)  speedup 0.688  relerr 4.05e-06  split L 0.007 R 0.007 gemm 0.262 P 0.009  plan R363+3/R633/G6  err64 2.11e-06
+## nd_p2 n=6912 f seed=0  23:37
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1959 s  med   0.1964 s   3363.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.205 P 0.000  plan G  err64 3.85e-06
+plan=R336/G n=6912   f32  min   0.1706 s  med   0.1744 s   3786.4 GFLOP/s(2mkn)  speedup 1.126  relerr 3.96e-06  split L 0.008 R 0.007 gemm 0.151 P 0.007  plan R336/G  err64 2.25e-06
+plan=R363/G n=6912   f32  min   0.1629 s  med   0.1663 s   3970.8 GFLOP/s(2mkn)  speedup 1.181  relerr 4.50e-06  split L 0.007 R 0.007 gemm 0.141 P 0.009  plan R363/G  err64 1.69e-06
+plan=R633/G n=6912   f32  min   0.1694 s  med   0.1715 s   3850.9 GFLOP/s(2mkn)  speedup 1.145  relerr 3.96e-06  split L 0.008 R 0.008 gemm 0.150 P 0.007  plan R633/G  err64 2.16e-06
+plan=R336/R363/G n=6912   f32  min   0.2608 s  med   0.2611 s   2529.9 GFLOP/s(2mkn)  speedup 0.752  relerr 4.18e-06  split L 0.042 R 0.025 gemm 0.166 P 0.030  plan R336/R363/G  err64 2.01e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2828 s  med   0.2849 s   2318.4 GFLOP/s(2mkn)  speedup 0.689  relerr 4.05e-06  split L 0.007 R 0.007 gemm 0.261 P 0.009  plan R363+3/R633/G6  err64 2.11e-06
+## nd_nd3 n=6912 f seed=0  23:37
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1945 s  med   0.1984 s   3328.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.207 P 0.000  plan G  err64 3.85e-06
+plan=R336/G n=6912   f32  min   0.1706 s  med   0.1740 s   3795.3 GFLOP/s(2mkn)  speedup 1.140  relerr 4.05e-06  split L 0.008 R 0.007 gemm 0.151 P 0.007  plan R336/G  err64 2.32e-06
+plan=R363/G n=6912   f32  min   0.1607 s  med   0.1678 s   3937.1 GFLOP/s(2mkn)  speedup 1.183  relerr 4.18e-06  split L 0.007 R 0.008 gemm 0.142 P 0.009  plan R363/G  err64 1.67e-06
+plan=R633/G n=6912   f32  min   0.1710 s  med   0.1719 s   3843.2 GFLOP/s(2mkn)  speedup 1.155  relerr 4.00e-06  split L 0.008 R 0.008 gemm 0.149 P 0.007  plan R633/G  err64 2.21e-06
+plan=R336/R363/G n=6912   f32  min   0.2605 s  med   0.2607 s   2533.5 GFLOP/s(2mkn)  speedup 0.761  relerr 3.87e-06  split L 0.043 R 0.025 gemm 0.165 P 0.029  plan R336/R363/G  err64 2.18e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2831 s  med   0.2844 s   2322.1 GFLOP/s(2mkn)  speedup 0.698  relerr 4.14e-06  split L 0.007 R 0.008 gemm 0.261 P 0.009  plan R363+3/R633/G6  err64 1.97e-06
+## nd_ndr n=6912 f seed=0  23:37
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.2082 s  med   0.2204 s   2996.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.218 P 0.000  plan G  err64 3.85e-06
+plan=R336/G n=6912   f32  min   0.1724 s  med   0.1804 s   3660.5 GFLOP/s(2mkn)  speedup 1.222  relerr 3.82e-06  split L 0.008 R 0.007 gemm 0.155 P 0.007  plan R336/G  err64 2.53e-06
+plan=R363/G n=6912   f32  min   0.1676 s  med   0.1680 s   3930.1 GFLOP/s(2mkn)  speedup 1.312  relerr 3.73e-06  split L 0.007 R 0.007 gemm 0.145 P 0.009  plan R363/G  err64 1.87e-06
+plan=R633/G n=6912   f32  min   0.1701 s  med   0.1710 s   3863.3 GFLOP/s(2mkn)  speedup 1.289  relerr 4.23e-06  split L 0.008 R 0.008 gemm 0.149 P 0.007  plan R633/G  err64 2.46e-06
+plan=R336/R363/G n=6912   f32  min   0.2585 s  med   0.2586 s   2554.3 GFLOP/s(2mkn)  speedup 0.852  relerr 4.00e-06  split L 0.042 R 0.025 gemm 0.163 P 0.029  plan R336/R363/G  err64 2.08e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2861 s  med   0.2883 s   2291.2 GFLOP/s(2mkn)  speedup 0.765  relerr 4.41e-06  split L 0.007 R 0.008 gemm 0.265 P 0.009  plan R363+3/R633/G6  err64 1.90e-06
+## rdirect n=6912 f seed=1  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1958 s  med   0.1968 s   3355.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.207 P 0.000  plan G  err64 3.98e-06
+plan=R336/G n=6912   f32  min   0.1670 s  med   0.1768 s   3736.4 GFLOP/s(2mkn)  speedup 1.114  relerr 4.58e-06  split L 0.008 R 0.007 gemm 0.151 P 0.007  plan R336/G  err64 2.72e-06
+plan=R363/G n=6912   f32  min   0.1662 s  med   0.1684 s   3920.9 GFLOP/s(2mkn)  speedup 1.169  relerr 4.73e-06  split L 0.007 R 0.007 gemm 0.144 P 0.009  plan R363/G  err64 1.87e-06
+plan=R633/G n=6912   f32  min   0.1698 s  med   0.1748 s   3778.9 GFLOP/s(2mkn)  speedup 1.126  relerr 4.23e-06  split L 0.008 R 0.008 gemm 0.152 P 0.007  plan R633/G  err64 2.70e-06
+plan=R336/R363/G n=6912   f32  min   0.2621 s  med   0.2637 s   2504.9 GFLOP/s(2mkn)  speedup 0.747  relerr 4.43e-06  split L 0.044 R 0.025 gemm 0.165 P 0.030  plan R336/R363/G  err64 2.33e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2814 s  med   0.2878 s   2294.8 GFLOP/s(2mkn)  speedup 0.684  relerr 4.38e-06  split L 0.007 R 0.007 gemm 0.265 P 0.009  plan R363+3/R633/G6  err64 2.17e-06
+## nd_ctl n=6912 f seed=1  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1967 s  med   0.2251 s   2934.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.216 P 0.000  plan G  err64 3.98e-06
+plan=R336/G n=6912   f32  min   0.1710 s  med   0.1757 s   3758.4 GFLOP/s(2mkn)  speedup 1.281  relerr 4.58e-06  split L 0.008 R 0.007 gemm 0.152 P 0.007  plan R336/G  err64 2.72e-06
+plan=R363/G n=6912   f32  min   0.1571 s  med   0.1608 s   4106.6 GFLOP/s(2mkn)  speedup 1.399  relerr 4.73e-06  split L 0.007 R 0.007 gemm 0.138 P 0.009  plan R363/G  err64 1.87e-06
+plan=R633/G n=6912   f32  min   0.1701 s  med   0.1736 s   3805.5 GFLOP/s(2mkn)  speedup 1.297  relerr 4.23e-06  split L 0.008 R 0.008 gemm 0.150 P 0.007  plan R633/G  err64 2.70e-06
+plan=R336/R363/G n=6912   f32  min   0.2595 s  med   0.2613 s   2527.4 GFLOP/s(2mkn)  speedup 0.861  relerr 4.43e-06  split L 0.043 R 0.025 gemm 0.164 P 0.029  plan R336/R363/G  err64 2.33e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2764 s  med   0.2852 s   2316.0 GFLOP/s(2mkn)  speedup 0.789  relerr 4.38e-06  split L 0.007 R 0.008 gemm 0.259 P 0.009  plan R363+3/R633/G6  err64 2.17e-06
+## nd_p2 n=6912 f seed=1  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1957 s  med   0.1960 s   3369.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.196 P 0.000  plan G  err64 3.98e-06
+plan=R336/G n=6912   f32  min   0.1685 s  med   0.1707 s   3869.4 GFLOP/s(2mkn)  speedup 1.148  relerr 4.58e-06  split L 0.008 R 0.007 gemm 0.148 P 0.007  plan R336/G  err64 2.72e-06
+plan=R363/G n=6912   f32  min   0.1616 s  med   0.1635 s   4039.0 GFLOP/s(2mkn)  speedup 1.199  relerr 4.73e-06  split L 0.007 R 0.007 gemm 0.139 P 0.010  plan R363/G  err64 1.87e-06
+plan=R633/G n=6912   f32  min   0.1701 s  med   0.1730 s   3818.2 GFLOP/s(2mkn)  speedup 1.133  relerr 4.23e-06  split L 0.007 R 0.008 gemm 0.150 P 0.007  plan R633/G  err64 2.70e-06
+plan=R336/R363/G n=6912   f32  min   0.2589 s  med   0.2628 s   2513.0 GFLOP/s(2mkn)  speedup 0.746  relerr 4.43e-06  split L 0.044 R 0.025 gemm 0.163 P 0.030  plan R336/R363/G  err64 2.33e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2803 s  med   0.2824 s   2338.4 GFLOP/s(2mkn)  speedup 0.694  relerr 4.38e-06  split L 0.007 R 0.007 gemm 0.260 P 0.009  plan R363+3/R633/G6  err64 2.17e-06
+## nd_nd3 n=6912 f seed=1  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1952 s  med   0.1969 s   3355.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.205 P 0.000  plan G  err64 3.98e-06
+plan=R336/G n=6912   f32  min   0.1737 s  med   0.1760 s   3752.2 GFLOP/s(2mkn)  speedup 1.118  relerr 4.53e-06  split L 0.008 R 0.007 gemm 0.152 P 0.007  plan R336/G  err64 2.73e-06
+plan=R363/G n=6912   f32  min   0.1612 s  med   0.1621 s   4073.8 GFLOP/s(2mkn)  speedup 1.214  relerr 4.43e-06  split L 0.007 R 0.008 gemm 0.140 P 0.009  plan R363/G  err64 1.89e-06
+plan=R633/G n=6912   f32  min   0.1700 s  med   0.1709 s   3865.0 GFLOP/s(2mkn)  speedup 1.152  relerr 4.38e-06  split L 0.007 R 0.008 gemm 0.148 P 0.007  plan R633/G  err64 2.57e-06
+plan=R336/R363/G n=6912   f32  min   0.2586 s  med   0.2606 s   2534.3 GFLOP/s(2mkn)  speedup 0.755  relerr 4.08e-06  split L 0.042 R 0.025 gemm 0.164 P 0.029  plan R336/R363/G  err64 2.35e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2789 s  med   0.2822 s   2340.6 GFLOP/s(2mkn)  speedup 0.698  relerr 4.15e-06  split L 0.007 R 0.007 gemm 0.260 P 0.009  plan R363+3/R633/G6  err64 2.42e-06
+## nd_ndr n=6912 f seed=1  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1964 s  med   0.1969 s   3354.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.197 P 0.000  plan G  err64 3.98e-06
+plan=R336/G n=6912   f32  min   0.1717 s  med   0.1758 s   3756.4 GFLOP/s(2mkn)  speedup 1.120  relerr 4.73e-06  split L 0.008 R 0.007 gemm 0.151 P 0.007  plan R336/G  err64 2.54e-06
+plan=R363/G n=6912   f32  min   0.1660 s  med   0.1666 s   3964.3 GFLOP/s(2mkn)  speedup 1.182  relerr 4.28e-06  split L 0.007 R 0.008 gemm 0.143 P 0.009  plan R363/G  err64 2.08e-06
+plan=R633/G n=6912   f32  min   0.1688 s  med   0.1725 s   3829.3 GFLOP/s(2mkn)  speedup 1.141  relerr 4.58e-06  split L 0.008 R 0.008 gemm 0.149 P 0.007  plan R633/G  err64 2.59e-06
+plan=R336/R363/G n=6912   f32  min   0.2608 s  med   0.2621 s   2520.2 GFLOP/s(2mkn)  speedup 0.751  relerr 4.58e-06  split L 0.043 R 0.024 gemm 0.164 P 0.030  plan R336/R363/G  err64 2.46e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2838 s  med   0.2853 s   2314.6 GFLOP/s(2mkn)  speedup 0.690  relerr 4.13e-06  split L 0.007 R 0.007 gemm 0.262 P 0.009  plan R363+3/R633/G6  err64 2.28e-06
+## rdirect n=6912 f seed=2  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1970 s  med   0.1984 s   3329.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.198 P 0.000  plan G  err64 4.11e-06
+plan=R336/G n=6912   f32  min   0.1731 s  med   0.1737 s   3802.8 GFLOP/s(2mkn)  speedup 1.142  relerr 4.15e-06  split L 0.008 R 0.007 gemm 0.153 P 0.007  plan R336/G  err64 2.44e-06
+plan=R363/G n=6912   f32  min   0.1699 s  med   0.1703 s   3879.1 GFLOP/s(2mkn)  speedup 1.165  relerr 4.35e-06  split L 0.007 R 0.007 gemm 0.146 P 0.009  plan R363/G  err64 1.95e-06
+plan=R633/G n=6912   f32  min   0.1718 s  med   0.1721 s   3837.7 GFLOP/s(2mkn)  speedup 1.153  relerr 4.05e-06  split L 0.008 R 0.008 gemm 0.150 P 0.007  plan R633/G  err64 2.67e-06
+plan=R336/R363/G n=6912   f32  min   0.2612 s  med   0.2615 s   2525.9 GFLOP/s(2mkn)  speedup 0.759  relerr 4.59e-06  split L 0.044 R 0.025 gemm 0.163 P 0.030  plan R336/R363/G  err64 2.26e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2847 s  med   0.2860 s   2308.9 GFLOP/s(2mkn)  speedup 0.694  relerr 4.30e-06  split L 0.007 R 0.007 gemm 0.262 P 0.010  plan R363+3/R633/G6  err64 2.25e-06
+## nd_ctl n=6912 f seed=2  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1942 s  med   0.1977 s   3340.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.207 P 0.000  plan G  err64 4.11e-06
+plan=R336/G n=6912   f32  min   0.1729 s  med   0.1738 s   3799.5 GFLOP/s(2mkn)  speedup 1.138  relerr 4.15e-06  split L 0.008 R 0.007 gemm 0.151 P 0.007  plan R336/G  err64 2.44e-06
+plan=R363/G n=6912   f32  min   0.1609 s  med   0.1629 s   4053.8 GFLOP/s(2mkn)  speedup 1.214  relerr 4.35e-06  split L 0.007 R 0.007 gemm 0.140 P 0.009  plan R363/G  err64 1.95e-06
+plan=R633/G n=6912   f32  min   0.1681 s  med   0.1712 s   3858.7 GFLOP/s(2mkn)  speedup 1.155  relerr 4.05e-06  split L 0.007 R 0.008 gemm 0.148 P 0.007  plan R633/G  err64 2.67e-06
+plan=R336/R363/G n=6912   f32  min   0.2593 s  med   0.2611 s   2529.6 GFLOP/s(2mkn)  speedup 0.757  relerr 4.59e-06  split L 0.044 R 0.025 gemm 0.163 P 0.030  plan R336/R363/G  err64 2.26e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2796 s  med   0.2838 s   2327.4 GFLOP/s(2mkn)  speedup 0.697  relerr 4.30e-06  split L 0.007 R 0.007 gemm 0.260 P 0.009  plan R363+3/R633/G6  err64 2.25e-06
+## nd_p2 n=6912 f seed=2  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1976 s  med   0.2000 s   3301.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.207 P 0.000  plan G  err64 4.11e-06
+plan=R336/G n=6912   f32  min   0.1708 s  med   0.1762 s   3749.2 GFLOP/s(2mkn)  speedup 1.136  relerr 4.15e-06  split L 0.008 R 0.007 gemm 0.152 P 0.007  plan R336/G  err64 2.44e-06
+plan=R363/G n=6912   f32  min   0.1627 s  med   0.1638 s   4031.5 GFLOP/s(2mkn)  speedup 1.221  relerr 4.35e-06  split L 0.007 R 0.007 gemm 0.140 P 0.009  plan R363/G  err64 1.95e-06
+plan=R633/G n=6912   f32  min   0.1678 s  med   0.1702 s   3879.9 GFLOP/s(2mkn)  speedup 1.175  relerr 4.05e-06  split L 0.007 R 0.009 gemm 0.147 P 0.007  plan R633/G  err64 2.67e-06
+plan=R336/R363/G n=6912   f32  min   0.2579 s  med   0.2628 s   2513.4 GFLOP/s(2mkn)  speedup 0.761  relerr 4.59e-06  split L 0.044 R 0.025 gemm 0.164 P 0.029  plan R336/R363/G  err64 2.26e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2802 s  med   0.2885 s   2289.6 GFLOP/s(2mkn)  speedup 0.693  relerr 4.30e-06  split L 0.007 R 0.007 gemm 0.263 P 0.009  plan R363+3/R633/G6  err64 2.25e-06
+## nd_nd3 n=6912 f seed=2  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1964 s  med   0.2011 s   3283.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.208 P 0.000  plan G  err64 4.11e-06
+plan=R336/G n=6912   f32  min   0.1736 s  med   0.1750 s   3774.9 GFLOP/s(2mkn)  speedup 1.149  relerr 4.15e-06  split L 0.008 R 0.007 gemm 0.153 P 0.007  plan R336/G  err64 2.50e-06
+plan=R363/G n=6912   f32  min   0.1628 s  med   0.1669 s   3956.1 GFLOP/s(2mkn)  speedup 1.205  relerr 4.15e-06  split L 0.007 R 0.008 gemm 0.142 P 0.009  plan R363/G  err64 1.70e-06
+plan=R633/G n=6912   f32  min   0.1715 s  med   0.1719 s   3842.9 GFLOP/s(2mkn)  speedup 1.170  relerr 4.20e-06  split L 0.008 R 0.008 gemm 0.149 P 0.007  plan R633/G  err64 2.52e-06
+plan=R336/R363/G n=6912   f32  min   0.2595 s  med   0.2600 s   2539.9 GFLOP/s(2mkn)  speedup 0.773  relerr 4.74e-06  split L 0.043 R 0.025 gemm 0.163 P 0.029  plan R336/R363/G  err64 2.22e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2790 s  med   0.2807 s   2352.8 GFLOP/s(2mkn)  speedup 0.716  relerr 4.15e-06  split L 0.007 R 0.007 gemm 0.259 P 0.009  plan R363+3/R633/G6  err64 2.12e-06
+## nd_ndr n=6912 f seed=2  23:38
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1953 s  med   0.1989 s   3320.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.198 P 0.000  plan G  err64 4.11e-06
+plan=R336/G n=6912   f32  min   0.1763 s  med   0.1774 s   3722.9 GFLOP/s(2mkn)  speedup 1.121  relerr 4.00e-06  split L 0.009 R 0.007 gemm 0.154 P 0.007  plan R336/G  err64 2.66e-06
+plan=R363/G n=6912   f32  min   0.1608 s  med   0.1661 s   3975.5 GFLOP/s(2mkn)  speedup 1.197  relerr 4.10e-06  split L 0.007 R 0.008 gemm 0.141 P 0.009  plan R363/G  err64 1.90e-06
+plan=R633/G n=6912   f32  min   0.1706 s  med   0.1727 s   3823.8 GFLOP/s(2mkn)  speedup 1.152  relerr 4.40e-06  split L 0.008 R 0.008 gemm 0.150 P 0.007  plan R633/G  err64 2.70e-06
+plan=R336/R363/G n=6912   f32  min   0.2605 s  med   0.2619 s   2522.1 GFLOP/s(2mkn)  speedup 0.760  relerr 4.10e-06  split L 0.044 R 0.025 gemm 0.165 P 0.029  plan R336/R363/G  err64 2.30e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2747 s  med   0.2877 s   2295.6 GFLOP/s(2mkn)  speedup 0.691  relerr 4.25e-06  split L 0.007 R 0.007 gemm 0.259 P 0.010  plan R363+3/R633/G6  err64 2.32e-06
+## rdirect n=6912 f seed=3  23:39
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1966 s  med   0.2021 s   3267.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.209 P 0.000  plan G  err64 3.96e-06
+plan=R336/G n=6912   f32  min   0.1723 s  med   0.1737 s   3802.3 GFLOP/s(2mkn)  speedup 1.164  relerr 4.38e-06  split L 0.008 R 0.007 gemm 0.154 P 0.007  plan R336/G  err64 2.67e-06
+plan=R363/G n=6912   f32  min   0.1602 s  med   0.1685 s   3920.5 GFLOP/s(2mkn)  speedup 1.200  relerr 4.12e-06  split L 0.007 R 0.007 gemm 0.143 P 0.009  plan R363/G  err64 1.97e-06
+plan=R633/G n=6912   f32  min   0.1726 s  med   0.1733 s   3810.3 GFLOP/s(2mkn)  speedup 1.166  relerr 4.53e-06  split L 0.007 R 0.008 gemm 0.151 P 0.007  plan R633/G  err64 2.70e-06
+plan=R336/R363/G n=6912   f32  min   0.2607 s  med   0.2638 s   2504.0 GFLOP/s(2mkn)  speedup 0.766  relerr 4.22e-06  split L 0.044 R 0.026 gemm 0.163 P 0.030  plan R336/R363/G  err64 2.26e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2850 s  med   0.2871 s   2300.8 GFLOP/s(2mkn)  speedup 0.704  relerr 4.38e-06  split L 0.007 R 0.007 gemm 0.263 P 0.009  plan R363+3/R633/G6  err64 2.29e-06
+## nd_ctl n=6912 f seed=3  23:39
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1965 s  med   0.1972 s   3349.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.197 P 0.000  plan G  err64 3.96e-06
+plan=R336/G n=6912   f32  min   0.1712 s  med   0.1729 s   3820.5 GFLOP/s(2mkn)  speedup 1.141  relerr 4.38e-06  split L 0.008 R 0.007 gemm 0.151 P 0.007  plan R336/G  err64 2.67e-06
+plan=R363/G n=6912   f32  min   0.1632 s  med   0.1690 s   3907.5 GFLOP/s(2mkn)  speedup 1.167  relerr 4.12e-06  split L 0.007 R 0.008 gemm 0.144 P 0.009  plan R363/G  err64 1.97e-06
+plan=R633/G n=6912   f32  min   0.1692 s  med   0.1733 s   3810.2 GFLOP/s(2mkn)  speedup 1.138  relerr 4.53e-06  split L 0.008 R 0.009 gemm 0.150 P 0.007  plan R633/G  err64 2.70e-06
+plan=R336/R363/G n=6912   f32  min   0.2603 s  med   0.2605 s   2534.9 GFLOP/s(2mkn)  speedup 0.757  relerr 4.22e-06  split L 0.044 R 0.025 gemm 0.163 P 0.028  plan R336/R363/G  err64 2.26e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2788 s  med   0.2801 s   2358.0 GFLOP/s(2mkn)  speedup 0.704  relerr 4.38e-06  split L 0.007 R 0.007 gemm 0.259 P 0.009  plan R363+3/R633/G6  err64 2.29e-06
+## nd_p2 n=6912 f seed=3  23:39
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1956 s  med   0.2001 s   3300.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.207 P 0.000  plan G  err64 3.96e-06
+plan=R336/G n=6912   f32  min   0.1773 s  med   0.1787 s   3695.5 GFLOP/s(2mkn)  speedup 1.120  relerr 4.38e-06  split L 0.008 R 0.007 gemm 0.155 P 0.007  plan R336/G  err64 2.67e-06
+plan=R363/G n=6912   f32  min   0.1635 s  med   0.1671 s   3953.5 GFLOP/s(2mkn)  speedup 1.198  relerr 4.12e-06  split L 0.007 R 0.007 gemm 0.144 P 0.009  plan R363/G  err64 1.97e-06
+plan=R633/G n=6912   f32  min   0.1671 s  med   0.1743 s   3788.9 GFLOP/s(2mkn)  speedup 1.148  relerr 4.53e-06  split L 0.008 R 0.008 gemm 0.150 P 0.007  plan R633/G  err64 2.70e-06
+plan=R336/R363/G n=6912   f32  min   0.2584 s  med   0.2616 s   2524.2 GFLOP/s(2mkn)  speedup 0.765  relerr 4.22e-06  split L 0.043 R 0.025 gemm 0.165 P 0.029  plan R336/R363/G  err64 2.26e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2808 s  med   0.2850 s   2317.6 GFLOP/s(2mkn)  speedup 0.702  relerr 4.38e-06  split L 0.007 R 0.007 gemm 0.262 P 0.009  plan R363+3/R633/G6  err64 2.29e-06
+## nd_nd3 n=6912 f seed=3  23:39
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1945 s  med   0.1974 s   3345.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.208 P 0.000  plan G  err64 3.96e-06
+plan=R336/G n=6912   f32  min   0.1744 s  med   0.1767 s   3737.6 GFLOP/s(2mkn)  speedup 1.117  relerr 4.43e-06  split L 0.008 R 0.007 gemm 0.154 P 0.007  plan R336/G  err64 2.74e-06
+plan=R363/G n=6912   f32  min   0.1701 s  med   0.1707 s   3868.2 GFLOP/s(2mkn)  speedup 1.156  relerr 4.02e-06  split L 0.007 R 0.007 gemm 0.147 P 0.009  plan R363/G  err64 2.03e-06
+plan=R633/G n=6912   f32  min   0.1707 s  med   0.1727 s   3824.3 GFLOP/s(2mkn)  speedup 1.143  relerr 4.27e-06  split L 0.007 R 0.008 gemm 0.150 P 0.007  plan R633/G  err64 2.77e-06
+plan=R336/R363/G n=6912   f32  min   0.2592 s  med   0.2596 s   2544.0 GFLOP/s(2mkn)  speedup 0.761  relerr 4.38e-06  split L 0.043 R 0.024 gemm 0.163 P 0.029  plan R336/R363/G  err64 2.37e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2827 s  med   0.2844 s   2322.5 GFLOP/s(2mkn)  speedup 0.694  relerr 4.27e-06  split L 0.007 R 0.007 gemm 0.260 P 0.010  plan R363+3/R633/G6  err64 2.53e-06
+## nd_ndr n=6912 f seed=3  23:39
+# calibration results/calib5_f32.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f32  min   0.1970 s  med   0.2251 s   2934.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.224 P 0.000  plan G  err64 3.96e-06
+plan=R336/G n=6912   f32  min   0.1789 s  med   0.1809 s   3650.7 GFLOP/s(2mkn)  speedup 1.244  relerr 4.58e-06  split L 0.009 R 0.007 gemm 0.158 P 0.007  plan R336/G  err64 2.77e-06
+plan=R363/G n=6912   f32  min   0.1673 s  med   0.1686 s   3917.9 GFLOP/s(2mkn)  speedup 1.335  relerr 4.38e-06  split L 0.007 R 0.008 gemm 0.145 P 0.009  plan R363/G  err64 2.01e-06
+plan=R633/G n=6912   f32  min   0.1700 s  med   0.1736 s   3804.2 GFLOP/s(2mkn)  speedup 1.296  relerr 4.22e-06  split L 0.008 R 0.008 gemm 0.151 P 0.007  plan R633/G  err64 2.83e-06
+plan=R336/R363/G n=6912   f32  min   0.2615 s  med   0.2616 s   2524.8 GFLOP/s(2mkn)  speedup 0.860  relerr 4.27e-06  split L 0.043 R 0.025 gemm 0.164 P 0.029  plan R336/R363/G  err64 2.23e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.2870 s  med   0.2895 s   2281.2 GFLOP/s(2mkn)  speedup 0.777  relerr 4.27e-06  split L 0.007 R 0.007 gemm 0.266 P 0.009  plan R363+3/R633/G6  err64 2.40e-06
+## rdirect n=6912 d seed=0  23:39
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+# compensated f64 reference in 14.7 s
+classical  n=6912   f64  min   0.7770 s  med   0.7856 s    840.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.814 P 0.000  plan G  err64 6.69e-15
+plan=R336/G n=6912   f64  min   0.6251 s  med   0.6280 s   1051.6 GFLOP/s(2mkn)  speedup 1.251  relerr 7.37e-15  split L 0.017 R 0.015 gemm 0.584 P 0.012  plan R336/G  err64 4.41e-15
+plan=R363/G n=6912   f64  min   0.6775 s  med   0.6780 s    974.1 GFLOP/s(2mkn)  speedup 1.159  relerr 6.95e-15  split L 0.015 R 0.015 gemm 0.637 P 0.016  plan R363/G  err64 3.05e-15
+plan=R633/G n=6912   f64  min   0.6471 s  med   0.6615 s    998.4 GFLOP/s(2mkn)  speedup 1.188  relerr 7.46e-15  split L 0.015 R 0.015 gemm 0.613 P 0.013  plan R633/G  err64 4.24e-15
+plan=R336/R363/G n=6912   f64  min   0.6574 s  med   0.6637 s    995.1 GFLOP/s(2mkn)  speedup 1.184  relerr 7.20e-15  split L 0.084 R 0.050 gemm 0.477 P 0.052  plan R336/R363/G  err64 4.08e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6327 s  med   0.6353 s   1039.6 GFLOP/s(2mkn)  speedup 1.237  relerr 6.86e-15  split L 0.014 R 0.015 gemm 0.594 P 0.016  plan R363+3/R633/G6  err64 3.94e-15
+## nd_ctl n=6912 d seed=0  23:40
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.8770 s  med   0.8956 s    737.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.902 P 0.000  plan G  err64 6.69e-15
+plan=R336/G n=6912   f64  min   0.6256 s  med   0.6262 s   1054.8 GFLOP/s(2mkn)  speedup 1.430  relerr 7.37e-15  split L 0.016 R 0.015 gemm 0.583 P 0.013  plan R336/G  err64 4.41e-15
+plan=R363/G n=6912   f64  min   0.6727 s  med   0.6764 s    976.5 GFLOP/s(2mkn)  speedup 1.324  relerr 6.95e-15  split L 0.015 R 0.015 gemm 0.631 P 0.016  plan R363/G  err64 3.05e-15
+plan=R633/G n=6912   f64  min   0.6536 s  med   0.6549 s   1008.4 GFLOP/s(2mkn)  speedup 1.367  relerr 7.46e-15  split L 0.015 R 0.015 gemm 0.614 P 0.013  plan R633/G  err64 4.24e-15
+plan=R336/R363/G n=6912   f64  min   0.6589 s  med   0.6623 s    997.3 GFLOP/s(2mkn)  speedup 1.352  relerr 7.20e-15  split L 0.082 R 0.049 gemm 0.478 P 0.052  plan R336/R363/G  err64 4.08e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6289 s  med   0.6364 s   1037.8 GFLOP/s(2mkn)  speedup 1.407  relerr 6.86e-15  split L 0.015 R 0.015 gemm 0.592 P 0.016  plan R363+3/R633/G6  err64 3.94e-15
+## nd_p2 n=6912 d seed=0  23:40
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7827 s  med   0.7917 s    834.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.796 P 0.000  plan G  err64 6.69e-15
+plan=R336/G n=6912   f64  min   0.6208 s  med   0.6215 s   1062.7 GFLOP/s(2mkn)  speedup 1.274  relerr 7.37e-15  split L 0.016 R 0.015 gemm 0.580 P 0.013  plan R336/G  err64 4.41e-15
+plan=R363/G n=6912   f64  min   0.6727 s  med   0.6727 s    981.8 GFLOP/s(2mkn)  speedup 1.177  relerr 6.95e-15  split L 0.015 R 0.015 gemm 0.634 P 0.017  plan R363/G  err64 3.05e-15
+plan=R633/G n=6912   f64  min   0.6459 s  med   0.6550 s   1008.3 GFLOP/s(2mkn)  speedup 1.209  relerr 7.46e-15  split L 0.015 R 0.016 gemm 0.609 P 0.013  plan R633/G  err64 4.24e-15
+plan=R336/R363/G n=6912   f64  min   0.6578 s  med   0.6595 s   1001.4 GFLOP/s(2mkn)  speedup 1.200  relerr 7.20e-15  split L 0.083 R 0.049 gemm 0.479 P 0.052  plan R336/R363/G  err64 4.08e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6299 s  med   0.6412 s   1030.0 GFLOP/s(2mkn)  speedup 1.235  relerr 6.86e-15  split L 0.015 R 0.015 gemm 0.594 P 0.016  plan R363+3/R633/G6  err64 3.94e-15
+## nd_nd3 n=6912 d seed=0  23:40
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7875 s  med   0.7890 s    837.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.795 P 0.000  plan G  err64 6.69e-15
+plan=R336/G n=6912   f64  min   0.6122 s  med   0.6258 s   1055.4 GFLOP/s(2mkn)  speedup 1.261  relerr 7.29e-15  split L 0.016 R 0.015 gemm 0.578 P 0.013  plan R336/G  err64 4.19e-15
+plan=R363/G n=6912   f64  min   0.6680 s  med   0.6827 s    967.4 GFLOP/s(2mkn)  speedup 1.156  relerr 6.78e-15  split L 0.015 R 0.015 gemm 0.634 P 0.016  plan R363/G  err64 2.92e-15
+plan=R633/G n=6912   f64  min   0.6465 s  med   0.6490 s   1017.6 GFLOP/s(2mkn)  speedup 1.216  relerr 7.63e-15  split L 0.015 R 0.016 gemm 0.608 P 0.014  plan R633/G  err64 4.74e-15
+plan=R336/R363/G n=6912   f64  min   0.6555 s  med   0.6631 s    996.0 GFLOP/s(2mkn)  speedup 1.190  relerr 7.54e-15  split L 0.083 R 0.049 gemm 0.479 P 0.052  plan R336/R363/G  err64 3.98e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6488 s  med   0.6492 s   1017.4 GFLOP/s(2mkn)  speedup 1.215  relerr 7.03e-15  split L 0.015 R 0.015 gemm 0.606 P 0.017  plan R363+3/R633/G6  err64 3.71e-15
+## nd_ndr n=6912 d seed=0  23:41
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7863 s  med   0.7901 s    836.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.796 P 0.000  plan G  err64 6.69e-15
+plan=R336/G n=6912   f64  min   0.6146 s  med   0.6239 s   1058.5 GFLOP/s(2mkn)  speedup 1.266  relerr 7.37e-15  split L 0.017 R 0.015 gemm 0.578 P 0.012  plan R336/G  err64 4.52e-15
+plan=R363/G n=6912   f64  min   0.6731 s  med   0.6813 s    969.5 GFLOP/s(2mkn)  speedup 1.160  relerr 7.20e-15  split L 0.015 R 0.015 gemm 0.634 P 0.016  plan R363/G  err64 3.01e-15
+plan=R633/G n=6912   f64  min   0.6451 s  med   0.6548 s   1008.6 GFLOP/s(2mkn)  speedup 1.207  relerr 7.12e-15  split L 0.016 R 0.016 gemm 0.609 P 0.013  plan R633/G  err64 4.22e-15
+plan=R336/R363/G n=6912   f64  min   0.6563 s  med   0.6600 s   1000.7 GFLOP/s(2mkn)  speedup 1.197  relerr 7.20e-15  split L 0.083 R 0.049 gemm 0.475 P 0.053  plan R336/R363/G  err64 3.73e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6525 s  med   0.6580 s   1003.8 GFLOP/s(2mkn)  speedup 1.201  relerr 7.79e-15  split L 0.015 R 0.015 gemm 0.616 P 0.016  plan R363+3/R633/G6  err64 3.88e-15
+## rdirect n=6912 d seed=1  23:41
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+# compensated f64 reference in 14.0 s
+classical  n=6912   f64  min   0.7790 s  med   0.7813 s    845.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.825 P 0.000  plan G  err64 7.31e-15
+plan=R336/G n=6912   f64  min   0.6181 s  med   0.6228 s   1060.5 GFLOP/s(2mkn)  speedup 1.255  relerr 8.25e-15  split L 0.016 R 0.015 gemm 0.578 P 0.012  plan R336/G  err64 4.36e-15
+plan=R363/G n=6912   f64  min   0.6668 s  med   0.6817 s    968.8 GFLOP/s(2mkn)  speedup 1.146  relerr 7.78e-15  split L 0.015 R 0.015 gemm 0.632 P 0.016  plan R363/G  err64 3.64e-15
+plan=R633/G n=6912   f64  min   0.6506 s  med   0.6548 s   1008.6 GFLOP/s(2mkn)  speedup 1.193  relerr 8.81e-15  split L 0.015 R 0.016 gemm 0.613 P 0.013  plan R633/G  err64 4.87e-15
+plan=R336/R363/G n=6912   f64  min   0.6631 s  med   0.6639 s    994.7 GFLOP/s(2mkn)  speedup 1.177  relerr 7.69e-15  split L 0.084 R 0.049 gemm 0.479 P 0.051  plan R336/R363/G  err64 4.29e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6407 s  med   0.6419 s   1028.9 GFLOP/s(2mkn)  speedup 1.217  relerr 7.31e-15  split L 0.014 R 0.015 gemm 0.607 P 0.016  plan R363+3/R633/G6  err64 4.03e-15
+## nd_ctl n=6912 d seed=1  23:41
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7762 s  med   0.7797 s    847.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.791 P 0.000  plan G  err64 7.31e-15
+plan=R336/G n=6912   f64  min   0.6142 s  med   0.6166 s   1071.0 GFLOP/s(2mkn)  speedup 1.264  relerr 8.25e-15  split L 0.016 R 0.015 gemm 0.573 P 0.013  plan R336/G  err64 4.36e-15
+plan=R363/G n=6912   f64  min   0.6715 s  med   0.6840 s    965.6 GFLOP/s(2mkn)  speedup 1.140  relerr 7.78e-15  split L 0.015 R 0.015 gemm 0.636 P 0.016  plan R363/G  err64 3.64e-15
+plan=R633/G n=6912   f64  min   0.6534 s  med   0.6640 s    994.7 GFLOP/s(2mkn)  speedup 1.174  relerr 8.81e-15  split L 0.015 R 0.016 gemm 0.617 P 0.013  plan R633/G  err64 4.87e-15
+plan=R336/R363/G n=6912   f64  min   0.6579 s  med   0.6613 s    998.7 GFLOP/s(2mkn)  speedup 1.179  relerr 7.69e-15  split L 0.082 R 0.049 gemm 0.479 P 0.051  plan R336/R363/G  err64 4.29e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6333 s  med   0.6405 s   1031.2 GFLOP/s(2mkn)  speedup 1.217  relerr 7.31e-15  split L 0.014 R 0.015 gemm 0.593 P 0.017  plan R363+3/R633/G6  err64 4.03e-15
+## nd_p2 n=6912 d seed=1  23:42
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7823 s  med   0.8085 s    816.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.800 P 0.000  plan G  err64 7.31e-15
+plan=R336/G n=6912   f64  min   0.6074 s  med   0.6278 s   1052.0 GFLOP/s(2mkn)  speedup 1.288  relerr 8.25e-15  split L 0.016 R 0.015 gemm 0.579 P 0.013  plan R336/G  err64 4.36e-15
+plan=R363/G n=6912   f64  min   0.6766 s  med   0.6835 s    966.2 GFLOP/s(2mkn)  speedup 1.183  relerr 7.78e-15  split L 0.015 R 0.015 gemm 0.637 P 0.017  plan R363/G  err64 3.64e-15
+plan=R633/G n=6912   f64  min   0.6482 s  med   0.6568 s   1005.6 GFLOP/s(2mkn)  speedup 1.231  relerr 8.81e-15  split L 0.015 R 0.016 gemm 0.610 P 0.013  plan R633/G  err64 4.87e-15
+plan=R336/R363/G n=6912   f64  min   0.6561 s  med   0.6620 s    997.7 GFLOP/s(2mkn)  speedup 1.221  relerr 7.69e-15  split L 0.082 R 0.049 gemm 0.478 P 0.052  plan R336/R363/G  err64 4.29e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6384 s  med   0.6397 s   1032.4 GFLOP/s(2mkn)  speedup 1.264  relerr 7.31e-15  split L 0.015 R 0.015 gemm 0.594 P 0.016  plan R363+3/R633/G6  err64 4.03e-15
+## nd_nd3 n=6912 d seed=1  23:42
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7891 s  med   0.7948 s    830.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.829 P 0.000  plan G  err64 7.31e-15
+plan=R336/G n=6912   f64  min   0.6187 s  med   0.6392 s   1033.3 GFLOP/s(2mkn)  speedup 1.244  relerr 8.53e-15  split L 0.016 R 0.015 gemm 0.589 P 0.013  plan R336/G  err64 4.97e-15
+plan=R363/G n=6912   f64  min   0.6705 s  med   0.6838 s    965.9 GFLOP/s(2mkn)  speedup 1.162  relerr 7.87e-15  split L 0.015 R 0.015 gemm 0.639 P 0.016  plan R363/G  err64 3.59e-15
+plan=R633/G n=6912   f64  min   0.6582 s  med   0.6632 s    995.8 GFLOP/s(2mkn)  speedup 1.198  relerr 9.33e-15  split L 0.015 R 0.016 gemm 0.619 P 0.014  plan R633/G  err64 5.02e-15
+plan=R336/R363/G n=6912   f64  min   0.6583 s  med   0.6652 s    992.9 GFLOP/s(2mkn)  speedup 1.195  relerr 8.72e-15  split L 0.083 R 0.049 gemm 0.479 P 0.051  plan R336/R363/G  err64 4.34e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6350 s  med   0.6418 s   1029.0 GFLOP/s(2mkn)  speedup 1.238  relerr 7.87e-15  split L 0.015 R 0.015 gemm 0.595 P 0.016  plan R363+3/R633/G6  err64 4.61e-15
+## nd_ndr n=6912 d seed=1  23:42
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7748 s  med   0.7801 s    846.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.824 P 0.000  plan G  err64 7.31e-15
+plan=R336/G n=6912   f64  min   0.6169 s  med   0.6199 s   1065.4 GFLOP/s(2mkn)  speedup 1.258  relerr 9.09e-15  split L 0.016 R 0.015 gemm 0.576 P 0.012  plan R336/G  err64 4.87e-15
+plan=R363/G n=6912   f64  min   0.6699 s  med   0.6726 s    982.0 GFLOP/s(2mkn)  speedup 1.160  relerr 7.78e-15  split L 0.015 R 0.015 gemm 0.630 P 0.016  plan R363/G  err64 3.66e-15
+plan=R633/G n=6912   f64  min   0.6409 s  med   0.6529 s   1011.6 GFLOP/s(2mkn)  speedup 1.195  relerr 9.19e-15  split L 0.015 R 0.016 gemm 0.605 P 0.013  plan R633/G  err64 4.78e-15
+plan=R336/R363/G n=6912   f64  min   0.6593 s  med   0.6613 s    998.7 GFLOP/s(2mkn)  speedup 1.180  relerr 8.53e-15  split L 0.082 R 0.049 gemm 0.478 P 0.052  plan R336/R363/G  err64 4.41e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6388 s  med   0.6460 s   1022.3 GFLOP/s(2mkn)  speedup 1.208  relerr 7.87e-15  split L 0.015 R 0.014 gemm 0.599 P 0.017  plan R363+3/R633/G6  err64 4.08e-15
+## rdirect n=6912 d seed=2  23:43
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+# compensated f64 reference in 14.1 s
+classical  n=6912   f64  min   0.7861 s  med   0.7928 s    833.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.820 P 0.000  plan G  err64 6.82e-15
+plan=R336/G n=6912   f64  min   0.6155 s  med   0.6200 s   1065.3 GFLOP/s(2mkn)  speedup 1.279  relerr 8.19e-15  split L 0.017 R 0.015 gemm 0.587 P 0.013  plan R336/G  err64 4.87e-15
+plan=R363/G n=6912   f64  min   0.6744 s  med   0.6904 s    956.6 GFLOP/s(2mkn)  speedup 1.148  relerr 8.00e-15  split L 0.015 R 0.015 gemm 0.644 P 0.016  plan R363/G  err64 3.37e-15
+plan=R633/G n=6912   f64  min   0.6502 s  med   0.6562 s   1006.4 GFLOP/s(2mkn)  speedup 1.208  relerr 8.19e-15  split L 0.015 R 0.016 gemm 0.611 P 0.013  plan R633/G  err64 5.28e-15
+plan=R336/R363/G n=6912   f64  min   0.6549 s  med   0.6601 s   1000.5 GFLOP/s(2mkn)  speedup 1.201  relerr 8.00e-15  split L 0.083 R 0.049 gemm 0.476 P 0.051  plan R336/R363/G  err64 4.26e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6293 s  med   0.6348 s   1040.5 GFLOP/s(2mkn)  speedup 1.249  relerr 8.00e-15  split L 0.015 R 0.015 gemm 0.591 P 0.016  plan R363+3/R633/G6  err64 3.89e-15
+## nd_ctl n=6912 d seed=2  23:43
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7791 s  med   0.8080 s    817.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.800 P 0.000  plan G  err64 6.82e-15
+plan=R336/G n=6912   f64  min   0.6186 s  med   0.6194 s   1066.2 GFLOP/s(2mkn)  speedup 1.304  relerr 8.19e-15  split L 0.017 R 0.015 gemm 0.582 P 0.013  plan R336/G  err64 4.87e-15
+plan=R363/G n=6912   f64  min   0.6665 s  med   0.6902 s    956.9 GFLOP/s(2mkn)  speedup 1.171  relerr 8.00e-15  split L 0.015 R 0.015 gemm 0.636 P 0.017  plan R363/G  err64 3.37e-15
+plan=R633/G n=6912   f64  min   0.6499 s  med   0.6623 s    997.2 GFLOP/s(2mkn)  speedup 1.220  relerr 8.19e-15  split L 0.015 R 0.016 gemm 0.615 P 0.014  plan R633/G  err64 5.28e-15
+plan=R336/R363/G n=6912   f64  min   0.6576 s  med   0.6591 s   1002.1 GFLOP/s(2mkn)  speedup 1.226  relerr 8.00e-15  split L 0.082 R 0.049 gemm 0.478 P 0.051  plan R336/R363/G  err64 4.26e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6429 s  med   0.6438 s   1025.8 GFLOP/s(2mkn)  speedup 1.255  relerr 8.00e-15  split L 0.015 R 0.015 gemm 0.601 P 0.016  plan R363+3/R633/G6  err64 3.89e-15
+## nd_p2 n=6912 d seed=2  23:43
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7845 s  med   0.8264 s    799.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.831 P 0.000  plan G  err64 6.82e-15
+plan=R336/G n=6912   f64  min   0.6093 s  med   0.6325 s   1044.1 GFLOP/s(2mkn)  speedup 1.306  relerr 8.19e-15  split L 0.016 R 0.015 gemm 0.583 P 0.013  plan R336/G  err64 4.87e-15
+plan=R363/G n=6912   f64  min   0.6681 s  med   0.6816 s    968.9 GFLOP/s(2mkn)  speedup 1.212  relerr 8.00e-15  split L 0.015 R 0.015 gemm 0.632 P 0.017  plan R363/G  err64 3.37e-15
+plan=R633/G n=6912   f64  min   0.6560 s  med   0.6612 s    998.8 GFLOP/s(2mkn)  speedup 1.250  relerr 8.19e-15  split L 0.016 R 0.016 gemm 0.615 P 0.013  plan R633/G  err64 5.28e-15
+plan=R336/R363/G n=6912   f64  min   0.6532 s  med   0.6593 s   1001.8 GFLOP/s(2mkn)  speedup 1.254  relerr 8.00e-15  split L 0.082 R 0.048 gemm 0.476 P 0.051  plan R336/R363/G  err64 4.26e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6322 s  med   0.6429 s   1027.3 GFLOP/s(2mkn)  speedup 1.285  relerr 8.00e-15  split L 0.014 R 0.015 gemm 0.599 P 0.017  plan R363+3/R633/G6  err64 3.89e-15
+## nd_nd3 n=6912 d seed=2  23:44
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7872 s  med   0.8382 s    787.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.829 P 0.000  plan G  err64 6.82e-15
+plan=R336/G n=6912   f64  min   0.6048 s  med   0.6180 s   1068.6 GFLOP/s(2mkn)  speedup 1.356  relerr 8.10e-15  split L 0.016 R 0.014 gemm 0.570 P 0.013  plan R336/G  err64 4.50e-15
+plan=R363/G n=6912   f64  min   0.6737 s  med   0.6839 s    965.7 GFLOP/s(2mkn)  speedup 1.226  relerr 8.37e-15  split L 0.015 R 0.016 gemm 0.634 P 0.016  plan R363/G  err64 3.57e-15
+plan=R633/G n=6912   f64  min   0.6536 s  med   0.6655 s    992.4 GFLOP/s(2mkn)  speedup 1.260  relerr 8.37e-15  split L 0.015 R 0.016 gemm 0.619 P 0.013  plan R633/G  err64 4.78e-15
+plan=R336/R363/G n=6912   f64  min   0.6538 s  med   0.6603 s   1000.2 GFLOP/s(2mkn)  speedup 1.269  relerr 7.37e-15  split L 0.082 R 0.049 gemm 0.478 P 0.052  plan R336/R363/G  err64 4.16e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6343 s  med   0.6420 s   1028.8 GFLOP/s(2mkn)  speedup 1.306  relerr 7.46e-15  split L 0.015 R 0.015 gemm 0.597 P 0.017  plan R363+3/R633/G6  err64 4.14e-15
+## nd_ndr n=6912 d seed=2  23:44
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7858 s  med   0.8110 s    814.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.847 P 0.000  plan G  err64 6.82e-15
+plan=R336/G n=6912   f64  min   0.6275 s  med   0.6372 s   1036.5 GFLOP/s(2mkn)  speedup 1.273  relerr 8.28e-15  split L 0.016 R 0.015 gemm 0.591 P 0.013  plan R336/G  err64 4.50e-15
+plan=R363/G n=6912   f64  min   0.6847 s  med   0.6927 s    953.4 GFLOP/s(2mkn)  speedup 1.171  relerr 7.37e-15  split L 0.015 R 0.015 gemm 0.645 P 0.016  plan R363/G  err64 3.86e-15
+plan=R633/G n=6912   f64  min   0.6561 s  med   0.6711 s    984.1 GFLOP/s(2mkn)  speedup 1.208  relerr 8.00e-15  split L 0.016 R 0.016 gemm 0.622 P 0.014  plan R633/G  err64 4.53e-15
+plan=R336/R363/G n=6912   f64  min   0.6579 s  med   0.6628 s    996.4 GFLOP/s(2mkn)  speedup 1.224  relerr 9.28e-15  split L 0.082 R 0.049 gemm 0.479 P 0.051  plan R336/R363/G  err64 4.00e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6352 s  med   0.6524 s   1012.3 GFLOP/s(2mkn)  speedup 1.243  relerr 8.28e-15  split L 0.014 R 0.015 gemm 0.602 P 0.016  plan R363+3/R633/G6  err64 3.96e-15
+## rdirect n=6912 d seed=3  23:44
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+# compensated f64 reference in 14.0 s
+classical  n=6912   f64  min   0.7874 s  med   0.8793 s    751.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.871 P 0.000  plan G  err64 7.29e-15
+plan=R336/G n=6912   f64  min   0.6202 s  med   0.6212 s   1063.2 GFLOP/s(2mkn)  speedup 1.415  relerr 8.54e-15  split L 0.017 R 0.015 gemm 0.578 P 0.013  plan R336/G  err64 5.18e-15
+plan=R363/G n=6912   f64  min   0.6641 s  med   0.6720 s    982.8 GFLOP/s(2mkn)  speedup 1.308  relerr 8.73e-15  split L 0.015 R 0.014 gemm 0.628 P 0.016  plan R363/G  err64 3.60e-15
+plan=R633/G n=6912   f64  min   0.6480 s  med   0.6631 s    996.0 GFLOP/s(2mkn)  speedup 1.326  relerr 7.67e-15  split L 0.015 R 0.016 gemm 0.616 P 0.013  plan R633/G  err64 5.23e-15
+plan=R336/R363/G n=6912   f64  min   0.6565 s  med   0.6607 s    999.7 GFLOP/s(2mkn)  speedup 1.331  relerr 8.25e-15  split L 0.083 R 0.049 gemm 0.478 P 0.051  plan R336/R363/G  err64 4.46e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6338 s  med   0.6363 s   1038.0 GFLOP/s(2mkn)  speedup 1.382  relerr 8.63e-15  split L 0.014 R 0.015 gemm 0.591 P 0.016  plan R363+3/R633/G6  err64 4.33e-15
+## nd_ctl n=6912 d seed=3  23:45
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.8068 s  med   0.8107 s    814.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.837 P 0.000  plan G  err64 7.29e-15
+plan=R336/G n=6912   f64  min   0.6186 s  med   0.6228 s   1060.4 GFLOP/s(2mkn)  speedup 1.302  relerr 8.54e-15  split L 0.017 R 0.015 gemm 0.581 P 0.013  plan R336/G  err64 5.18e-15
+plan=R363/G n=6912   f64  min   0.6740 s  med   0.6803 s    970.8 GFLOP/s(2mkn)  speedup 1.192  relerr 8.73e-15  split L 0.015 R 0.015 gemm 0.634 P 0.016  plan R363/G  err64 3.60e-15
+plan=R633/G n=6912   f64  min   0.6431 s  med   0.6559 s   1006.9 GFLOP/s(2mkn)  speedup 1.236  relerr 7.67e-15  split L 0.015 R 0.015 gemm 0.608 P 0.013  plan R633/G  err64 5.23e-15
+plan=R336/R363/G n=6912   f64  min   0.6601 s  med   0.6624 s    997.0 GFLOP/s(2mkn)  speedup 1.224  relerr 8.25e-15  split L 0.083 R 0.049 gemm 0.480 P 0.051  plan R336/R363/G  err64 4.46e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6387 s  med   0.6486 s   1018.3 GFLOP/s(2mkn)  speedup 1.250  relerr 8.63e-15  split L 0.015 R 0.015 gemm 0.600 P 0.016  plan R363+3/R633/G6  err64 4.33e-15
+## nd_p2 n=6912 d seed=3  23:45
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7789 s  med   0.7802 s    846.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.781 P 0.000  plan G  err64 7.29e-15
+plan=R336/G n=6912   f64  min   0.6191 s  med   0.6210 s   1063.6 GFLOP/s(2mkn)  speedup 1.256  relerr 8.54e-15  split L 0.016 R 0.015 gemm 0.579 P 0.013  plan R336/G  err64 5.18e-15
+plan=R363/G n=6912   f64  min   0.6792 s  med   0.6802 s    970.9 GFLOP/s(2mkn)  speedup 1.147  relerr 8.73e-15  split L 0.014 R 0.015 gemm 0.638 P 0.016  plan R363/G  err64 3.60e-15
+plan=R633/G n=6912   f64  min   0.6491 s  med   0.6505 s   1015.2 GFLOP/s(2mkn)  speedup 1.199  relerr 7.67e-15  split L 0.015 R 0.016 gemm 0.610 P 0.013  plan R633/G  err64 5.23e-15
+plan=R336/R363/G n=6912   f64  min   0.6540 s  med   0.6617 s    998.1 GFLOP/s(2mkn)  speedup 1.179  relerr 8.25e-15  split L 0.083 R 0.049 gemm 0.477 P 0.052  plan R336/R363/G  err64 4.46e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6380 s  med   0.6402 s   1031.6 GFLOP/s(2mkn)  speedup 1.219  relerr 8.63e-15  split L 0.015 R 0.015 gemm 0.597 P 0.016  plan R363+3/R633/G6  err64 4.33e-15
+## nd_nd3 n=6912 d seed=3  23:45
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7902 s  med   0.8615 s    766.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.846 P 0.000  plan G  err64 7.29e-15
+plan=R336/G n=6912   f64  min   0.6300 s  med   0.6313 s   1046.2 GFLOP/s(2mkn)  speedup 1.365  relerr 8.63e-15  split L 0.016 R 0.015 gemm 0.590 P 0.013  plan R336/G  err64 4.89e-15
+plan=R363/G n=6912   f64  min   0.6902 s  med   0.6961 s    948.8 GFLOP/s(2mkn)  speedup 1.238  relerr 8.44e-15  split L 0.015 R 0.015 gemm 0.649 P 0.016  plan R363/G  err64 3.98e-15
+plan=R633/G n=6912   f64  min   0.6621 s  med   0.6673 s    989.8 GFLOP/s(2mkn)  speedup 1.291  relerr 7.77e-15  split L 0.015 R 0.016 gemm 0.627 P 0.013  plan R633/G  err64 5.13e-15
+plan=R336/R363/G n=6912   f64  min   0.6610 s  med   0.6614 s    998.6 GFLOP/s(2mkn)  speedup 1.303  relerr 8.06e-15  split L 0.082 R 0.049 gemm 0.478 P 0.052  plan R336/R363/G  err64 4.51e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6293 s  med   0.6451 s   1023.8 GFLOP/s(2mkn)  speedup 1.335  relerr 8.25e-15  split L 0.015 R 0.015 gemm 0.598 P 0.017  plan R363+3/R633/G6  err64 4.55e-15
+## nd_ndr n=6912 d seed=3  23:46
+# calibration results/calib5_f64.txt is from another machine, padding, format or kernels: remeasuring
+classical  n=6912   f64  min   0.7708 s  med   0.7797 s    847.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.808 P 0.000  plan G  err64 7.29e-15
+plan=R336/G n=6912   f64  min   0.6124 s  med   0.6213 s   1063.1 GFLOP/s(2mkn)  speedup 1.255  relerr 7.87e-15  split L 0.016 R 0.015 gemm 0.576 P 0.013  plan R336/G  err64 4.75e-15
+plan=R363/G n=6912   f64  min   0.6796 s  med   0.6804 s    970.7 GFLOP/s(2mkn)  speedup 1.146  relerr 7.77e-15  split L 0.015 R 0.015 gemm 0.637 P 0.016  plan R363/G  err64 3.48e-15
+plan=R633/G n=6912   f64  min   0.6461 s  med   0.6581 s   1003.5 GFLOP/s(2mkn)  speedup 1.185  relerr 8.15e-15  split L 0.015 R 0.016 gemm 0.611 P 0.013  plan R633/G  err64 4.99e-15
+plan=R336/R363/G n=6912   f64  min   0.6545 s  med   0.6607 s    999.6 GFLOP/s(2mkn)  speedup 1.180  relerr 7.87e-15  split L 0.082 R 0.048 gemm 0.478 P 0.051  plan R336/R363/G  err64 4.34e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.6404 s  med   0.6449 s   1024.1 GFLOP/s(2mkn)  speedup 1.209  relerr 7.77e-15  split L 0.015 R 0.014 gemm 0.608 P 0.016  plan R363+3/R633/G6  err64 4.22e-15
+# done 23:46

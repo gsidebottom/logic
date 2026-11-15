@@ -1,0 +1,269 @@
+
+=== std plain
+# symflip <3x4x6>: group of order 1, start of rank 72 (72 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 4), save at 55
+[thread 6] rank 71 (71 fixed summands) after 0 s
+[thread 8] rank 70 (70 fixed summands) after 0 s
+[thread 3] rank 69 (69 fixed summands) after 1 s
+[thread 7] rank 68 (68 fixed summands) after 1 s
+[thread 0] rank 67 (67 fixed summands) after 1 s
+[thread 7] rank 66 (66 fixed summands) after 1 s
+[thread 9] rank 65 (65 fixed summands) after 1 s
+[thread 8] rank 64 (64 fixed summands) after 3 s
+[thread 1] rank 63 (63 fixed summands) after 3 s
+[thread 7] rank 62 (62 fixed summands) after 3 s
+[thread 6] rank 61 (61 fixed summands) after 24 s
+[thread 7] rank 60 (60 fixed summands) after 82 s
+# done: lowest rank 60 (500 schemes in the pool), 7496.3 M flips and 0.00 M plus transitions in 374401 walks, 180 s
+
+=== std Z3 rows+cols
+# symflip <3x4x6>: group of order 3, start of rank 72 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 8), save at 55
+[thread 3] rank 70 (1 fixed summands) after 4 s
+[thread 0] rank 67 (1 fixed summands) after 6 s
+[thread 4] rank 64 (1 fixed summands) after 10 s
+[thread 6] rank 63 (0 fixed summands) after 21 s
+[thread 1] rank 60 (0 fixed summands) after 28 s
+# done: lowest rank 60 (500 schemes in the pool), 1464.4 M flips and 0.00 M plus transitions in 73158 walks, 180 s
+
+=== std Z2 inner+cols
+# symflip <3x4x6>: group of order 2, start of rank 72 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 6), save at 55
+[thread 8] rank 71 (1 fixed summands) after 0 s
+[thread 9] rank 70 (0 fixed summands) after 0 s
+[thread 0] rank 69 (1 fixed summands) after 0 s
+[thread 2] rank 68 (2 fixed summands) after 0 s
+[thread 6] rank 67 (3 fixed summands) after 0 s
+[thread 8] rank 66 (4 fixed summands) after 0 s
+[thread 7] rank 65 (3 fixed summands) after 3 s
+[thread 9] rank 64 (4 fixed summands) after 4 s
+[thread 5] rank 63 (3 fixed summands) after 154 s
+# done: lowest rank 63 (500 schemes in the pool), 2096.9 M flips and 0.00 M plus transitions in 104769 walks, 180 s
+
+=== std Z2 rows+cols
+# symflip <3x4x6>: group of order 2, start of rank 72 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 6), save at 55
+[thread 2] rank 71 (1 fixed summands) after 0 s
+[thread 5] rank 70 (2 fixed summands) after 0 s
+[thread 4] rank 69 (3 fixed summands) after 1 s
+[thread 5] rank 68 (2 fixed summands) after 1 s
+[thread 7] rank 67 (3 fixed summands) after 1 s
+[thread 9] rank 65 (3 fixed summands) after 1 s
+[thread 9] rank 64 (4 fixed summands) after 4 s
+[thread 3] rank 63 (3 fixed summands) after 140 s
+# done: lowest rank 63 (500 schemes in the pool), 1839.6 M flips and 0.00 M plus transitions in 91880 walks, 180 s
+
+=== std S3 rows+cols
+# symflip <3x4x6>: group of order 6, start of rank 72 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 14), save at 55
+[thread 5] rank 70 (1 fixed summands) after 0 s
+[thread 4] rank 68 (2 fixed summands) after 1 s
+# done: lowest rank 68 (500 schemes in the pool), 506.1 M flips and 0.00 M plus transitions in 25284 walks, 180 s
+
+=== std Z2xZ2 inner
+# symflip <3x4x6>: group of order 4, start of rank 72 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 10), save at 55
+[thread 2] rank 68 (0 fixed summands) after 0 s
+[thread 1] rank 64 (0 fixed summands) after 0 s
+[thread 9] rank 60 (0 fixed summands) after 41 s
+# done: lowest rank 60 (9 schemes in the pool), 440.2 M flips and 0.00 M plus transitions in 21990 walks, 180 s
+
+=== std Z6
+# symflip <3x4x6>: group of order 6, start of rank 72 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.1 (every 0 flips, margin 14), save at 55
+[thread 6] rank 66 (0 fixed summands) after 0 s
+[thread 8] rank 60 (0 fixed summands) after 0 s
+# done: lowest rank 60 (500 schemes in the pool), 816.3 M flips and 0.00 M plus transitions in 40792 walks, 180 s
+
+=== 54 plain
+# symflip <3x4x6>: group of order 1, start of rank 54 (54 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 8), save at 53
+# done: lowest rank 54 (2 schemes in the pool), 270.6 M flips and 49.43 M plus transitions in 15988 walks, 180 s
+
+=== 54 Z2 (elem 0)
+# the start has 18 symmetries (0 s):
+#   0: order 2, 2 summands fixed, inverse 0
+#   1: order 2, 2 summands fixed, inverse 1
+#   2: order 2, 2 summands fixed, inverse 2
+#   3: order 3, 0 summands fixed, inverse 16
+#   4: order 3, 0 summands fixed, inverse 15
+#   5: order 3, 0 summands fixed, inverse 17
+#   6: order 3, 0 summands fixed, inverse 8
+#   7: order 1, 54 summands fixed, inverse 7
+#   8: order 3, 0 summands fixed, inverse 6
+#   9: order 2, 2 summands fixed, inverse 9
+#   10: order 2, 2 summands fixed, inverse 10
+#   11: order 2, 2 summands fixed, inverse 11
+#   12: order 2, 2 summands fixed, inverse 12
+#   13: order 2, 2 summands fixed, inverse 13
+#   14: order 2, 2 summands fixed, inverse 14
+#   15: order 3, 0 summands fixed, inverse 4
+#   16: order 3, 0 summands fixed, inverse 3
+#   17: order 3, 0 summands fixed, inverse 5
+# symflip <3x4x6>: group of order 2, start of rank 54 (2 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 8), save at 53
+# done: lowest rank 54 (2 schemes in the pool), 282.8 M flips and 52.39 M plus transitions in 16743 walks, 180 s
+
+=== 54 Z3 (elem 3)
+# the start has 18 symmetries (0 s):
+#   0: order 2, 2 summands fixed, inverse 0
+#   1: order 2, 2 summands fixed, inverse 1
+#   2: order 2, 2 summands fixed, inverse 2
+#   3: order 3, 0 summands fixed, inverse 16
+#   4: order 3, 0 summands fixed, inverse 15
+#   5: order 3, 0 summands fixed, inverse 17
+#   6: order 3, 0 summands fixed, inverse 8
+#   7: order 1, 54 summands fixed, inverse 7
+#   8: order 3, 0 summands fixed, inverse 6
+#   9: order 2, 2 summands fixed, inverse 9
+#   10: order 2, 2 summands fixed, inverse 10
+#   11: order 2, 2 summands fixed, inverse 11
+#   12: order 2, 2 summands fixed, inverse 12
+#   13: order 2, 2 summands fixed, inverse 13
+#   14: order 2, 2 summands fixed, inverse 14
+#   15: order 3, 0 summands fixed, inverse 4
+#   16: order 3, 0 summands fixed, inverse 3
+#   17: order 3, 0 summands fixed, inverse 5
+# symflip <3x4x6>: group of order 3, start of rank 54 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 12), save at 53
+# done: lowest rank 54 (2 schemes in the pool), 294.5 M flips and 51.63 M plus transitions in 17289 walks, 180 s
+
+=== 54 Z3 (elem 4)
+# the start has 18 symmetries (0 s):
+#   0: order 2, 2 summands fixed, inverse 0
+#   1: order 2, 2 summands fixed, inverse 1
+#   2: order 2, 2 summands fixed, inverse 2
+#   3: order 3, 0 summands fixed, inverse 16
+#   4: order 3, 0 summands fixed, inverse 15
+#   5: order 3, 0 summands fixed, inverse 17
+#   6: order 3, 0 summands fixed, inverse 8
+#   7: order 1, 54 summands fixed, inverse 7
+#   8: order 3, 0 summands fixed, inverse 6
+#   9: order 2, 2 summands fixed, inverse 9
+#   10: order 2, 2 summands fixed, inverse 10
+#   11: order 2, 2 summands fixed, inverse 11
+#   12: order 2, 2 summands fixed, inverse 12
+#   13: order 2, 2 summands fixed, inverse 13
+#   14: order 2, 2 summands fixed, inverse 14
+#   15: order 3, 0 summands fixed, inverse 4
+#   16: order 3, 0 summands fixed, inverse 3
+#   17: order 3, 0 summands fixed, inverse 5
+# symflip <3x4x6>: group of order 3, start of rank 54 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 12), save at 53
+# done: lowest rank 54 (2 schemes in the pool), 276.6 M flips and 49.21 M plus transitions in 16275 walks, 180 s
+
+=== 54 Z3 (elem 5)
+# the start has 18 symmetries (0 s):
+#   0: order 2, 2 summands fixed, inverse 0
+#   1: order 2, 2 summands fixed, inverse 1
+#   2: order 2, 2 summands fixed, inverse 2
+#   3: order 3, 0 summands fixed, inverse 16
+#   4: order 3, 0 summands fixed, inverse 15
+#   5: order 3, 0 summands fixed, inverse 17
+#   6: order 3, 0 summands fixed, inverse 8
+#   7: order 1, 54 summands fixed, inverse 7
+#   8: order 3, 0 summands fixed, inverse 6
+#   9: order 2, 2 summands fixed, inverse 9
+#   10: order 2, 2 summands fixed, inverse 10
+#   11: order 2, 2 summands fixed, inverse 11
+#   12: order 2, 2 summands fixed, inverse 12
+#   13: order 2, 2 summands fixed, inverse 13
+#   14: order 2, 2 summands fixed, inverse 14
+#   15: order 3, 0 summands fixed, inverse 4
+#   16: order 3, 0 summands fixed, inverse 3
+#   17: order 3, 0 summands fixed, inverse 5
+# symflip <3x4x6>: group of order 3, start of rank 54 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 12), save at 53
+# done: lowest rank 54 (2 schemes in the pool), 357.2 M flips and 46.58 M plus transitions in 20169 walks, 180 s
+
+=== 54 Z3 (elem 6)
+# the start has 18 symmetries (0 s):
+#   0: order 2, 2 summands fixed, inverse 0
+#   1: order 2, 2 summands fixed, inverse 1
+#   2: order 2, 2 summands fixed, inverse 2
+#   3: order 3, 0 summands fixed, inverse 16
+#   4: order 3, 0 summands fixed, inverse 15
+#   5: order 3, 0 summands fixed, inverse 17
+#   6: order 3, 0 summands fixed, inverse 8
+#   7: order 1, 54 summands fixed, inverse 7
+#   8: order 3, 0 summands fixed, inverse 6
+#   9: order 2, 2 summands fixed, inverse 9
+#   10: order 2, 2 summands fixed, inverse 10
+#   11: order 2, 2 summands fixed, inverse 11
+#   12: order 2, 2 summands fixed, inverse 12
+#   13: order 2, 2 summands fixed, inverse 13
+#   14: order 2, 2 summands fixed, inverse 14
+#   15: order 3, 0 summands fixed, inverse 4
+#   16: order 3, 0 summands fixed, inverse 3
+#   17: order 3, 0 summands fixed, inverse 5
+# symflip <3x4x6>: group of order 3, start of rank 54 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 12), save at 53
+# done: lowest rank 54 (13 schemes in the pool), 276.8 M flips and 50.43 M plus transitions in 16345 walks, 180 s
+
+=== 54 two order-3
+# the start has 18 symmetries (0 s):
+#   0: order 2, 2 summands fixed, inverse 0
+#   1: order 2, 2 summands fixed, inverse 1
+#   2: order 2, 2 summands fixed, inverse 2
+#   3: order 3, 0 summands fixed, inverse 16
+#   4: order 3, 0 summands fixed, inverse 15
+#   5: order 3, 0 summands fixed, inverse 17
+#   6: order 3, 0 summands fixed, inverse 8
+#   7: order 1, 54 summands fixed, inverse 7
+#   8: order 3, 0 summands fixed, inverse 6
+#   9: order 2, 2 summands fixed, inverse 9
+#   10: order 2, 2 summands fixed, inverse 10
+#   11: order 2, 2 summands fixed, inverse 11
+#   12: order 2, 2 summands fixed, inverse 12
+#   13: order 2, 2 summands fixed, inverse 13
+#   14: order 2, 2 summands fixed, inverse 14
+#   15: order 3, 0 summands fixed, inverse 4
+#   16: order 3, 0 summands fixed, inverse 3
+#   17: order 3, 0 summands fixed, inverse 5
+# symflip <3x4x6>: group of order 9, start of rank 54 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 18), save at 53
+# done: lowest rank 54 (28 schemes in the pool), 300.5 M flips and 32.74 M plus transitions in 16645 walks, 180 s
+
+=== 54 order 2 + order 3
+# the start has 18 symmetries (0 s):
+#   0: order 2, 2 summands fixed, inverse 0
+#   1: order 2, 2 summands fixed, inverse 1
+#   2: order 2, 2 summands fixed, inverse 2
+#   3: order 3, 0 summands fixed, inverse 16
+#   4: order 3, 0 summands fixed, inverse 15
+#   5: order 3, 0 summands fixed, inverse 17
+#   6: order 3, 0 summands fixed, inverse 8
+#   7: order 1, 54 summands fixed, inverse 7
+#   8: order 3, 0 summands fixed, inverse 6
+#   9: order 2, 2 summands fixed, inverse 9
+#   10: order 2, 2 summands fixed, inverse 10
+#   11: order 2, 2 summands fixed, inverse 11
+#   12: order 2, 2 summands fixed, inverse 12
+#   13: order 2, 2 summands fixed, inverse 13
+#   14: order 2, 2 summands fixed, inverse 14
+#   15: order 3, 0 summands fixed, inverse 4
+#   16: order 3, 0 summands fixed, inverse 3
+#   17: order 3, 0 summands fixed, inverse 5
+# symflip <3x4x6>: group of order 6, start of rank 54 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 12), save at 53
+# done: lowest rank 54 (2 schemes in the pool), 425.8 M flips and 25.14 M plus transitions in 22526 walks, 180 s
+
+=== 54 full group
+# the start has 18 symmetries (0 s):
+#   0: order 2, 2 summands fixed, inverse 0
+#   1: order 2, 2 summands fixed, inverse 1
+#   2: order 2, 2 summands fixed, inverse 2
+#   3: order 3, 0 summands fixed, inverse 16
+#   4: order 3, 0 summands fixed, inverse 15
+#   5: order 3, 0 summands fixed, inverse 17
+#   6: order 3, 0 summands fixed, inverse 8
+#   7: order 1, 54 summands fixed, inverse 7
+#   8: order 3, 0 summands fixed, inverse 6
+#   9: order 2, 2 summands fixed, inverse 9
+#   10: order 2, 2 summands fixed, inverse 10
+#   11: order 2, 2 summands fixed, inverse 11
+#   12: order 2, 2 summands fixed, inverse 12
+#   13: order 2, 2 summands fixed, inverse 13
+#   14: order 2, 2 summands fixed, inverse 14
+#   15: order 3, 0 summands fixed, inverse 4
+#   16: order 3, 0 summands fixed, inverse 3
+#   17: order 3, 0 summands fixed, inverse 5
+# symflip <3x4x6>: group of order 18, start of rank 54 (0 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 1 (every 2000 flips, margin 36), save at 53
+# done: lowest rank 54 (2 schemes in the pool), 223.5 M flips and 1.59 M plus transitions in 11249 walks, 180 s
+
+=== 56 Z2
+# the start has 2 symmetries (0 s):
+#   0: order 2, 2 summands fixed, inverse 0
+#   1: order 1, 56 summands fixed, inverse 1
+# symflip <3x4x6>: group of order 2, start of rank 56 (2 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.5 (every 5000 flips, margin 6), save at 55
+# done: lowest rank 56 (10 schemes in the pool), 1513.6 M flips and 0.30 M plus transitions in 75502 walks, 180 s
+
+=== 56 plain
+# symflip <3x4x6>: group of order 1, start of rank 56 (56 summands fixed by the group), 3 min, 10 threads, stall 20000, plus 0.5 (every 5000 flips, margin 6), save at 55
+# done: lowest rank 56 (500 schemes in the pool), 2889.6 M flips and 0.58 M plus transitions in 144130 walks, 180 s
+=== CAMPAIGN2 DONE

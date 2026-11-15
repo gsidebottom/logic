@@ -1,0 +1,35 @@
+# kresr: <3x4x6:54> from matmul/r346/schemes/3x4x6_m54_perminov_ZT.json; candidates from /private/tmp/claude-501/-Users-greg-projects-logic/3d45768d-4e94-4613-987d-3cadfd01d9af/scratchpad/kresr/l54_k5-7.txt; 2 warm + 3 random starts, and k warm + 30 random where those come within 0.05
+open k=5 flattening ranks [3, 4, 4] best |F| 8.72e-1 idx=0,11,26,32,44
+open k=6 flattening ranks [5, 5, 5] best |F| 1.45e0 idx=6,24,29,48,49,51
+open k=5 flattening ranks [3, 4, 4] best |F| 8.48e-1 idx=3,13,25,38,43
+open k=6 flattening ranks [5, 5, 5] best |F| 1.30e0 idx=6,28,34,36,37,48
+open k=7 flattening ranks [6, 6, 6] best |F| 1.29e0 idx=2,3,4,22,34,38,43
+open k=7 flattening ranks [6, 6, 6] best |F| 1.16e0 idx=0,8,11,18,26,34,44
+open k=7 flattening ranks [5, 6, 6] best |F| 1.12e0 idx=0,2,30,34,46,49,52
+open k=6 flattening ranks [5, 5, 5] best |F| 9.03e-1 idx=7,8,10,17,18,35
+open k=7 flattening ranks [5, 6, 6] best |F| 6.85e-1 idx=0,10,11,26,32,44,51
+open k=7 flattening ranks [5, 6, 6] best |F| 6.75e-1 idx=0,10,11,26,32,44,52
+open k=6 flattening ranks [4, 5, 5] best |F| 7.55e-1 idx=0,1,11,26,32,44
+open k=6 flattening ranks [4, 5, 5] best |F| 7.49e-1 idx=0,5,11,26,32,44
+open k=6 flattening ranks [4, 5, 5] best |F| 6.60e-1 idx=0,8,10,18,21,45
+open k=6 flattening ranks [4, 5, 5] best |F| 6.38e-1 idx=0,9,11,26,32,44
+open k=7 flattening ranks [5, 6, 6] best |F| 6.32e-1 idx=0,11,12,13,26,32,44
+open k=6 flattening ranks [4, 5, 5] best |F| 6.36e-1 idx=0,11,13,26,32,44
+open k=6 flattening ranks [4, 5, 5] best |F| 4.89e-1 idx=0,11,17,26,32,44
+open k=7 flattening ranks [5, 6, 6] best |F| 5.04e-1 idx=0,11,12,17,26,32,44
+open k=7 flattening ranks [5, 6, 6] best |F| 4.09e-1 idx=0,11,13,17,26,32,44
+open k=7 flattening ranks [5, 6, 6] best |F| 4.04e-1 idx=0,4,11,17,26,32,44
+# k=5: 9 candidates; 0 proved irreducible (a flattening of rank k); 0 REDUCED; 9 open (best |F| 8.48e-1)
+# k=6: 909 candidates; 0 proved irreducible (a flattening of rank k); 0 REDUCED; 909 open (best |F| 4.89e-1)
+# k=7: 38358 candidates; 36 proved irreducible (a flattening of rank k); 0 REDUCED; 38322 open (best |F| 4.04e-1)
+#   open k=5 flattening ranks [3, 4, 4]: 9
+#   open k=6 flattening ranks [4, 5, 5]: 441
+#   open k=6 flattening ranks [5, 5, 5]: 468
+#   open k=7 flattening ranks [4, 6, 6]: 135
+#   open k=7 flattening ranks [5, 5, 6]: 18
+#   open k=7 flattening ranks [5, 6, 5]: 72
+#   open k=7 flattening ranks [5, 6, 6]: 11133
+#   open k=7 flattening ranks [6, 5, 6]: 279
+#   open k=7 flattening ranks [6, 6, 5]: 261
+#   open k=7 flattening ranks [6, 6, 6]: 26424
+# done, 141 s

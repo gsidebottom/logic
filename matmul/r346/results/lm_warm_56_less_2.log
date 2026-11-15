@@ -1,0 +1,11 @@
+# 3x4x6_m56_ZT.json: <3x4x6> rank 54, 54 warm starts (the rank-56 scheme less 2, noise 0.1) from seed 1, at most 1500 iterations, mu 0.01, window 60, 10 threads
+start 33: |F| 5.24e-1, norm^2 568.7, 818 iterations, mu 0e0 (255 s)
+start 3: |F| 6.36e-1, norm^2 215.4, 930 iterations, mu 0e0 (283 s)
+start 30: |F| 7.45e-1, norm^2 166.0, 926 iterations, mu 0e0 (284 s)
+start 13: |F| 8.21e-1, norm^2 543.9, 950 iterations, mu 0e0 (290 s)
+start 40: |F| 7.30e-1, norm^2 110.6, 960 iterations, mu 0e0 (297 s)
+start 6: |F| 6.08e-1, norm^2 223.8, 960 iterations, mu 0e0 (300 s)
+start 27: |F| 2.77e-1, norm^2 58.4, 960 iterations, mu 0e0 (304 s)
+start 36: |F| 7.73e-1, norm^2 86.3, 960 iterations, mu 0e0 (305 s)
+start 28: |F| 3.95e-1, norm^2 140.5, 960 iterations, mu 0e0 (307 s)
+start 0: |F| 7.13e-1, norm^2 62.8, 960 iterations, mu 0e0 (309 s)

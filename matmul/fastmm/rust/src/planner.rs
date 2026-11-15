@@ -157,8 +157,9 @@ pub const DEFAULT_GROWTH: f64 = 1.0;
 
 /// plans predicted within 2% of the fastest are ties ...
 pub const PLAN_TIE: f64 = 0.02;
-/// ... which a plan predicted at least 10% more accurate wins
-pub const PLAN_TIE_GAIN: f64 = 0.10;
+/// ... which a plan predicted at least 25% more accurate wins (the error model is good to about
+/// 25%; smaller predicted gains picked the less accurate plan at 6912 in both precisions)
+pub const PLAN_TIE_GAIN: f64 = 0.25;
 
 /// a call's max_growth: a positive value is that budget, 0 the default, a negative value no
 /// budget (the fastest plan whatever its error)
@@ -187,18 +188,8 @@ pub fn best_budget(c: &Calib, s: Shape, gmax: f64) -> Option<(Plan, f64)> {
                 break;
             }
             let g = growth(&e, &all[j].0);
-            let gp = growth(&e, &all[pick].0);
-            let (tj, tp) = (all[j].0 .0[0].level, all[pick].0 .0[0].level);
             if g < gbest * (1.0 - 1e-9) {
                 gbest = g;
-                pick = j;
-            } else if (g - gp).abs() <= 1e-9 * gp
-                && !tj.is_leaf()
-                && !tp.is_leaf()
-                && e.factor(tj) < e.factor(tp) * (1.0 - 1e-9)
-            {
-                // the same levels in another order are predicted equal; measured, the more
-                // accurate level on top gives the smaller error
                 pick = j;
             }
         }

@@ -65,3 +65,86 @@ pub fn set_qos_user_interactive() {
     // SAFETY: changes the calling thread's scheduling class only
     unsafe { pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0) };
 }
+
+/// The size in bytes of the block DC ZVA zeroes (64 on Apple silicon), or 0 if the passes should
+/// not claim their output lines: FMM_ZVA=0, an architecture other than aarch64, or DC ZVA
+/// prohibited (bit 4 of DCZID_EL0).  Read once.  See claim_lines and fmm.c's fmm_zva().
+pub fn zva_block() -> usize {
+    static ZB: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *ZB.get_or_init(|| {
+        if std::env::var("FMM_ZVA").is_ok_and(|v| v.trim().parse::<i64>().is_ok_and(|x| x == 0)) {
+            return 0;
+        }
+        dczid().map_or(0, |id| if id & 16 != 0 { 0 } else { 4usize << (id & 15) })
+    })
+}
+
+#[cfg(target_arch = "aarch64")]
+fn dczid() -> Option<u64> {
+    let id: u64;
+    // SAFETY: DCZID_EL0 is readable at EL0 on every aarch64 system; reading it has no effect
+    unsafe { std::arch::asm!("mrs {0}, dczid_el0", out(reg) id, options(nomem, nostack, preserves_flags)) };
+    Some(id)
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+fn dczid() -> Option<u64> {
+    None
+}
+
+/// Claims the cache lines of `out` that the caller is about to overwrite completely: every
+/// aligned block of `zb` bytes (zva_block()) lying wholly inside the slice is zeroed by DC ZVA,
+/// which allocates the line in the cache without reading it from memory, so the stores that
+/// follow do not fetch it first (a pass that writes 48 blocks and reads 16 otherwise moves 112
+/// blocks through the memory system instead of 64).  Only bytes inside `out` change, and to
+/// zero, so the call is safe whatever the caller does next; zb = 0 does nothing.
+pub fn claim_lines<T: Copy>(out: &mut [T], zb: usize) {
+    if zb == 0 {
+        return;
+    }
+    debug_assert!(zb.is_power_of_two());
+    let start = out.as_mut_ptr() as usize;
+    let end = start + std::mem::size_of_val(out);
+    let mut x = (start + zb - 1) & !(zb - 1);    // round in at both ends, never out
+    while x + zb <= end {
+        zero_block(x);
+        x += zb;
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+fn zero_block(x: usize) {
+    // SAFETY: claim_lines passes only addresses of zb-aligned blocks wholly inside a slice it holds
+    // exclusively; DC ZVA writes zeros to exactly that block (no `nomem`: it writes memory)
+    unsafe { std::arch::asm!("dc zva, {0}", in(reg) x, options(nostack, preserves_flags)) };
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+fn zero_block(_x: usize) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn claim_lines_zeroes_only_whole_lines_inside_the_slice() {
+        let zb = zva_block();
+        for (lo, hi) in [(0usize, 1000usize), (3, 997), (17, 18), (5, 5), (1, 40)] {
+            let mut v = vec![1.0f32; 1024];
+            claim_lines(&mut v[lo..hi], zb);
+            let (base, sz) = (v.as_ptr() as usize, std::mem::size_of::<f32>());
+            for (j, x) in v.iter().enumerate() {
+                let a = base + j * sz;
+                let line = a & !(zb.max(1) - 1);
+                let inside = zb > 0 && j >= lo && j < hi && line >= base + lo * sz && line + zb <= base + hi * sz;
+                assert_eq!(*x == 0.0, inside, "element {j} of slice {lo}..{hi}, zb {zb}");
+            }
+        }
+        #[cfg(target_arch = "aarch64")]
+        if std::env::var("FMM_ZVA").is_err() {
+            assert!(zb >= 16, "DC ZVA available on this aarch64 machine");
+        }
+    }
+}

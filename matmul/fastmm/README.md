@@ -84,12 +84,13 @@ k x n), `fmm_calibrate`, `fmm_calibrate_mkn`, `fmm_plan`, `fmm_plan_mkn`, `fmm_r
 README.
 
 The planner takes the fastest plan within the error budget and, of the plans predicted within 2%
-of it, one predicted at least 10% more accurate, or of equal prediction with the more accurate
-level on top (faster first, more accurate second; C and Rust alike).  The passes claim their
+of it, one predicted at least 25% more accurate, the error model's resolution (faster first,
+more accurate second; C and Rust alike).  The passes claim their
 output lines with `DC ZVA` before writing them (`FMM_ZVA=0` to switch it off): a store to a line
 that is not in the cache first reads it from memory, so a pass that writes 48 blocks and reads 16
 moved 112 blocks; claimed, its bandwidth rises from 123 to 168 GB/s (`probe_strip.c`), which is
-worth 2-4% on the f32 plans and 0.3% in f64, with the same results (C only so far).
+worth 2-4% on the f32 plans and 0.3% in f64, with the same results (C and Rust alike; in
+Rust the asm! for DC ZVA and DCZID_EL0 is in `rust/src/sys.rs`).
 
 ## With the GPU (single precision)
 

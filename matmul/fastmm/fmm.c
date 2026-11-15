@@ -343,7 +343,11 @@ static const char *ERR_PLANS[NERR] = {"sw1", "dps48", "dps48x2", "r336", "r363",
 static const char *ERR_NAMES[NERR] = {"ESW", "ED48", "ED48D48", "ER336", "ER363", "ER633", "EG"};
 #define FMM_DEFAULT_GROWTH 1.0  /* the budget max_growth = 0 means: no less accurate than the GEMM */
 #define PLAN_TIE 0.02           /* plans predicted within 2% of the fastest are ties ... */
-#define PLAN_TIE_GAIN 0.10      /* ... which a plan predicted at least 10% more accurate wins */
+#define PLAN_TIE_GAIN 0.25      /* ... which a plan predicted at least 25% more accurate wins: the error model
+                                 * is good to about 25%, and smaller predicted gains picked the less accurate
+                                 * plan at 6912 in both precisions (results/final_campaign_2026-11-15.txt);
+                                 * an order rule between plans predicted equal (the more accurate level on
+                                 * top) was dropped for the same reason: right at 13824 f64, wrong at 6912 f64 */
 #define PLAN_TIE_GPU 0.08       /* the window with the GPU, whose plans repeat to 10-20% only (the same plan runs
                                  * slower right after CPU-only work than after another GPU plan): at 13824 the
                                  * two-level pipeline predicted 0.50 s and the single level predicted 0.53 ran
@@ -936,10 +940,9 @@ static double resolve_growth(double g) { return g == 0 ? FMM_DEFAULT_GROWTH : g;
 /* the cheapest plan with growth at most gmax (> 0), or with tie: faster first, more accurate
  * second -- of the admissible plans predicted within PLAN_TIE of the fastest (the predictions are
  * good to about that), one whose predicted error is at least PLAN_TIE_GAIN lower than the
- * fastest's (smaller differences are below what the error model resolves: it ranked two plans 8%
- * apart the wrong way round), the most accurate of those, and among plans predicted equal the one
- * with the more accurate level on top, else the fastest; so near-ties no longer flip the choice
- * between plans of different accuracy from one calibration to the next.
+ * fastest's (smaller differences are below what the error model resolves, about 25%), the most
+ * accurate of those, else the fastest; so near-ties no longer flip the choice between plans of
+ * clearly different accuracy from one calibration to the next.
  * -1 if no plan is admissible. */
 static double plan_pick(const calib_t *c, const errmod_t *e, shape_t s, double gmax, int tie, int *plan) {
     static ranked_t rk[8192];
@@ -949,14 +952,8 @@ static double plan_pick(const calib_t *c, const errmod_t *e, shape_t s, double g
             int pick = i;
             double gbest = plan_growth(e, rk[i].plan) * (1 - PLAN_TIE_GAIN);
             for (int j = i + 1; tie && j < cnt && rk[j].t <= rk[i].t * (1 + (c->gpu ? PLAN_TIE_GPU : PLAN_TIE)); j++) {
-                double g = plan_growth(e, rk[j].plan), gp = plan_growth(e, rk[pick].plan);
+                double g = plan_growth(e, rk[j].plan);
                 if (g < gbest * (1 - 1e-9)) { gbest = g; pick = j; }
-                /* the same levels in another order are predicted equal; measured, the more accurate
-                 * level on top gives the smaller error (f64: R363 over R336 6.40e-15 against 6.72e-15
-                 * the other way round at 13824, R363 over R633 3.75e-15 against 4.07e-15 at 6912) */
-                else if (fabs(g - gp) <= 1e-9 * gp && !lv_leaf(PLV(rk[j].plan[0])) && !lv_leaf(PLV(rk[pick].plan[0])) &&
-                         e->f[PLV(rk[j].plan[0])] < e->f[PLV(rk[pick].plan[0])] * (1 - 1e-9))
-                    pick = j;
             }
             memcpy(plan, rk[pick].plan, sizeof rk[pick].plan);
             return rk[pick].t;

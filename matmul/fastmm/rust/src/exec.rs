@@ -96,6 +96,33 @@ real_impl!(f64, true, sys::dgemm);
 
 // ---- passes as row chunks ------------------------------------------------------------------
 
+/// One row of a pass: the kernel on the whole row, or, when the passes claim their output lines
+/// (sys::zva_block() > 0), tile by tile of 4 KB per stream, each tile's output lines claimed with
+/// DC ZVA just before the kernel writes them, as the C library's rows() does.  The kernel writes
+/// every element of every output tile, and only whole lines inside a tile are zeroed.
+#[inline(always)]
+fn row<T: Copy, const NI: usize, const NO: usize>(kern: fn(usize, [&[T]; NI], [&mut [T]; NO]), cols: usize,
+                                                  i: [&[T]; NI], mut o: [&mut [T]; NO], zb: usize) {
+    if zb == 0 {
+        kern(cols, i, o);
+        return;
+    }
+    let w = (4096 / std::mem::size_of::<T>()).max(1);
+    let mut c0 = 0;
+    while c0 < cols {
+        let wd = w.min(cols - c0);
+        let ii: [&[T]; NI] = std::array::from_fn(|b| &i[b][c0..c0 + wd]);
+        let mut it = o.iter_mut();
+        let oo: [&mut [T]; NO] = std::array::from_fn(|_| {
+            let t = &mut it.next().unwrap()[c0..c0 + wd];
+            sys::claim_lines(t, zb);
+            t
+        });
+        kern(wd, ii, oo);
+        c0 += wd;
+    }
+}
+
 /// rows r0..r1 of a pass from a grid of blocks of `rows` x `cols` (gc blocks per grid row) of a
 /// matrix x (leading dimension ldx) to R contiguous blocks (leading dimension cols): `out` holds
 /// those rows of every output block
@@ -114,6 +141,7 @@ pub struct Split<'a, T, const NB: usize, const R: usize> {
 impl<T: Copy, const NB: usize, const R: usize> Split<'_, T, NB, R> {
     fn run(mut self) {
         let (gc, rows, cols, ldx, x) = (self.gc, self.rows, self.cols, self.ldx, self.x);
+        let zb = sys::zva_block();
         for (k, r) in (self.r0..self.r1).enumerate() {
             let i: [&[T]; NB] = std::array::from_fn(|b| {
                 let s = ((b / gc) * rows + r) * ldx + (b % gc) * cols;
@@ -124,7 +152,7 @@ impl<T: Copy, const NB: usize, const R: usize> Split<'_, T, NB, R> {
                 let ch = it.next().unwrap();
                 &mut ch[k * cols..k * cols + cols]
             });
-            (self.kern)(cols, i, o);
+            row(self.kern, cols, i, o, zb);
         }
     }
 }
@@ -149,11 +177,12 @@ impl<T: Copy, const R: usize, const NB: usize> Merge<'_, T, R, NB> {
     fn run(mut self) {
         let (gc, cols, bs, ldy, inp) = (self.gc, self.cols, self.bs, self.ldy, self.inp);
         let _ = self.rows;
+        let zb = sys::zva_block();
         for (k, r) in (self.r0..self.r1).enumerate() {
             let i: [&[T]; R] = std::array::from_fn(|q| &inp[q * bs + r * cols..q * bs + r * cols + cols]);
             let mut it = self.segs.iter_mut().flat_map(|seg| seg[k * ldy..k * ldy + gc * cols].chunks_exact_mut(cols));
             let o: [&mut [T]; NB] = std::array::from_fn(|_| it.next().unwrap());
-            (self.kern)(cols, i, o);
+            row(self.kern, cols, i, o, zb);
         }
     }
 }

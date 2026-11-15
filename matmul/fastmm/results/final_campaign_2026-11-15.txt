@@ -1,0 +1,688 @@
+# campaign of the mixed-levels report on the library of 2026-11-15; 2026-11-15 14:51; Apple M4 Pro; logic 997a015 + working tree
+# kernels: # kernels 4x4x4_48_accurate_262 262 R 1110 SW dps7 36
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#     7.5   853 22-05:42:33 /usr/libexec/sysmond
+#     3.5 45691 02-16:15:00 /Applications/RustRover.app/Contents/MacOS/rustrover
+#     3.4   656 22-05:42:37 /System/Applications/Utilities/Activity Monitor.app/Contents/MacOS/Activity Monitor
+#     2.2 55372 16-07:29:09 /Applications/JetBrains Toolbox.app/Contents/MacOS/jetbrains-toolbox
+#     2.0 70825 01-05:25:05 /Users/greg/Library/Application Support/Claude/claude-code/2.1.325/485fdac4332e/claude.app/Contents/MacOS/claude
+## (1) calibration at 13824 f32  14:51
+# calibrating 409 entries (f32)
+#   factors over the GEMM: SW 1.048 D48 0.619 R336 0.547 R363 0.447 R633 0.602; D48/D48 over D48^2 2.185
+n=13824  f32  best R363+4/R336/G6     0.8975 s  classical 1.8062 blk2 1.6932 sw1 1.4507 sw2rec 1.3256 sw3rec 1.2282 sw4rec 1.5384 dps48 1.2376 dps48sw 1.1471 dps48x2 1.2635 r336 1.2157 r336x2 1.1576 r336x3 2.3489 swr336 1.1694
+         top: R363+4/R336/G6 0.8975, R363+4/R363/G6 0.9002, R336+3/R363/G6 0.9008, R336+4/R363/G6 0.9060, R363+3/R336/G6 0.9078, R363+4/D48/G6 0.9093  (840 plans)
+         error growth over classical: best 0.5 (pred. error 3.0e-06); <=16: R363+4/R363/G6 0.9002 s, <=8: R363+4/R363/G6 0.9002 s, <=4: R363+4/R363/G6 0.9002 s, <=2: R363+4/R363/G6 0.9002 s
+n=6912   f32  best R363+4/D48/G6      0.1356 s  classical 0.1945 blk2 0.2026 sw1 0.1835 sw2rec 0.1696 sw3rec 0.2139 sw4rec 0.3969 dps48 0.1534 dps48sw 0.1953 dps48x2 0.3542 r336 0.1611 r336x2 0.2169 swr336 0.1806
+         top: R363+4/D48/G6 0.1356, R363+4/R633/G6 0.1371, R336+4/R363/G6 0.1389, R633+4/R363/G6 0.1392, SW+4/R363/G6 0.1401, R363+4/R336/G6 0.1414  (328 plans)
+         error growth over classical: best 0.6 (pred. error 2.4e-06); <=16: R363+4/D48/G6 0.1356 s, <=8: R363+4/D48/G6 0.1356 s, <=4: R363+4/D48/G6 0.1356 s, <=2: R363+4/D48/G6 0.1356 s
+n=3456   f32  best R363/G6            0.0202 s  classical 0.0245 blk2 0.0253 sw1 0.0227 sw2rec 0.0291 sw3rec 0.0552 dps48 0.0252 dps48sw 0.0502 r336 0.0243 swr336 0.0342
+         top: R363/G6 0.0202, R363/G4 0.0205, D48/G6 0.0205, R336/G6 0.0206, R336/G4 0.0210, R633/G6 0.0211  (92 plans)
+         error growth over classical: best 0.4 (pred. error 1.2e-06); <=16: R363/G6 0.0202 s, <=8: R363/G6 0.0202 s, <=4: R363/G6 0.0202 s, <=2: R363/G6 0.0202 s
+n=1728   f32  best G                  0.0028 s  classical 0.0028 blk2 0.0031 sw1 0.0038 sw2rec 0.0075 dps48 0.0071 r336 0.0045
+         top: G 0.0028, B2 0.0031, R363/G6 0.0034, R363/G4 0.0034, SW/G6 0.0034, SW/G3 0.0034  (26 plans)
+         error growth over classical: best 1.0 (pred. error 2.0e-06); <=16: G 0.0028 s, <=8: G 0.0028 s, <=4: G 0.0028 s, <=2: G 0.0028 s
+# error model: classical scale 2.27e-06 at n = 2304 (x sqrt(n / 2304)); factor per level SW 1.05, D48 0.62, R336 0.55, R363 0.45, R633 0.60
+## (1) calibration at 13824 f64  14:56
+# calibrating 409 entries (f64)
+#   factors over the GEMM: SW 0.970 D48 0.720 R336 0.649 R363 0.473 R633 0.636; D48/D48 over D48^2 1.534
+n=13824  f64  best SW/R336+2/R363/G6   3.1931 s  classical 6.7953 blk2 6.4228 sw1 5.5394 sw2rec 5.0332 sw3rec 4.6085 sw4rec 4.4243 dps48 4.8285 dps48sw 4.4034 dps48x2 3.7642 r336 4.7875 r336x2 3.5448 r336x3 7.2789 swr336 4.2017
+         top: SW/R336+2/R363/G6 3.1931, SW/R363+3/R633/G6 3.2006, R363+3/R336/G3 3.2063, SW/R363+3/D48/G6 3.2162, SW/R363+4/D48/G6 3.2188, SW/R633+3/R363/G6 3.2310  (1032 plans)
+         error growth over classical: best 0.7 (pred. error 6.6e-15); <=16: R363+3/R336/G3 3.2063 s, <=8: R363+3/R336/G3 3.2063 s, <=4: R363+3/R336/G3 3.2063 s, <=2: R363+3/R336/G3 3.2063 s
+n=6912   f64  best R336+2/R363/G6     0.4442 s  classical 0.7706 blk2 0.7842 sw1 0.7071 sw2rec 0.6464 sw3rec 0.6201 sw4rec 0.7513 dps48 0.6052 dps48sw 0.5784 dps48x2 0.6380 r336 0.5883 r336x2 0.5768 swr336 0.5788
+         top: R336+2/R363/G6 0.4442, R363+3/R633/G6 0.4453, R363+3/D48/G6 0.4475, R363+4/D48/G6 0.4479, R633+3/R363/G6 0.4496, R363+3/R336/G6 0.4499  (382 plans)
+         error growth over classical: best 0.5 (pred. error 3.1e-15); <=16: R363+3/R336/G6 0.4499 s, <=8: R363+3/R336/G6 0.4499 s, <=4: R363+3/R336/G6 0.4499 s, <=2: R363+3/R336/G6 0.4499 s
+n=3456   f64  best R363/G4            0.0706 s  classical 0.0967 blk2 0.0986 sw1 0.0894 sw2rec 0.0856 sw3rec 0.1044 dps48 0.0761 dps48sw 0.0948 r336 0.0797 swr336 0.0914
+         top: R363/G4 0.0706, R363/G3 0.0708, R363/G6 0.0710, SW+4/R363/G6 0.0711, R336/G3 0.0712, SW+4/D48/G6 0.0713  (122 plans)
+         error growth over classical: best 0.5 (pred. error 2.2e-15); <=16: R363/G4 0.0706 s, <=8: R363/G4 0.0706 s, <=4: R363/G4 0.0706 s, <=2: R363/G4 0.0706 s
+n=1728   f64  best R363/G6            0.0101 s  classical 0.0122 blk2 0.0131 sw1 0.0115 sw2rec 0.0142 dps48 0.0127 r336 0.0123
+         top: R363/G6 0.0101, R363/G4 0.0102, R633/G6 0.0104, R363/G3 0.0104, D48/G6 0.0104, R633/G4 0.0104  (32 plans)
+         error growth over classical: best 0.5 (pred. error 1.6e-15); <=16: R363/G6 0.0101 s, <=8: R363/G6 0.0101 s, <=4: R363/G6 0.0101 s, <=2: R363/G6 0.0101 s
+# error model: classical scale 3.84e-15 at n = 2304 (x sqrt(n / 2304)); factor per level SW 0.97, D48 0.72, R336 0.65, R363 0.47, R633 0.64
+## (1) calibration at 13824 f32, the GPU entries  15:09
+# calibrating 464 entries (f32)
+#   factors over the GEMM: SW 1.048 D48 0.619 R336 0.547 R363 0.447 R633 0.602; D48/D48 over D48^2 2.185
+n=13824  f32  best R363+4/R336/G6M    0.4907 s  classical 1.6614 blk2 1.6692 sw1 1.4506 sw2rec 1.3449 sw3rec 1.2247 sw4rec 1.5438 dps48 1.2406 dps48sw 1.1441 dps48x2 1.2645 r336 1.2406 r336x2 1.1579 r336x3 2.3822 swr336 1.1495
+         top: R363+4/R336/G6M 0.4907, R336+4/R363/G6M 0.5029, R363/G6M 0.5255, R363+4/D48/G6M 0.5275, R336/G6M 0.5287, SW+3/R363/G6M 0.5288  (1000 plans)
+         error growth over classical: best 0.5 (pred. error 3.0e-06); <=16: R363/G6M 0.5255 s, <=8: R363/G6M 0.5255 s, <=4: R363/G6M 0.5255 s, <=2: R363/G6M 0.5255 s
+n=6912   f32  best R363/G6M           0.0735 s  classical 0.1947 blk2 0.2031 sw1 0.1862 sw2rec 0.1691 sw3rec 0.2146 sw4rec 0.3880 dps48 0.1524 dps48sw 0.1959 dps48x2 0.3555 r336 0.1583 r336x2 0.2159 swr336 0.1805
+         top: R363/G6M 0.0735, D48/G6M 0.0747, R363/GM 0.0759, R336/G6M 0.0760, R633/G6M 0.0770, D48/GM 0.0779  (378 plans)
+         error growth over classical: best 0.4 (pred. error 1.8e-06); <=16: R363/G6M 0.0735 s, <=8: R363/G6M 0.0735 s, <=4: R363/G6M 0.0735 s, <=2: R363/G6M 0.0735 s
+n=3456   f32  best R633/G6M           0.0124 s  classical 0.0246 blk2 0.0253 sw1 0.0227 sw2rec 0.0292 sw3rec 0.0540 dps48 0.0252 dps48sw 0.0489 r336 0.0243 swr336 0.0341
+         top: R633/G6M 0.0124, R363/G6M 0.0130, D48/G6M 0.0130, R336/G6M 0.0130, SW/GM 0.0148, R363/GM 0.0159  (106 plans)
+         error growth over classical: best 0.6 (pred. error 1.7e-06); <=16: R363/G6M 0.0130 s, <=8: R363/G6M 0.0130 s, <=4: R363/G6M 0.0130 s, <=2: R363/G6M 0.0130 s
+n=1728   f32  best G                  0.0028 s  classical 0.0028 blk2 0.0031 sw1 0.0038 sw2rec 0.0073 dps48 0.0071 r336 0.0045
+         top: G 0.0028, SW/G6M 0.0030, B2 0.0031, R363/G6 0.0034, SW/GM 0.0034, R363/G4 0.0034  (28 plans)
+         error growth over classical: best 1.0 (pred. error 2.0e-06); <=16: G 0.0028 s, <=8: G 0.0028 s, <=4: G 0.0028 s, <=2: G 0.0028 s
+# error model: classical scale 2.27e-06 at n = 2304 (x sqrt(n / 2304)); factor per level SW 1.05, D48 0.62, R336 0.55, R363 0.45, R633 0.60
+# installed for the library: 6964ebd4b31b397728a1170e881176b7 f32, b7c1a9f57bc88dd5a5f4201459f8d35b f64, 80ebe3c44b13f68e5b0a520f3d1ff343 f32 GPU entries
+# f32 error entries: ESW 2304 2304 2304 2.38369141e-06;ED48 2304 2304 2304 1.40658641e-06;ED48D48 2304 2304 2304 1.90163551e-06;ER336 2304 2304 2304 1.24437816e-06;ER363 2304 2304 2304 1.01678143e-06;ER633 2304 2304 2304 1.36823032e-06;EG 2304 2304 2304 2.27348641e-06;
+# f64 error entries: ESW 2304 2304 2304 3.7218021e-15;ED48 2304 2304 2304 2.76257475e-15;ED48D48 2304 2304 2304 3.05034295e-15;ER336 2304 2304 2304 2.48919496e-15;ER363 2304 2304 2304 1.81293968e-15;ER633 2304 2304 2304 2.44123359e-15;EG 2304 2304 2304 3.83690938e-15;
+## (2) square n=3456 f  15:17
+# auto n=3456   f32: plan R363/G6, predicted 0.020 s
+# auto:none n=3456   f32: plan R363/G6, predicted 0.020 s
+classical  n=3456   f32  min   0.0246 s  med   0.0247 s   3339.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  pred 0.025 s (-0.7%)  perr 2.78e-06  err64 3.04e-06
+auto       n=3456   f32  min   0.0203 s  med   0.0206 s   4002.7 GFLOP/s(2mkn)  speedup 1.199  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.017 P 0.002  plan R363/G6  pred 0.020 s (-1.6%)  perr 1.25e-06  err64 1.28e-06
+auto:none  n=3456   f32  min   0.0205 s  med   0.0206 s   3999.5 GFLOP/s(2mkn)  speedup 1.198  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.017 P 0.002  plan R363/G6  pred 0.020 s (-1.7%)  perr 1.25e-06  err64 1.28e-06
+plan=R363/G6 n=3456   f32  min   0.0204 s  med   0.0207 s   3993.1 GFLOP/s(2mkn)  speedup 1.196  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.017 P 0.002  plan R363/G6  pred 0.020 s (-1.8%)  perr 1.25e-06  err64 1.28e-06
+plan=D48/G6 n=3456   f32  min   0.0209 s  med   0.0210 s   3927.7 GFLOP/s(2mkn)  speedup 1.176  relerr 3.83e-06  split L 0.001 R 0.001 gemm 0.017 P 0.001  plan D48/G6  pred 0.021 s (-2.4%)  perr 1.72e-06  err64 2.01e-06
+plan=R336/G6 n=3456   f32  min   0.0208 s  med   0.0209 s   3945.9 GFLOP/s(2mkn)  speedup 1.182  relerr 3.10e-06  split L 0.002 R 0.001 gemm 0.017 P 0.001  plan R336/G6  pred 0.021 s (-1.6%)  perr 1.52e-06  err64 1.68e-06
+plan=SW+3/R363/G6 n=3456   f32  min   0.0235 s  med   0.0253 s   3256.7 GFLOP/s(2mkn)  speedup 0.975  relerr 3.10e-06  split L 0.001 R 0.001 gemm 0.023 P 0.001  plan SW+3/R363/G6  pred 0.026 s (+1.9%)  perr 2.85e-06  err64 1.84e-06
+## (2) square n=3456 d  15:17
+# auto n=3456   f64: plan R363/G4, predicted 0.071 s
+# auto:none n=3456   f64: plan R363/G4, predicted 0.071 s
+classical  n=3456   f64  min   0.0968 s  med   0.0970 s    850.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.100 P 0.000  plan G  pred 0.097 s (-0.3%)  perr 4.70e-15  err64 4.75e-15
+auto       n=3456   f64  min   0.0704 s  med   0.0719 s   1147.5 GFLOP/s(2mkn)  speedup 1.349  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.066 P 0.003  plan R363/G4  pred 0.071 s (-1.9%)  perr 2.22e-15  err64 2.76e-15
+auto:none  n=3456   f64  min   0.0712 s  med   0.0719 s   1147.7 GFLOP/s(2mkn)  speedup 1.349  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.066 P 0.003  plan R363/G4  pred 0.071 s (-1.9%)  perr 2.22e-15  err64 2.76e-15
+plan=R363/G3 n=3456   f64  min   0.0708 s  med   0.0716 s   1153.7 GFLOP/s(2mkn)  speedup 1.356  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.066 P 0.003  plan R363/G3  pred 0.071 s (-1.0%)  perr 2.22e-15  err64 2.76e-15
+plan=R363/G4 n=3456   f64  min   0.0711 s  med   0.0714 s   1156.8 GFLOP/s(2mkn)  speedup 1.360  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.065 P 0.003  plan R363/G4  pred 0.071 s (-1.1%)  perr 2.22e-15  err64 2.76e-15
+plan=R363/G6 n=3456   f64  min   0.0713 s  med   0.0723 s   1141.5 GFLOP/s(2mkn)  speedup 1.342  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.066 P 0.003  plan R363/G6  pred 0.071 s (-1.9%)  perr 2.22e-15  err64 2.76e-15
+plan=D48/G6 n=3456   f64  min   0.0732 s  med   0.0741 s   1114.5 GFLOP/s(2mkn)  speedup 1.310  relerr 4.75e-15  split L 0.002 R 0.002 gemm 0.067 P 0.002  plan D48/G6  pred 0.074 s (-0.3%)  perr 3.38e-15  err64 3.70e-15
+plan=SW+3/R363/G6 n=3456   f64  min   0.0700 s  med   0.0727 s   1135.0 GFLOP/s(2mkn)  speedup 1.334  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.067 P 0.001  plan SW+3/R363/G6  pred 0.073 s (-0.3%)  perr 3.30e-15  err64 3.47e-15
+plan=SW+4/R363/G6 n=3456   f64  min   0.0684 s  med   0.0720 s   1146.0 GFLOP/s(2mkn)  speedup 1.347  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.066 P 0.001  plan SW+4/R363/G6  pred 0.071 s (-1.4%)  perr 3.30e-15  err64 3.47e-15
+## (2) square n=6912 f  15:17
+# auto n=6912   f32: plan R336+4/R363/G6, predicted 0.138 s
+# auto:none n=6912   f32: plan R363+4/D48/G6, predicted 0.137 s
+classical  n=6912   f32  min   0.1940 s  med   0.1942 s   3401.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.201 P 0.000  plan G  pred 0.195 s (+0.3%)  perr 3.94e-06  err64 3.85e-06
+auto       n=6912   f32  min   0.1380 s  med   0.1382 s   4777.6 GFLOP/s(2mkn)  speedup 1.405  relerr 3.96e-06  split L 0.006 R 0.004 gemm 0.124 P 0.004  plan R336+4/R363/G6  pred 0.138 s (+0.1%)  perr 2.11e-06  err64 2.44e-06
+auto:none  n=6912   f32  min   0.1350 s  med   0.1366 s   4833.5 GFLOP/s(2mkn)  speedup 1.421  relerr 4.00e-06  split L 0.004 R 0.004 gemm 0.122 P 0.007  plan R363+4/D48/G6  pred 0.137 s (+0.0%)  perr 2.38e-06  err64 2.26e-06
+plan=D48/G n=6912   f32  min   0.1499 s  med   0.1518 s   4351.0 GFLOP/s(2mkn)  speedup 1.279  relerr 4.18e-06  split L 0.005 R 0.005 gemm 0.137 P 0.005  plan D48/G  pred 0.152 s (+0.4%)  perr 2.44e-06  err64 2.81e-06
+plan=R336/G n=6912   f32  min   0.1589 s  med   0.1602 s   4121.7 GFLOP/s(2mkn)  speedup 1.212  relerr 3.91e-06  split L 0.006 R 0.004 gemm 0.146 P 0.005  plan R336/G  pred 0.158 s (-1.2%)  perr 2.16e-06  err64 2.27e-06
+plan=R363/G n=6912   f32  min   0.1483 s  med   0.1548 s   4266.6 GFLOP/s(2mkn)  speedup 1.254  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.143 P 0.007  plan R363/G  pred 0.148 s (-4.3%)  perr 1.76e-06  err64 1.76e-06
+plan=D48+4/D48/G6 n=6912   f32  min   0.1431 s  med   0.1435 s   4602.1 GFLOP/s(2mkn)  speedup 1.353  relerr 4.32e-06  split L 0.005 R 0.005 gemm 0.130 P 0.005  plan D48+4/D48/G6  pred 0.143 s (-0.5%)  perr 3.29e-06  err64 2.94e-06
+plan=R363+4/D48/G6 n=6912   f32  min   0.1362 s  med   0.1371 s   4817.0 GFLOP/s(2mkn)  speedup 1.416  relerr 4.00e-06  split L 0.004 R 0.004 gemm 0.123 P 0.007  plan R363+4/D48/G6  pred 0.137 s (-0.3%)  perr 2.38e-06  err64 2.26e-06
+plan=R363+4/R633/G6 n=6912   f32  min   0.1369 s  med   0.1376 s   4800.1 GFLOP/s(2mkn)  speedup 1.411  relerr 4.14e-06  split L 0.004 R 0.004 gemm 0.123 P 0.007  plan R363+4/R633/G6  pred 0.139 s (+0.7%)  perr 2.32e-06  err64 2.20e-06
+plan=SW+4/R363/G6 n=6912   f32  min   0.1395 s  med   0.1426 s   4631.1 GFLOP/s(2mkn)  speedup 1.362  relerr 3.96e-06  split L 0.004 R 0.004 gemm 0.132 P 0.003  plan SW+4/R363/G6  pred 0.141 s (-1.3%)  perr 4.03e-06  err64 2.22e-06
+plan=SW/D48+2/D48/G6 n=6912   f32  min   0.2904 s  med   0.2957 s   2233.3 GFLOP/s(2mkn)  speedup 0.657  relerr 5.05e-06  split L 0.012 R 0.012 gemm 0.258 P 0.013  plan SW/D48+2/D48/G6  perr 7.55e-06  err64 4.40e-06
+## (2) square n=6912 d  15:17
+# auto n=6912   f64: plan R363+3/R336/G6, predicted 0.450 s
+# auto:none n=6912   f64: plan R336+2/R363/G6, predicted 0.444 s
+classical  n=6912   f64  min   0.7641 s  med   0.7716 s    855.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.770 P 0.000  plan G  pred 0.771 s (-0.1%)  perr 6.65e-15  err64 6.69e-15
+auto       n=6912   f64  min   0.4421 s  med   0.4468 s   1478.3 GFLOP/s(2mkn)  speedup 1.727  relerr 7.03e-15  split L 0.008 R 0.007 gemm 0.420 P 0.012  plan R363+3/R336/G6  pred 0.450 s (+0.7%)  perr 3.12e-15  err64 4.16e-15
+auto:none  n=6912   f64  min   0.4421 s  med   0.4517 s   1462.3 GFLOP/s(2mkn)  speedup 1.708  relerr 8.30e-15  split L 0.012 R 0.007 gemm 0.423 P 0.008  plan R336+2/R363/G6  pred 0.444 s (-1.6%)  perr 3.12e-15  err64 3.66e-15
+plan=D48/G n=6912   f64  min   0.5997 s  med   0.6005 s   1099.8 GFLOP/s(2mkn)  speedup 1.285  relerr 7.79e-15  split L 0.009 R 0.009 gemm 0.574 P 0.009  plan D48/G  pred 0.605 s (+0.8%)  perr 4.78e-15  err64 4.89e-15
+plan=R336/G n=6912   f64  min   0.5858 s  med   0.5884 s   1122.5 GFLOP/s(2mkn)  speedup 1.311  relerr 6.78e-15  split L 0.012 R 0.007 gemm 0.563 P 0.007  plan R336/G  pred 0.588 s (-0.0%)  perr 4.31e-15  err64 4.53e-15
+plan=R363/G n=6912   f64  min   0.6303 s  med   0.6368 s   1037.1 GFLOP/s(2mkn)  speedup 1.212  relerr 6.78e-15  split L 0.007 R 0.007 gemm 0.609 P 0.011  plan R363/G  pred 0.637 s (-0.0%)  perr 3.14e-15  err64 2.86e-15
+plan=R336/R363/G n=6912   f64  min   0.5760 s  med   0.5824 s   1134.0 GFLOP/s(2mkn)  speedup 1.325  relerr 8.30e-15  split L 0.045 R 0.024 gemm 0.477 P 0.034  plan R336/R363/G  pred 0.577 s (-1.0%)  perr 3.12e-15  err64 3.66e-15
+plan=D48+4/D48/G6 n=6912   f64  min   0.4727 s  med   0.4747 s   1391.2 GFLOP/s(2mkn)  speedup 1.625  relerr 7.92e-15  split L 0.009 R 0.009 gemm 0.447 P 0.009  plan D48+4/D48/G6  pred 0.460 s (-3.1%)  perr 5.28e-15  err64 5.60e-15
+plan=R363+3/R633/G6 n=6912   f64  min   0.4467 s  med   0.4496 s   1468.9 GFLOP/s(2mkn)  speedup 1.716  relerr 6.74e-15  split L 0.008 R 0.007 gemm 0.423 P 0.011  plan R363+3/R633/G6  pred 0.445 s (-1.0%)  perr 3.06e-15  err64 3.75e-15
+plan=R363+2/R633/G6 n=6912   f64  min   0.4533 s  med   0.4553 s   1450.6 GFLOP/s(2mkn)  speedup 1.695  relerr 6.74e-15  split L 0.007 R 0.007 gemm 0.429 P 0.011  plan R363+2/R633/G6  pred 0.456 s (+0.2%)  perr 3.06e-15  err64 3.75e-15
+plan=R336+2/R363/G6 n=6912   f64  min   0.4524 s  med   0.4610 s   1432.8 GFLOP/s(2mkn)  speedup 1.674  relerr 8.30e-15  split L 0.012 R 0.007 gemm 0.432 P 0.007  plan R336+2/R363/G6  pred 0.444 s (-3.6%)  perr 3.12e-15  err64 3.66e-15
+plan=R363+4/D48/G6 n=6912   f64  min   0.4481 s  med   0.4514 s   1463.1 GFLOP/s(2mkn)  speedup 1.709  relerr 7.03e-15  split L 0.007 R 0.007 gemm 0.424 P 0.011  plan R363+4/D48/G6  pred 0.448 s (-0.8%)  perr 3.47e-15  err64 4.32e-15
+plan=SW/R363/G6 n=6912   f64  min   0.5213 s  med   0.5218 s   1265.7 GFLOP/s(2mkn)  speedup 1.479  relerr 7.79e-15  split L 0.020 R 0.021 gemm 0.454 P 0.026  plan SW/R363/G6  pred 0.518 s (-0.8%)  perr 4.67e-15  err64 4.43e-15
+plan=SW/D48+2/D48/G6 n=6912   f64  min   0.6291 s  med   0.6384 s   1034.5 GFLOP/s(2mkn)  speedup 1.209  relerr 9.70e-15  split L 0.024 R 0.024 gemm 0.568 P 0.022  plan SW/D48+2/D48/G6  perr 7.86e-15  err64 7.58e-15
+## (2) square n=13824 f  15:17
+# auto n=13824  f32: plan R336+4/R363/G6, predicted 0.885 s
+# auto:none n=13824  f32: plan R336+4/R363/G6, predicted 0.885 s
+classical  n=13824  f32  min   1.5645 s  med   1.5654 s   3375.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.565 P 0.000  plan G  pred 1.661 s (+6.1%)  perr 5.57e-06  err64 6.40e-06
+auto       n=13824  f32  min   0.8981 s  med   0.9111 s   5799.1 GFLOP/s(2mkn)  speedup 1.718  relerr 6.16e-06  split L 0.024 R 0.015 gemm 0.851 P 0.017  plan R336+4/R363/G6  pred 0.885 s (-2.8%)  perr 2.98e-06  err64 3.34e-06
+auto:none  n=13824  f32  min   0.8994 s  med   0.9044 s   5842.3 GFLOP/s(2mkn)  speedup 1.731  relerr 6.16e-06  split L 0.024 R 0.015 gemm 0.847 P 0.017  plan R336+4/R363/G6  pred 0.885 s (-2.1%)  perr 2.98e-06  err64 3.34e-06
+plan=D48/G n=13824  f32  min   1.2411 s  med   1.2536 s   4214.9 GFLOP/s(2mkn)  speedup 1.249  relerr 7.11e-06  split L 0.019 R 0.018 gemm 1.200 P 0.020  plan D48/G  pred 1.241 s (-1.0%)  perr 3.45e-06  err64 4.16e-06
+plan=R336/G n=13824  f32  min   1.2253 s  med   1.2533 s   4215.8 GFLOP/s(2mkn)  speedup 1.249  relerr 6.70e-06  split L 0.024 R 0.015 gemm 1.226 P 0.017  plan R336/G  pred 1.241 s (-1.0%)  perr 3.05e-06  err64 3.80e-06
+plan=R363/G n=13824  f32  min   1.2429 s  med   1.2836 s   4116.3 GFLOP/s(2mkn)  speedup 1.220  relerr 6.70e-06  split L 0.015 R 0.015 gemm 1.228 P 0.028  plan R363/G  pred 1.218 s (-5.1%)  perr 2.49e-06  err64 2.73e-06
+plan=R336/R363/G n=13824  f32  min   1.1548 s  med   1.1577 s   4563.8 GFLOP/s(2mkn)  speedup 1.352  relerr 6.16e-06  split L 0.088 R 0.048 gemm 0.939 P 0.082  plan R336/R363/G  pred 1.158 s (+0.0%)  perr 2.98e-06  err64 3.34e-06
+plan=D48+4/D48/G6 n=13824  f32  min   0.9384 s  med   0.9388 s   5627.8 GFLOP/s(2mkn)  speedup 1.667  relerr 7.01e-06  split L 0.018 R 0.018 gemm 0.883 P 0.019  plan D48+4/D48/G6  pred 0.935 s (-0.4%)  perr 4.66e-06  err64 4.35e-06
+plan=R363+3/D48/G6 n=13824  f32  min   0.8918 s  med   0.9029 s   5852.0 GFLOP/s(2mkn)  speedup 1.734  relerr 6.43e-06  split L 0.015 R 0.015 gemm 0.844 P 0.026  plan R363+3/D48/G6  pred 0.913 s (+1.1%)  perr 3.37e-06  err64 3.49e-06
+plan=R363+4/R363/G6 n=13824  f32  min   0.8973 s  med   0.9025 s   5854.4 GFLOP/s(2mkn)  speedup 1.735  relerr 6.57e-06  split L 0.015 R 0.015 gemm 0.844 P 0.027  plan R363+4/R363/G6  pred 0.905 s (+0.3%)  perr 2.43e-06  err64 2.46e-06
+plan=R363+4/R336/G6 n=13824  f32  min   0.8993 s  med   0.9032 s   5849.8 GFLOP/s(2mkn)  speedup 1.733  relerr 6.43e-06  split L 0.015 R 0.015 gemm 0.844 P 0.028  plan R363+4/R336/G6  pred 0.908 s (+0.5%)  perr 2.98e-06  err64 3.33e-06
+plan=R336+2/R363/G6 n=13824  f32  min   0.9371 s  med   0.9405 s   5617.7 GFLOP/s(2mkn)  speedup 1.664  relerr 6.16e-06  split L 0.024 R 0.015 gemm 0.888 P 0.017  plan R336+2/R363/G6  pred 0.988 s (+5.0%)  perr 2.98e-06  err64 3.34e-06
+plan=SW/D48+2/D48/G6 n=13824  f32  min   1.2955 s  med   1.2988 s   4067.9 GFLOP/s(2mkn)  speedup 1.205  relerr 7.87e-06  split L 0.047 R 0.047 gemm 1.161 P 0.047  plan SW/D48+2/D48/G6  pred 1.326 s (+2.1%)  perr 1.07e-05  err64 6.30e-06
+## (2) square n=13824 d  15:18
+# auto n=13824  f64: plan R363+3/R336/G3, predicted 3.206 s
+# auto:none n=13824  f64: plan SW/R336+2/R363/G6, predicted 3.193 s
+classical  n=13824  f64  min   7.0206 s  med   7.0701 s    747.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 7.097 P 0.000  plan G  pred 6.795 s (-3.9%)  perr 9.40e-15  err64 1.23e-14
+auto       n=13824  f64  min   3.2877 s  med   3.2932 s   1604.4 GFLOP/s(2mkn)  speedup 2.147  relerr 1.33e-14  split L 0.034 R 0.033 gemm 3.179 P 0.047  plan R363+3/R336/G3  pred 3.206 s (-2.6%)  perr 4.42e-15  err64 6.40e-15
+auto:none  n=13824  f64  min   3.2548 s  med   3.2701 s   1615.8 GFLOP/s(2mkn)  speedup 2.162  relerr 1.20e-14  split L 0.127 R 0.088 gemm 2.980 P 0.079  plan SW/R336+2/R363/G6  pred 3.193 s (-2.4%)  perr 6.57e-15  err64 8.68e-15
+plan=D48/G n=13824  f64  min   5.0565 s  med   5.1085 s   1034.3 GFLOP/s(2mkn)  speedup 1.384  relerr 1.40e-14  split L 0.041 R 0.040 gemm 4.973 P 0.038  plan D48/G  pred 4.828 s (-5.5%)  perr 6.77e-15  err64 7.80e-15
+plan=R336/G n=13824  f64  min   5.0412 s  med   5.0992 s   1036.2 GFLOP/s(2mkn)  speedup 1.387  relerr 1.18e-14  split L 0.053 R 0.032 gemm 4.991 P 0.030  plan R336/G  pred 4.787 s (-6.1%)  perr 6.10e-15  err64 7.21e-15
+plan=R363/G n=13824  f64  min   5.1512 s  med   5.2180 s   1012.6 GFLOP/s(2mkn)  speedup 1.355  relerr 1.30e-14  split L 0.033 R 0.033 gemm 5.096 P 0.046  plan R363/G  pred 4.846 s (-7.1%)  perr 4.44e-15  err64 4.97e-15
+plan=R336/R363/G n=13824  f64  min   3.6576 s  med   3.6720 s   1438.9 GFLOP/s(2mkn)  speedup 1.925  relerr 1.45e-14  split L 0.196 R 0.104 gemm 3.236 P 0.137  plan R336/R363/G  pred 3.545 s (-3.5%)  perr 4.42e-15  err64 6.72e-15
+plan=D48+4/D48/G6 n=13824  f64  min   3.7270 s  med   3.7569 s   1406.4 GFLOP/s(2mkn)  speedup 1.882  relerr 1.38e-14  split L 0.041 R 0.041 gemm 3.634 P 0.039  plan D48+4/D48/G6  pred 3.745 s (-0.3%)  perr 7.47e-15  err64 8.28e-15
+plan=R363+3/D48/G6 n=13824  f64  min   3.5591 s  med   3.5596 s   1484.3 GFLOP/s(2mkn)  speedup 1.986  relerr 1.25e-14  split L 0.034 R 0.033 gemm 3.459 P 0.047  plan R363+3/D48/G6  pred 3.454 s (-3.0%)  perr 4.90e-15  err64 5.81e-15
+plan=R363+3/R336/G3 n=13824  f64  min   3.2832 s  med   3.2982 s   1602.0 GFLOP/s(2mkn)  speedup 2.144  relerr 1.33e-14  split L 0.033 R 0.033 gemm 3.184 P 0.046  plan R363+3/R336/G3  pred 3.206 s (-2.8%)  perr 4.42e-15  err64 6.40e-15
+plan=R363+4/R336/G3 n=13824  f64  min   3.2671 s  med   3.2850 s   1608.4 GFLOP/s(2mkn)  speedup 2.152  relerr 1.33e-14  split L 0.032 R 0.031 gemm 3.178 P 0.047  plan R363+4/R336/G3  pred 3.249 s (-1.1%)  perr 4.42e-15  err64 6.40e-15
+plan=R363+2/R336/G3 n=13824  f64  min   3.2917 s  med   3.3104 s   1596.1 GFLOP/s(2mkn)  speedup 2.136  relerr 1.33e-14  split L 0.033 R 0.032 gemm 3.197 P 0.047  plan R363+2/R336/G3  pred 3.260 s (-1.5%)  perr 4.42e-15  err64 6.40e-15
+plan=R336+3/R363/G3 n=13824  f64  min   3.2553 s  med   3.2760 s   1612.8 GFLOP/s(2mkn)  speedup 2.158  relerr 1.45e-14  split L 0.053 R 0.032 gemm 3.164 P 0.030  plan R336+3/R363/G3  pred 3.276 s (+0.0%)  perr 4.42e-15  err64 6.72e-15
+plan=SW/D48+2/D48/G6 n=13824  f64  min   3.3518 s  med   3.3562 s   1574.3 GFLOP/s(2mkn)  speedup 2.107  relerr 1.45e-14  split L 0.101 R 0.101 gemm 3.088 P 0.093  plan SW/D48+2/D48/G6  pred 3.282 s (-2.2%)  perr 1.11e-14  err64 1.24e-14
+plan=SW/R363+3/R633/G6 n=13824  f64  min   3.2305 s  med   3.2307 s   1635.4 GFLOP/s(2mkn)  speedup 2.188  relerr 1.36e-14  split L 0.089 R 0.088 gemm 2.963 P 0.109  plan SW/R363+3/R633/G6  pred 3.201 s (-0.9%)  perr 6.45e-15  err64 8.66e-15
+## (2z) the picks without DC ZVA (FMM_ZVA=0) and with it, alternately, two rounds  15:23
+## FMM_ZVA=0 round 1
+plan=R363+4/R633/G6 n=6912   f32  min   0.1412 s  med   0.1415 s   4668.6 GFLOP/s(2mkn)  speedup 0.000  relerr 4.14e-06  split L 0.005 R 0.005 gemm 0.125 P 0.007  plan R363+4/R633/G6  pred 0.139 s (-2.0%)  perr 2.32e-06  err64 2.20e-06
+plan=D48+4/D48/G6 n=6912   f32  min   0.1488 s  med   0.1498 s   4408.3 GFLOP/s(2mkn)  speedup 0.000  relerr 4.32e-06  split L 0.006 R 0.006 gemm 0.132 P 0.005  plan D48+4/D48/G6  pred 0.143 s (-4.7%)  perr 3.29e-06  err64 2.94e-06
+plan=R363+4/R363/G6 n=13824  f32  min   0.9089 s  med   0.9130 s   5786.9 GFLOP/s(2mkn)  speedup 0.000  relerr 6.57e-06  split L 0.019 R 0.020 gemm 0.845 P 0.028  plan R363+4/R363/G6  pred 0.905 s (-0.9%)  perr 2.43e-06  err64 2.46e-06
+plan=D48+4/D48/G6 n=13824  f32  min   0.9555 s  med   0.9560 s   5526.7 GFLOP/s(2mkn)  speedup 0.000  relerr 7.01e-06  split L 0.025 R 0.025 gemm 0.886 P 0.020  plan D48+4/D48/G6  pred 0.935 s (-2.2%)  perr 4.66e-06  err64 4.35e-06
+plan=R363+3/R633/G6 n=6912   f64  min   0.4484 s  med   0.4488 s   1471.7 GFLOP/s(2mkn)  speedup 0.000  relerr 6.74e-15  split L 0.010 R 0.010 gemm 0.418 P 0.012  plan R363+3/R633/G6  pred 0.445 s (-0.8%)  perr 3.06e-15  err64 3.75e-15
+plan=D48+4/D48/G6 n=6912   f64  min   0.4740 s  med   0.4782 s   1381.1 GFLOP/s(2mkn)  speedup 0.000  relerr 7.92e-15  split L 0.012 R 0.012 gemm 0.443 P 0.010  plan D48+4/D48/G6  pred 0.460 s (-3.8%)  perr 5.28e-15  err64 5.60e-15
+plan=R363+4/R336/G3 n=13824  f64  min   3.2867 s  med   3.2933 s   1604.4 GFLOP/s(2mkn)  speedup 0.000  relerr 1.33e-14  split L 0.039 R 0.039 gemm 3.170 P 0.049  plan R363+4/R336/G3  pred 3.249 s (-1.4%)  perr 4.42e-15  err64 6.40e-15
+plan=D48+4/D48/G6 n=13824  f64  min   3.7782 s  med   3.7862 s   1395.5 GFLOP/s(2mkn)  speedup 0.000  relerr 1.38e-14  split L 0.050 R 0.050 gemm 3.644 P 0.040  plan D48+4/D48/G6  pred 3.745 s (-1.1%)  perr 7.47e-15  err64 8.28e-15
+## FMM_ZVA=1 round 1
+plan=R363+4/R633/G6 n=6912   f32  min   0.1370 s  med   0.1386 s   4766.6 GFLOP/s(2mkn)  speedup 0.000  relerr 4.14e-06  split L 0.004 R 0.004 gemm 0.123 P 0.007  plan R363+4/R633/G6  pred 0.139 s (+0.0%)  perr 2.32e-06  err64 2.20e-06
+plan=D48+4/D48/G6 n=6912   f32  min   0.1452 s  med   0.1453 s   4544.4 GFLOP/s(2mkn)  speedup 0.000  relerr 4.32e-06  split L 0.005 R 0.005 gemm 0.131 P 0.005  plan D48+4/D48/G6  pred 0.143 s (-1.8%)  perr 3.29e-06  err64 2.94e-06
+plan=R363+4/R363/G6 n=13824  f32  min   0.9008 s  med   0.9009 s   5864.9 GFLOP/s(2mkn)  speedup 0.000  relerr 6.57e-06  split L 0.016 R 0.016 gemm 0.842 P 0.028  plan R363+4/R363/G6  pred 0.905 s (+0.5%)  perr 2.43e-06  err64 2.46e-06
+plan=D48+4/D48/G6 n=13824  f32  min   0.9405 s  med   0.9415 s   5611.7 GFLOP/s(2mkn)  speedup 0.000  relerr 7.01e-06  split L 0.020 R 0.020 gemm 0.884 P 0.020  plan D48+4/D48/G6  pred 0.935 s (-0.7%)  perr 4.66e-06  err64 4.35e-06
+plan=R363+3/R633/G6 n=6912   f64  min   0.4465 s  med   0.4504 s   1466.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.74e-15  split L 0.008 R 0.008 gemm 0.422 P 0.012  plan R363+3/R633/G6  pred 0.445 s (-1.1%)  perr 3.06e-15  err64 3.75e-15
+plan=D48+4/D48/G6 n=6912   f64  min   0.4671 s  med   0.4677 s   1412.0 GFLOP/s(2mkn)  speedup 0.000  relerr 7.92e-15  split L 0.010 R 0.010 gemm 0.439 P 0.010  plan D48+4/D48/G6  pred 0.460 s (-1.6%)  perr 5.28e-15  err64 5.60e-15
+plan=R363+4/R336/G3 n=13824  f64  min   3.2616 s  med   3.2771 s   1612.3 GFLOP/s(2mkn)  speedup 0.000  relerr 1.33e-14  split L 0.033 R 0.034 gemm 3.165 P 0.047  plan R363+4/R336/G3  pred 3.249 s (-0.9%)  perr 4.42e-15  err64 6.40e-15
+plan=D48+4/D48/G6 n=13824  f64  min   3.7501 s  med   3.7572 s   1406.3 GFLOP/s(2mkn)  speedup 0.000  relerr 1.38e-14  split L 0.040 R 0.040 gemm 3.638 P 0.039  plan D48+4/D48/G6  pred 3.745 s (-0.3%)  perr 7.47e-15  err64 8.28e-15
+## FMM_ZVA=0 round 2
+plan=R363+4/R633/G6 n=6912   f32  min   0.1396 s  med   0.1419 s   4654.0 GFLOP/s(2mkn)  speedup 0.000  relerr 4.14e-06  split L 0.005 R 0.005 gemm 0.125 P 0.007  plan R363+4/R633/G6  pred 0.139 s (-2.3%)  perr 2.32e-06  err64 2.20e-06
+plan=D48+4/D48/G6 n=6912   f32  min   0.1490 s  med   0.1494 s   4420.4 GFLOP/s(2mkn)  speedup 0.000  relerr 4.32e-06  split L 0.006 R 0.006 gemm 0.132 P 0.005  plan D48+4/D48/G6  pred 0.143 s (-4.5%)  perr 3.29e-06  err64 2.94e-06
+plan=R363+4/R363/G6 n=13824  f32  min   0.9076 s  med   0.9129 s   5788.0 GFLOP/s(2mkn)  speedup 0.000  relerr 6.57e-06  split L 0.019 R 0.020 gemm 0.850 P 0.029  plan R363+4/R363/G6  pred 0.905 s (-0.9%)  perr 2.43e-06  err64 2.46e-06
+plan=D48+4/D48/G6 n=13824  f32  min   0.9559 s  med   0.9585 s   5512.4 GFLOP/s(2mkn)  speedup 0.000  relerr 7.01e-06  split L 0.026 R 0.026 gemm 0.886 P 0.021  plan D48+4/D48/G6  pred 0.935 s (-2.5%)  perr 4.66e-06  err64 4.35e-06
+plan=R363+3/R633/G6 n=6912   f64  min   0.4512 s  med   0.4517 s   1462.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.74e-15  split L 0.010 R 0.010 gemm 0.420 P 0.013  plan R363+3/R633/G6  pred 0.445 s (-1.4%)  perr 3.06e-15  err64 3.75e-15
+plan=D48+4/D48/G6 n=6912   f64  min   0.4760 s  med   0.4764 s   1386.3 GFLOP/s(2mkn)  speedup 0.000  relerr 7.92e-15  split L 0.013 R 0.013 gemm 0.441 P 0.010  plan D48+4/D48/G6  pred 0.460 s (-3.4%)  perr 5.28e-15  err64 5.60e-15
+plan=R363+4/R336/G3 n=13824  f64  min   3.2570 s  med   3.2967 s   1602.7 GFLOP/s(2mkn)  speedup 0.000  relerr 1.33e-14  split L 0.038 R 0.038 gemm 3.163 P 0.048  plan R363+4/R336/G3  pred 3.249 s (-1.5%)  perr 4.42e-15  err64 6.40e-15
+plan=D48+4/D48/G6 n=13824  f64  min   3.7341 s  med   3.7434 s   1411.4 GFLOP/s(2mkn)  speedup 0.000  relerr 1.38e-14  split L 0.049 R 0.049 gemm 3.609 P 0.040  plan D48+4/D48/G6  pred 3.745 s (+0.0%)  perr 7.47e-15  err64 8.28e-15
+## FMM_ZVA=1 round 2
+plan=R363+4/R633/G6 n=6912   f32  min   0.1369 s  med   0.1371 s   4818.2 GFLOP/s(2mkn)  speedup 0.000  relerr 4.14e-06  split L 0.004 R 0.004 gemm 0.125 P 0.007  plan R363+4/R633/G6  pred 0.139 s (+1.1%)  perr 2.32e-06  err64 2.20e-06
+plan=D48+4/D48/G6 n=6912   f32  min   0.1438 s  med   0.1452 s   4549.0 GFLOP/s(2mkn)  speedup 0.000  relerr 4.32e-06  split L 0.005 R 0.005 gemm 0.131 P 0.005  plan D48+4/D48/G6  pred 0.143 s (-1.7%)  perr 3.29e-06  err64 2.94e-06
+plan=R363+4/R363/G6 n=13824  f32  min   0.8984 s  med   0.9024 s   5855.3 GFLOP/s(2mkn)  speedup 0.000  relerr 6.57e-06  split L 0.016 R 0.016 gemm 0.846 P 0.027  plan R363+4/R363/G6  pred 0.905 s (+0.3%)  perr 2.43e-06  err64 2.46e-06
+plan=D48+4/D48/G6 n=13824  f32  min   0.9394 s  med   0.9456 s   5587.6 GFLOP/s(2mkn)  speedup 0.000  relerr 7.01e-06  split L 0.019 R 0.019 gemm 0.888 P 0.020  plan D48+4/D48/G6  pred 0.935 s (-1.2%)  perr 4.66e-06  err64 4.35e-06
+plan=R363+3/R633/G6 n=6912   f64  min   0.4470 s  med   0.4471 s   1477.2 GFLOP/s(2mkn)  speedup 0.000  relerr 6.74e-15  split L 0.008 R 0.008 gemm 0.421 P 0.012  plan R363+3/R633/G6  pred 0.445 s (-0.4%)  perr 3.06e-15  err64 3.75e-15
+plan=D48+4/D48/G6 n=6912   f64  min   0.4680 s  med   0.4728 s   1397.0 GFLOP/s(2mkn)  speedup 0.000  relerr 7.92e-15  split L 0.010 R 0.010 gemm 0.442 P 0.009  plan D48+4/D48/G6  pred 0.460 s (-2.7%)  perr 5.28e-15  err64 5.60e-15
+plan=R363+4/R336/G3 n=13824  f64  min   3.2605 s  med   3.2724 s   1614.6 GFLOP/s(2mkn)  speedup 0.000  relerr 1.33e-14  split L 0.032 R 0.031 gemm 3.164 P 0.045  plan R363+4/R336/G3  pred 3.249 s (-0.7%)  perr 4.42e-15  err64 6.40e-15
+plan=D48+4/D48/G6 n=13824  f64  min   3.7089 s  med   3.7295 s   1416.7 GFLOP/s(2mkn)  speedup 0.000  relerr 1.38e-14  split L 0.038 R 0.037 gemm 3.612 P 0.037  plan D48+4/D48/G6  pred 3.745 s (+0.4%)  perr 7.47e-15  err64 8.28e-15
+## (2g) f32 with the GPU  15:26
+gpu_graph  n=3456   f32  min    0.013 s  med    0.013 s  gpu-time min    0.000 med    0.000   6228.3 GFLOP/s(2n^3, med wall)  err64 3.04e-06  vs-sgemm 0.00e+00
+gpu_graph  n=6912   f32  min    0.099 s  med    0.110 s  gpu-time min    0.000 med    0.000   5983.3 GFLOP/s(2n^3, med wall)  err64 3.85e-06  vs-sgemm 0.00e+00
+gpu_graph  n=13824  f32  min    0.869 s  med    0.904 s  gpu-time min    0.000 med    0.000   5841.7 GFLOP/s(2n^3, med wall)  err64 6.40e-06  vs-sgemm 0.00e+00
+# calibrating 3 entries (f32)
+# auto n=3456   f32: plan R363/G6M, predicted 0.013 s
+# auto:none n=3456   f32: plan K32/G6M, predicted 0.012 s
+classical  n=3456   f32  min   0.0245 s  med   0.0247 s   3340.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.025 P 0.000  plan G  pred 0.025 s (-0.6%)  perr 2.78e-06  err64 3.04e-06
+auto       n=3456   f32  min   0.0129 s  med   0.0136 s   6074.1 GFLOP/s(2mkn)  speedup 1.818  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.010 P 0.002  plan R363/G6M  pred 0.013 s (-4.7%)  perr 1.25e-06  err64 1.28e-06
+auto:none  n=3456   f32  min   0.0139 s  med   0.0147 s   5624.0 GFLOP/s(2mkn)  speedup 1.684  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.015 P 0.000  plan K32/G6M  pred 0.012 s (-16.7%)  perr 2.78e-06  err64 3.04e-06
+plan=R363/G6 n=3456   f32  min   0.0202 s  med   0.0204 s   4052.2 GFLOP/s(2mkn)  speedup 1.213  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.017 P 0.002  plan R363/G6  pred 0.020 s (-0.4%)  perr 1.25e-06  err64 1.28e-06
+plan=R363/G6M n=3456   f32  min   0.0128 s  med   0.0143 s   5785.4 GFLOP/s(2mkn)  speedup 1.732  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.010 P 0.002  plan R363/G6M  pred 0.013 s (-9.2%)  perr 1.25e-06  err64 1.28e-06
+plan=K32/G6M n=3456   f32  min   0.0139 s  med   0.0147 s   5622.4 GFLOP/s(2mkn)  speedup 1.683  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.015 P 0.000  plan K32/G6M  pred 0.012 s (-16.7%)  perr 2.78e-06  err64 3.04e-06
+# calibrating 3 entries (f32)
+# auto n=6912   f32: plan R363/G6M, predicted 0.074 s
+# auto:none n=6912   f32: plan R363/G6M, predicted 0.074 s
+classical  n=6912   f32  min   0.1951 s  med   0.1980 s   3335.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.208 P 0.000  plan G  pred 0.195 s (-1.7%)  perr 3.94e-06  err64 3.85e-06
+auto       n=6912   f32  min   0.0734 s  med   0.0842 s   7847.2 GFLOP/s(2mkn)  speedup 2.353  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.067 P 0.007  plan R363/G6M  pred 0.074 s (-12.7%)  perr 1.76e-06  err64 1.76e-06
+auto:none  n=6912   f32  min   0.0695 s  med   0.0723 s   9140.5 GFLOP/s(2mkn)  speedup 2.741  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.058 P 0.007  plan R363/G6M  pred 0.074 s (+1.7%)  perr 1.76e-06  err64 1.76e-06
+plan=R363+4/R633/G6 n=6912   f32  min   0.1363 s  med   0.1373 s   4810.0 GFLOP/s(2mkn)  speedup 1.442  relerr 4.14e-06  split L 0.004 R 0.004 gemm 0.123 P 0.007  plan R363+4/R633/G6  pred 0.139 s (+0.9%)  perr 2.32e-06  err64 2.20e-06
+plan=R363/G6M n=6912   f32  min   0.0746 s  med   0.0841 s   7849.2 GFLOP/s(2mkn)  speedup 2.354  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.069 P 0.007  plan R363/G6M  pred 0.074 s (-12.6%)  perr 1.76e-06  err64 1.76e-06
+plan=D48/G6M n=6912   f32  min   0.0744 s  med   0.0753 s   8771.4 GFLOP/s(2mkn)  speedup 2.630  relerr 4.18e-06  split L 0.005 R 0.005 gemm 0.062 P 0.005  plan D48/G6M  pred 0.075 s (-0.8%)  perr 2.44e-06  err64 2.81e-06
+plan=K64/G6M n=6912   f32  min   0.0872 s  med   0.0885 s   7463.4 GFLOP/s(2mkn)  speedup 2.238  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.089 P 0.000  plan K64/G6M  pred 0.089 s (+0.2%)  perr 3.94e-06  err64 3.85e-06
+# auto n=13824  f32: plan R363/G6M, predicted 0.525 s
+# auto:none n=13824  f32: plan R363+4/R336/G6M, predicted 0.491 s
+classical  n=13824  f32  min   1.7656 s  med   1.8206 s   2902.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.864 P 0.000  plan G  pred 1.661 s (-8.7%)  perr 5.57e-06  err64 6.40e-06
+auto       n=13824  f32  min   0.5719 s  med   0.5869 s   9002.9 GFLOP/s(2mkn)  speedup 3.102  relerr 6.70e-06  split L 0.016 R 0.016 gemm 0.527 P 0.034  plan R363/G6M  pred 0.525 s (-10.5%)  perr 2.49e-06  err64 2.73e-06
+auto:none  n=13824  f32  min   0.4954 s  med   0.5089 s  10381.8 GFLOP/s(2mkn)  speedup 3.577  relerr 6.43e-06  split L 0.017 R 0.016 gemm 0.448 P 0.028  plan R363+4/R336/G6M  pred 0.491 s (-3.6%)  perr 2.98e-06  err64 3.33e-06
+plan=R363+4/R363/G6 n=13824  f32  min   0.9640 s  med   0.9743 s   5422.9 GFLOP/s(2mkn)  speedup 1.869  relerr 6.57e-06  split L 0.016 R 0.016 gemm 0.914 P 0.028  plan R363+4/R363/G6  pred 0.905 s (-7.1%)  perr 2.43e-06  err64 2.46e-06
+plan=R363/G6M n=13824  f32  min   0.5419 s  med   0.5771 s   9154.8 GFLOP/s(2mkn)  speedup 3.154  relerr 6.70e-06  split L 0.016 R 0.015 gemm 0.512 P 0.028  plan R363/G6M  pred 0.525 s (-9.0%)  perr 2.49e-06  err64 2.73e-06
+plan=R363+4/R336/G6M n=13824  f32  min   0.4906 s  med   0.4999 s  10569.0 GFLOP/s(2mkn)  speedup 3.642  relerr 6.43e-06  split L 0.016 R 0.015 gemm 0.442 P 0.027  plan R363+4/R336/G6M  pred 0.491 s (-1.8%)  perr 2.98e-06  err64 3.33e-06
+plan=R336+4/R363/G6M n=13824  f32  min   0.4924 s  med   0.4974 s  10622.3 GFLOP/s(2mkn)  speedup 3.660  relerr 6.16e-06  split L 0.026 R 0.016 gemm 0.448 P 0.017  plan R336+4/R363/G6M  pred 0.503 s (+1.1%)  perr 2.98e-06  err64 3.34e-06
+plan=K32/GM n=13824  f32  min   0.7701 s  med   0.8520 s   6201.3 GFLOP/s(2mkn)  speedup 2.137  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.838 P 0.000  plan K32/GM  pred 0.714 s (-16.2%)  perr 5.57e-06  err64 6.40e-06
+## (2g) the same, second round  15:28
+gpu_graph  n=3456   f32  min    0.013 s  med    0.013 s  gpu-time min    0.000 med    0.000   6266.1 GFLOP/s(2n^3, med wall)  err64 3.04e-06  vs-sgemm 0.00e+00
+gpu_graph  n=6912   f32  min    0.099 s  med    0.100 s  gpu-time min    0.000 med    0.000   6616.3 GFLOP/s(2n^3, med wall)  err64 3.85e-06  vs-sgemm 0.00e+00
+gpu_graph  n=13824  f32  min    0.901 s  med    0.929 s  gpu-time min    0.000 med    0.000   5688.6 GFLOP/s(2n^3, med wall)  err64 6.40e-06  vs-sgemm 0.00e+00
+# auto n=3456   f32: plan R363/G6M, predicted 0.013 s
+classical  n=3456   f32  min   0.0245 s  med   0.0276 s   2988.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.027 P 0.000  plan G  pred 0.025 s (-11.1%)  perr 2.78e-06  err64 3.04e-06
+auto       n=3456   f32  min   0.0140 s  med   0.0142 s   5801.2 GFLOP/s(2mkn)  speedup 1.941  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.010 P 0.002  plan R363/G6M  pred 0.013 s (-8.9%)  perr 1.25e-06  err64 1.28e-06
+plan=R363/G6M n=3456   f32  min   0.0140 s  med   0.0143 s   5791.2 GFLOP/s(2mkn)  speedup 1.938  relerr 3.03e-06  split L 0.001 R 0.001 gemm 0.010 P 0.002  plan R363/G6M  pred 0.013 s (-9.1%)  perr 1.25e-06  err64 1.28e-06
+plan=K32/G6M n=3456   f32  min   0.0150 s  med   0.0169 s   4879.4 GFLOP/s(2mkn)  speedup 1.633  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.017 P 0.000  plan K32/G6M  pred 0.012 s (-27.7%)  perr 2.78e-06  err64 3.04e-06
+# auto n=6912   f32: plan R363/G6M, predicted 0.074 s
+classical  n=6912   f32  min   0.1939 s  med   0.1959 s   3371.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.200 P 0.000  plan G  pred 0.195 s (-0.6%)  perr 3.94e-06  err64 3.85e-06
+auto       n=6912   f32  min   0.0741 s  med   0.0838 s   7877.1 GFLOP/s(2mkn)  speedup 2.336  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.068 P 0.007  plan R363/G6M  pred 0.074 s (-12.3%)  perr 1.76e-06  err64 1.76e-06
+plan=R363/G6M n=6912   f32  min   0.0694 s  med   0.0723 s   9130.2 GFLOP/s(2mkn)  speedup 2.708  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.058 P 0.007  plan R363/G6M  pred 0.074 s (+1.6%)  perr 1.76e-06  err64 1.76e-06
+plan=K64/G6M n=6912   f32  min   0.0863 s  med   0.0893 s   7392.3 GFLOP/s(2mkn)  speedup 2.193  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.089 P 0.000  plan K64/G6M  pred 0.089 s (-0.8%)  perr 3.94e-06  err64 3.85e-06
+# auto n=13824  f32: plan R363/G6M, predicted 0.525 s
+classical  n=13824  f32  min   1.8215 s  med   1.8331 s   2882.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.878 P 0.000  plan G  pred 1.661 s (-9.4%)  perr 5.57e-06  err64 6.40e-06
+auto       n=13824  f32  min   0.5726 s  med   0.6051 s   8732.5 GFLOP/s(2mkn)  speedup 3.030  relerr 6.70e-06  split L 0.017 R 0.016 gemm 0.541 P 0.027  plan R363/G6M  pred 0.525 s (-13.1%)  perr 2.49e-06  err64 2.73e-06
+plan=R363/G6M n=13824  f32  min   0.5459 s  med   0.5796 s   9115.4 GFLOP/s(2mkn)  speedup 3.163  relerr 6.70e-06  split L 0.016 R 0.016 gemm 0.514 P 0.027  plan R363/G6M  pred 0.525 s (-9.3%)  perr 2.49e-06  err64 2.73e-06
+plan=K32/GM n=13824  f32  min   0.7605 s  med   0.7857 s   6724.8 GFLOP/s(2mkn)  speedup 2.333  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.782 P 0.000  plan K32/GM  pred 0.714 s (-9.2%)  perr 5.57e-06  err64 6.40e-06
+## (3) the ternary trial (run_t42.sh's protocol)  15:29
+# T42 campaign: ternary <3x3x6:42> levels vs the accurate <3x3x6:40> levels and D48, fixed plans; 2026-11-15 15:29; Apple M4 Pro
+## n=13824 f32  15:29
+classical  n=13824  f32  min   1.5615 s  med   1.7253 s   3062.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.744 P 0.000  plan G  pred 1.661 s (-3.7%)  perr 5.57e-06  err64 6.40e-06
+plan=D48/G n=13824  f32  min   1.2651 s  med   1.2801 s   4127.4 GFLOP/s(2mkn)  speedup 1.348  relerr 7.11e-06  split L 0.020 R 0.020 gemm 1.229 P 0.020  plan D48/G  pred 1.241 s (-3.1%)  perr 3.45e-06  err64 4.16e-06
+plan=R336/G n=13824  f32  min   1.2531 s  med   1.2783 s   4133.3 GFLOP/s(2mkn)  speedup 1.350  relerr 6.70e-06  split L 0.027 R 0.016 gemm 1.239 P 0.017  plan R336/G  pred 1.241 s (-2.9%)  perr 3.05e-06  err64 3.80e-06
+plan=T336/G n=13824  f32  min   1.3046 s  med   1.3806 s   3827.1 GFLOP/s(2mkn)  speedup 1.250  relerr 1.27e-05  split L 0.027 R 0.016 gemm 1.314 P 0.016  plan T336/G  err64 1.28e-05
+plan=R363/G n=13824  f32  min   1.2836 s  med   1.2839 s   4115.3 GFLOP/s(2mkn)  speedup 1.344  relerr 6.70e-06  split L 0.016 R 0.016 gemm 1.230 P 0.027  plan R363/G  pred 1.218 s (-5.1%)  perr 2.49e-06  err64 2.73e-06
+plan=T363/G n=13824  f32  min   1.3151 s  med   1.3750 s   3842.6 GFLOP/s(2mkn)  speedup 1.255  relerr 7.18e-06  split L 0.016 R 0.017 gemm 1.317 P 0.027  plan T363/G  err64 6.25e-06
+plan=R633/G n=13824  f32  min   1.3222 s  med   1.3545 s   3900.9 GFLOP/s(2mkn)  speedup 1.274  relerr 6.53e-06  split L 0.016 R 0.028 gemm 1.303 P 0.018  plan R633/G  pred 1.255 s (-7.3%)  perr 3.35e-06  err64 3.95e-06
+plan=T633/G n=13824  f32  min   1.4013 s  med   1.4349 s   3682.2 GFLOP/s(2mkn)  speedup 1.202  relerr 1.12e-05  split L 0.017 R 0.027 gemm 1.387 P 0.017  plan T633/G  err64 1.01e-05
+plan=R336/R363/R633/G n=13824  f32  min   2.6374 s  med   2.7062 s   1952.4 GFLOP/s(2mkn)  speedup 0.638  relerr 6.98e-06  split L 0.369 R 0.326 gemm 1.686 P 0.337  plan R336/R363/R633/G  pred 2.382 s (-12.0%)  perr 3.92e-06  err64 4.95e-06
+plan=T336/T363/T633/G n=13824  f32  min   2.9951 s  med   3.0783 s   1716.4 GFLOP/s(2mkn)  speedup 0.560  relerr 3.55e-05  split L 0.397 R 0.344 gemm 1.978 P 0.353  plan T336/T363/T633/G  err64 3.53e-05
+plan=R363+4/D48/G6 n=13824  f32  min   0.9073 s  med   0.9104 s   5803.4 GFLOP/s(2mkn)  speedup 1.895  relerr 6.43e-06  split L 0.017 R 0.016 gemm 0.855 P 0.029  plan R363+4/D48/G6  pred 0.925 s (+1.6%)  perr 3.37e-06  err64 3.49e-06
+plan=T363+4/D48/G6 n=13824  f32  min   0.9428 s  med   0.9498 s   5563.1 GFLOP/s(2mkn)  speedup 1.817  relerr 7.80e-06  split L 0.016 R 0.017 gemm 0.890 P 0.027  plan T363+4/D48/G6  err64 6.23e-06
+plan=R363+4/R363/G6 n=13824  f32  min   0.9044 s  med   0.9081 s   5818.1 GFLOP/s(2mkn)  speedup 1.900  relerr 6.57e-06  split L 0.017 R 0.017 gemm 0.850 P 0.028  plan R363+4/R363/G6  pred 0.905 s (-0.3%)  perr 2.43e-06  err64 2.46e-06
+plan=T363+4/T363/G6 n=13824  f32  min   0.9841 s  med   0.9872 s   5352.2 GFLOP/s(2mkn)  speedup 1.748  relerr 9.27e-06  split L 0.016 R 0.017 gemm 0.927 P 0.027  plan T363+4/T363/G6  err64 9.04e-06
+## n=13824 f64  15:31
+classical  n=13824  f64  min   6.2240 s  med   6.8109 s    775.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 6.740 P 0.000  plan G  pred 6.795 s (-0.2%)  perr 9.40e-15
+plan=D48/G n=13824  f64  min   4.8101 s  med   4.8311 s   1093.7 GFLOP/s(2mkn)  speedup 1.410  relerr 1.40e-14  split L 0.038 R 0.037 gemm 4.788 P 0.038  plan D48/G  pred 4.828 s (-0.1%)  perr 6.77e-15
+plan=R336/G n=13824  f64  min   4.7801 s  med   4.8355 s   1092.7 GFLOP/s(2mkn)  speedup 1.409  relerr 1.18e-14  split L 0.051 R 0.031 gemm 4.721 P 0.029  plan R336/G  pred 4.787 s (-1.0%)  perr 6.10e-15
+plan=T336/G n=13824  f64  min   5.1050 s  med   5.2294 s   1010.4 GFLOP/s(2mkn)  speedup 1.302  relerr 2.62e-14  split L 0.051 R 0.030 gemm 5.109 P 0.028  plan T336/G
+plan=R363/G n=13824  f64  min   4.8732 s  med   4.8791 s   1082.9 GFLOP/s(2mkn)  speedup 1.396  relerr 1.30e-14  split L 0.033 R 0.032 gemm 4.924 P 0.045  plan R363/G  pred 4.846 s (-0.7%)  perr 4.44e-15
+plan=T363/G n=13824  f64  min   5.1180 s  med   5.1487 s   1026.2 GFLOP/s(2mkn)  speedup 1.323  relerr 1.34e-14  split L 0.030 R 0.031 gemm 5.182 P 0.047  plan T363/G
+plan=R633/G n=13824  f64  min   4.9567 s  med   5.0750 s   1041.1 GFLOP/s(2mkn)  speedup 1.342  relerr 1.35e-14  split L 0.032 R 0.055 gemm 4.922 P 0.030  plan R633/G  pred 4.882 s (-3.8%)  perr 5.98e-15
+plan=T633/G n=13824  f64  min   5.2268 s  med   5.3000 s    996.9 GFLOP/s(2mkn)  speedup 1.285  relerr 1.94e-14  split L 0.031 R 0.051 gemm 5.175 P 0.030  plan T633/G
+plan=R336/R363/R633/G n=13824  f64  min   7.3697 s  med   7.4089 s    713.1 GFLOP/s(2mkn)  speedup 0.919  relerr 1.24e-14  split L 0.539 R 0.507 gemm 5.866 P 0.510  plan R336/R363/R633/G  pred 7.279 s (-1.8%)  perr 4.31e-15
+plan=T336/T363/T633/G n=13824  f64  min   8.6128 s  med   8.6137 s    613.4 GFLOP/s(2mkn)  speedup 0.791  relerr 8.08e-14  split L 0.652 R 0.587 gemm 6.894 P 0.578  plan T336/T363/T633/G
+plan=SW/R363+3/R633/G6 n=13824  f64  min   3.2197 s  med   3.2203 s   1640.7 GFLOP/s(2mkn)  speedup 2.115  relerr 1.36e-14  split L 0.085 R 0.084 gemm 2.955 P 0.106  plan SW/R363+3/R633/G6  pred 3.201 s (-0.6%)  perr 6.45e-15
+plan=SW/T363+3/T633/G6 n=13824  f64  min   3.5433 s  med   3.5495 s   1488.6 GFLOP/s(2mkn)  speedup 1.919  relerr 3.55e-14  split L 0.083 R 0.085 gemm 3.272 P 0.108  plan SW/T363+3/T633/G6
+plan=R363+3/R633/G6 n=13824  f64  min   5.7664 s  med   5.7966 s    911.5 GFLOP/s(2mkn)  speedup 1.175  relerr 1.26e-14  split L 0.031 R 0.030 gemm 5.683 P 0.045  plan R363+3/R633/G6  pred 5.589 s (-3.6%)  perr 4.33e-15
+plan=T363+3/T633/G6 n=13824  f64  min   6.2765 s  med   6.3447 s    832.8 GFLOP/s(2mkn)  speedup 1.073  relerr 2.63e-14  split L 0.029 R 0.030 gemm 6.240 P 0.047  plan T363+3/T633/G6
+## n=6912 f32  15:36
+classical  n=6912   f32  min   0.1952 s  med   0.1960 s   3369.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.196 P 0.000  plan G  pred 0.195 s (-0.7%)  perr 3.94e-06  err64 3.85e-06
+plan=D48/G n=6912   f32  min   0.1493 s  med   0.1503 s   4394.4 GFLOP/s(2mkn)  speedup 1.304  relerr 4.18e-06  split L 0.005 R 0.005 gemm 0.136 P 0.005  plan D48/G  pred 0.152 s (+1.4%)  perr 2.44e-06  err64 2.81e-06
+plan=R336/G n=6912   f32  min   0.1596 s  med   0.1619 s   4078.6 GFLOP/s(2mkn)  speedup 1.210  relerr 3.91e-06  split L 0.007 R 0.004 gemm 0.149 P 0.004  plan R336/G  pred 0.158 s (-2.2%)  perr 2.16e-06  err64 2.27e-06
+plan=T336/G n=6912   f32  min   0.1653 s  med   0.1704 s   3876.9 GFLOP/s(2mkn)  speedup 1.150  relerr 7.93e-06  split L 0.006 R 0.004 gemm 0.156 P 0.004  plan T336/G  err64 8.00e-06
+plan=R363/G n=6912   f32  min   0.1488 s  med   0.1538 s   4292.9 GFLOP/s(2mkn)  speedup 1.274  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.139 P 0.007  plan R363/G  pred 0.148 s (-3.7%)  perr 1.76e-06  err64 1.76e-06
+plan=T363/G n=6912   f32  min   0.1538 s  med   0.1657 s   3985.8 GFLOP/s(2mkn)  speedup 1.183  relerr 4.55e-06  split L 0.004 R 0.004 gemm 0.147 P 0.007  plan T363/G  err64 3.87e-06
+plan=R633/G n=6912   f32  min   0.1595 s  med   0.1625 s   4065.3 GFLOP/s(2mkn)  speedup 1.206  relerr 3.91e-06  split L 0.004 R 0.006 gemm 0.148 P 0.004  plan R633/G  pred 0.157 s (-3.1%)  perr 2.37e-06  err64 2.27e-06
+plan=T633/G n=6912   f32  min   0.1635 s  med   0.1686 s   3917.9 GFLOP/s(2mkn)  speedup 1.163  relerr 5.92e-06  split L 0.004 R 0.006 gemm 0.154 P 0.004  plan T633/G  err64 6.10e-06
+plan=R363+4/D48/G6 n=6912   f32  min   0.1359 s  med   0.1369 s   4825.3 GFLOP/s(2mkn)  speedup 1.432  relerr 4.00e-06  split L 0.004 R 0.004 gemm 0.122 P 0.007  plan R363+4/D48/G6  pred 0.137 s (-0.2%)  perr 2.38e-06  err64 2.26e-06
+plan=T363+4/D48/G6 n=6912   f32  min   0.1421 s  med   0.1430 s   4618.1 GFLOP/s(2mkn)  speedup 1.370  relerr 5.23e-06  split L 0.004 R 0.004 gemm 0.129 P 0.007  plan T363+4/D48/G6  err64 4.07e-06
+plan=R363+3/R633/G6 n=6912   f32  min   0.1576 s  med   0.1586 s   4163.4 GFLOP/s(2mkn)  speedup 1.235  relerr 4.14e-06  split L 0.004 R 0.004 gemm 0.145 P 0.007  plan R363+3/R633/G6  pred 0.165 s (+3.7%)  perr 2.32e-06  err64 2.20e-06
+plan=T363+3/T633/G6 n=6912   f32  min   0.1656 s  med   0.1657 s   3984.9 GFLOP/s(2mkn)  speedup 1.183  relerr 8.93e-06  split L 0.004 R 0.004 gemm 0.152 P 0.007  plan T363+3/T633/G6  err64 8.72e-06
+## n=6912 f64  15:36
+classical  n=6912   f64  min   0.7700 s  med   0.7720 s    855.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.774 P 0.000  plan G  pred 0.771 s (-0.2%)  perr 6.65e-15
+plan=D48/G n=6912   f64  min   0.5980 s  med   0.6095 s   1083.6 GFLOP/s(2mkn)  speedup 1.267  relerr 7.79e-15  split L 0.009 R 0.009 gemm 0.582 P 0.010  plan D48/G  pred 0.605 s (-0.7%)  perr 4.78e-15
+plan=R336/G n=6912   f64  min   0.5929 s  med   0.5974 s   1105.5 GFLOP/s(2mkn)  speedup 1.292  relerr 6.78e-15  split L 0.013 R 0.008 gemm 0.571 P 0.007  plan R336/G  pred 0.588 s (-1.5%)  perr 4.31e-15
+plan=T336/G n=6912   f64  min   0.6231 s  med   0.6272 s   1053.0 GFLOP/s(2mkn)  speedup 1.231  relerr 1.47e-14  split L 0.013 R 0.008 gemm 0.600 P 0.007  plan T336/G
+plan=R363/G n=6912   f64  min   0.6395 s  med   0.6414 s   1029.8 GFLOP/s(2mkn)  speedup 1.204  relerr 6.78e-15  split L 0.008 R 0.008 gemm 0.618 P 0.011  plan R363/G  pred 0.637 s (-0.8%)  perr 3.14e-15
+plan=T363/G n=6912   f64  min   0.6714 s  med   0.6791 s    972.5 GFLOP/s(2mkn)  speedup 1.137  relerr 8.30e-15  split L 0.007 R 0.008 gemm 0.652 P 0.012  plan T363/G
+plan=R633/G n=6912   f64  min   0.6241 s  med   0.6322 s   1044.7 GFLOP/s(2mkn)  speedup 1.221  relerr 7.54e-15  split L 0.008 R 0.014 gemm 0.603 P 0.007  plan R633/G  pred 0.631 s (-0.3%)  perr 4.23e-15
+plan=T633/G n=6912   f64  min   0.6497 s  med   0.6565 s   1006.1 GFLOP/s(2mkn)  speedup 1.176  relerr 1.10e-14  split L 0.008 R 0.013 gemm 0.630 P 0.007  plan T633/G
+plan=R363+4/D48/G6 n=6912   f64  min   0.4455 s  med   0.4472 s   1476.7 GFLOP/s(2mkn)  speedup 1.726  relerr 7.03e-15  split L 0.008 R 0.008 gemm 0.420 P 0.012  plan R363+4/D48/G6  pred 0.448 s (+0.1%)  perr 3.47e-15
+plan=T363+4/D48/G6 n=6912   f64  min   0.4691 s  med   0.4701 s   1404.9 GFLOP/s(2mkn)  speedup 1.642  relerr 8.81e-15  split L 0.008 R 0.008 gemm 0.442 P 0.012  plan T363+4/D48/G6
+plan=R363+3/R633/G6 n=6912   f64  min   0.4474 s  med   0.4480 s   1474.1 GFLOP/s(2mkn)  speedup 1.723  relerr 6.74e-15  split L 0.008 R 0.008 gemm 0.422 P 0.012  plan R363+3/R633/G6  pred 0.445 s (-0.6%)  perr 3.06e-15
+plan=T363+3/T633/G6 n=6912   f64  min   0.4909 s  med   0.4929 s   1340.0 GFLOP/s(2mkn)  speedup 1.566  relerr 1.63e-14  split L 0.008 R 0.008 gemm 0.465 P 0.012  plan T363+3/T633/G6
+# done 15:37
+## (4) test_fmm (the C library, rectangular cases)  15:37
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0006 s  Accelerate   0.0006 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0052 s  Accelerate   0.0054 s  speedup  1.04  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0148 s  Accelerate   0.0163 s  speedup  1.10  rel. difference 2.92e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0357 s  Accelerate   0.0418 s  speedup  1.17  rel. difference 3.39e-06  ok
+f32 n=5000  ld=5000  budget 0    plan D48/G3                         fmm   0.0624 s  Accelerate   0.0764 s  speedup  1.22  rel. difference 3.64e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2308 s  Accelerate   0.3280 s  speedup  1.42  rel. difference 5.47e-06  ok
+f32 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   0.3140 s  Accelerate   0.4426 s  speedup  1.41  rel. difference 5.12e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0350 s  Accelerate   0.0400 s  speedup  1.14  rel. difference 3.76e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2295 s  Accelerate   0.3293 s  speedup  1.43  rel. difference 4.96e-06  ok
+# calibrating 48 entries (f32)
+f32 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0114 s  Accelerate   0.0122 s  speedup  1.07  rel. difference 2.50e-06  ok  (predicted 0.0113 s, calibrated for this shape; planning 0.008 s)
+   calibration 7 s
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.008 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0051 s  Accelerate   0.0051 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.009 s)
+f32 6912x6912x3456       budget 0    plan D48/G3                         fmm   0.0740 s  Accelerate   0.0997 s  speedup  1.35  rel. difference 4.08e-06  ok  (predicted 0.0783 s, estimated; planning 0.010 s)
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0022 s  Accelerate   0.0022 s  speedup  0.99  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0174 s  Accelerate   0.0211 s  speedup  1.21  rel. difference 4.92e-15  ok
+f64 n=3000  ld=3000  budget 0    plan D48/G3                         fmm   0.0495 s  Accelerate   0.0626 s  speedup  1.26  rel. difference 5.21e-15  ok
+f64 n=4096  ld=4096  budget 0    plan D48/G3                         fmm   0.1344 s  Accelerate   0.1621 s  speedup  1.21  rel. difference 5.50e-15  ok
+f64 n=5000  ld=5000  budget 0    plan D48/G6                         fmm   0.2276 s  Accelerate   0.2930 s  speedup  1.29  rel. difference 7.29e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.8001 s  Accelerate   1.3244 s  speedup  1.66  rel. difference 9.28e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   1.0424 s  Accelerate   1.7009 s  speedup  1.63  rel. difference 9.50e-15  ok
+f64 n=4096  ld=4160  budget 0    plan D48/G3                         fmm   0.1418 s  Accelerate   0.1632 s  speedup  1.15  rel. difference 6.46e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.7983 s  Accelerate   1.2981 s  speedup  1.63  rel. difference 9.51e-15  ok
+# calibrating 48 entries (f64)
+f64 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0363 s  Accelerate   0.0491 s  speedup  1.35  rel. difference 5.02e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.009 s)
+   calibration 15 s
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0143 s  Accelerate   0.0148 s  speedup  1.03  rel. difference 6.39e-15  ok  (predicted 0.0132 s, estimated; planning 0.009 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0171 s  Accelerate   0.0193 s  speedup  1.13  rel. difference 5.42e-15  ok  (predicted 0.0171 s, estimated; planning 0.009 s)
+f64 6912x6912x3456       budget 0    plan D48+4/R363/G6                  fmm   0.2490 s  Accelerate   0.3864 s  speedup  1.55  rel. difference 7.39e-15  ok  (predicted 0.2502 s, estimated; planning 0.010 s)
+all ok
+## (4) test_fmm_gpu (the library with the GPU)  15:38
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0006 s  Accelerate   0.0006 s  speedup  0.97  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0054 s  Accelerate   0.0054 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0149 s  Accelerate   0.0165 s  speedup  1.10  rel. difference 2.92e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6M                        fmm   0.0213 s  Accelerate   0.0417 s  speedup  1.96  rel. difference 3.39e-06  ok
+f32 n=5000  ld=5000  budget 0    plan D48/G6M                        fmm   0.0398 s  Accelerate   0.0760 s  speedup  1.91  rel. difference 3.64e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48/G6M                        fmm   0.1309 s  Accelerate   0.3323 s  speedup  2.54  rel. difference 5.21e-06  ok
+f32 n=9000  ld=9000  budget 0    plan D48/G6M                        fmm   0.1736 s  Accelerate   0.4415 s  speedup  2.54  rel. difference 4.83e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6M                        fmm   0.0213 s  Accelerate   0.0400 s  speedup  1.88  rel. difference 3.76e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48/G6M                        fmm   0.1296 s  Accelerate   0.3310 s  speedup  2.55  rel. difference 4.37e-06  ok
+# calibrating 6 entries (f32)
+f32 3456x3456x1728       budget 0    plan R363/G6M                       fmm   0.0077 s  Accelerate   0.0122 s  speedup  1.57  rel. difference 2.50e-06  ok  (predicted 0.0083 s, calibrated for this shape; planning 0.019 s)
+   calibration 2 s
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.019 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0050 s  Accelerate   0.0050 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.019 s)
+f32 6912x6912x3456       budget 0    plan D48/G6M                        fmm   0.0444 s  Accelerate   0.0986 s  speedup  2.22  rel. difference 4.08e-06  ok  (predicted 0.0420 s, estimated; planning 0.022 s)
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0021 s  Accelerate   0.0021 s  speedup  1.00  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0173 s  Accelerate   0.0208 s  speedup  1.21  rel. difference 4.92e-15  ok
+f64 n=3000  ld=3000  budget 0    plan D48/G3                         fmm   0.0486 s  Accelerate   0.0624 s  speedup  1.28  rel. difference 5.21e-15  ok
+f64 n=4096  ld=4096  budget 0    plan D48/G3                         fmm   0.1385 s  Accelerate   0.1705 s  speedup  1.23  rel. difference 5.50e-15  ok
+f64 n=5000  ld=5000  budget 0    plan D48/G6                         fmm   0.2287 s  Accelerate   0.2974 s  speedup  1.30  rel. difference 7.29e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.8059 s  Accelerate   1.3809 s  speedup  1.71  rel. difference 9.28e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   1.0393 s  Accelerate   1.8065 s  speedup  1.74  rel. difference 9.50e-15  ok
+f64 n=4096  ld=4160  budget 0    plan D48/G3                         fmm   0.1336 s  Accelerate   0.1587 s  speedup  1.19  rel. difference 6.46e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.7978 s  Accelerate   1.3862 s  speedup  1.74  rel. difference 9.51e-15  ok
+f64 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0359 s  Accelerate   0.0475 s  speedup  1.32  rel. difference 5.02e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.008 s)
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0139 s  Accelerate   0.0145 s  speedup  1.04  rel. difference 6.39e-15  ok  (predicted 0.0132 s, estimated; planning 0.008 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0171 s  Accelerate   0.0193 s  speedup  1.13  rel. difference 5.42e-15  ok  (predicted 0.0171 s, estimated; planning 0.008 s)
+f64 6912x6912x3456       budget 0    plan D48+4/R363/G6                  fmm   0.2546 s  Accelerate   0.3853 s  speedup  1.51  rel. difference 7.39e-15  ok  (predicted 0.2502 s, estimated; planning 0.009 s)
+all ok
+## (4) the Rust tests  15:39
+test calib::tests::interpolation ... ok
+test plan::tests::work_and_divisibility ... ok
+test calib::tests::g9_matches_c ... ok
+test plan::tests::names_round_trip ... ok
+test calib::tests::needs_include_rectangular_products ... ok
+test calib::tests::kind_names_round_trip ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test entry_points ... ok
+test leading_dimensions_and_padding ... ok
+test plans_f32 ... ok
+test plans_f64 ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.43s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+## (4) crosscheck, Rust against C on the shared cache  15:39
+f32 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.000549 / 0.000549  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048           ld=2048  budget 0    plan rust G                              c G                              predicted 0.004752 / 0.004752  results identical  rel. difference from Accelerate 0.00e+00
+f32 3000           ld=3000  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.014290 / 0.014290  results identical  rel. difference from Accelerate 2.92e-06
+f32 4096           ld=4096  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.033602 / 0.033602  results identical  rel. difference from Accelerate 3.39e-06
+f32 5000           ld=5000  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.059879 / 0.059879  results identical  rel. difference from Accelerate 3.64e-06
+f32 8192           ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.225756 / 0.225756  results identical  rel. difference from Accelerate 5.47e-06
+f32 9000           ld=9000  budget 0    plan rust D48+4/D48/G6 padded to 9008    c D48+4/D48/G6 padded to 9008    predicted 0.316212 / 0.316212  results identical  rel. difference from Accelerate 5.12e-06
+f32 4096           ld=4160  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.033602 / 0.033602  results identical  rel. difference from Accelerate 3.76e-06
+f32 8192           ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.225756 / 0.225756  results identical  rel. difference from Accelerate 4.96e-06
+f32 3456x3456x1728 ld=3464  budget 0    plan rust R363/G6                        c R363/G6                        predicted 0.011314 / 0.011314  results identical  rel. difference from Accelerate 2.50e-06
+f32 1000x3000x2000 ld=3008  budget 0    plan rust G                              c G                              predicted 0.003265 / 0.003265  results identical  rel. difference from Accelerate 0.00e+00
+f32 2048x4096x1024 ld=4104  budget 0    plan rust G                              c G                              predicted 0.004752 / 0.004752  results identical  rel. difference from Accelerate 0.00e+00
+f32 6912x6912x3456 ld=6920  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.078252 / 0.078252  results identical  rel. difference from Accelerate 4.08e-06
+f64 1000           ld=1000  budget 0    plan rust G                              c G                              predicted 0.002107 / 0.002107  results identical  rel. difference from Accelerate 0.00e+00
+f64 2048           ld=2048  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.016714 / 0.016714  results identical  rel. difference from Accelerate 4.92e-15
+f64 3000           ld=3000  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.048599 / 0.048599  results identical  rel. difference from Accelerate 5.21e-15
+f64 4096           ld=4096  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.120229 / 0.120229  results identical  rel. difference from Accelerate 5.50e-15
+f64 5000           ld=5000  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.218887 / 0.218887  results identical  rel. difference from Accelerate 7.29e-15
+f64 8192           ld=8192  budget 0    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.766253 / 0.766253  results identical  rel. difference from Accelerate 9.28e-15
+f64 9000           ld=9000  budget 0    plan rust D48+4/D48/G6 padded to 9008    c D48+4/D48/G6 padded to 9008    predicted 1.069139 / 1.069139  results identical  rel. difference from Accelerate 9.50e-15
+f64 4096           ld=4160  budget 0    plan rust D48/G3                         c D48/G3                         predicted 0.120229 / 0.120229  results identical  rel. difference from Accelerate 6.46e-15
+f64 8192           ld=8192  budget 4    plan rust D48+4/D48/G6                   c D48+4/D48/G6                   predicted 0.766253 / 0.766253  results identical  rel. difference from Accelerate 9.51e-15
+f64 3456x3456x1728 ld=3464  budget 0    plan rust R363/G6                        c R363/G6                        predicted 0.036417 / 0.036417  results identical  rel. difference from Accelerate 5.02e-15
+f64 1000x3000x2000 ld=3008  budget 0    plan rust SW/G4                          c SW/G4                          predicted 0.013239 / 0.013239  results identical  rel. difference from Accelerate 6.39e-15
+f64 2048x4096x1024 ld=4104  budget 0    plan rust D48/G6                         c D48/G6                         predicted 0.017119 / 0.017119  results identical  rel. difference from Accelerate 5.42e-15
+f64 6912x6912x3456 ld=6920  budget 0    plan rust D48+4/R363/G6                  c D48+4/R363/G6                  predicted 0.250224 / 0.250224  results identical  rel. difference from Accelerate 7.39e-15
+all identical
+## (4) Rust against C, alternately (run_rust_vs_c.sh)  15:40
+# Rust vs C library 2026-11-15 15:40; Apple M4 Pro
+## C round 1
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0006 s  Accelerate   0.0006 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0054 s  Accelerate   0.0055 s  speedup  1.03  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0145 s  Accelerate   0.0163 s  speedup  1.12  rel. difference 2.92e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0351 s  Accelerate   0.0419 s  speedup  1.20  rel. difference 3.39e-06  ok
+f32 n=5000  ld=5000  budget 0    plan D48/G3                         fmm   0.0622 s  Accelerate   0.0765 s  speedup  1.23  rel. difference 3.64e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2288 s  Accelerate   0.3282 s  speedup  1.43  rel. difference 5.47e-06  ok
+f32 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   0.3143 s  Accelerate   0.4424 s  speedup  1.41  rel. difference 5.12e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0359 s  Accelerate   0.0399 s  speedup  1.11  rel. difference 3.76e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2293 s  Accelerate   0.3284 s  speedup  1.43  rel. difference 4.96e-06  ok
+# calibrating 48 entries (f32)
+#   G    m=3456x3456x1728 0.011740 s
+#   SW   m=1728x1728x864 0.001807 s   GSW 0.001507  G3SW 0.001487  G4SW 0.001485  G6SW 0.001616
+#   PSWk3p2s   m=864x864x432 0.001695 s   fill+drain 0.000575 s
+#   PSWk3p3s   m=864x864x432 0.001652 s   fill+drain 0.000525 s
+#   PSWk3p4s   m=864x864x432 0.001718 s   fill+drain 0.000368 s
+#   PSWk6p2s   m=864x864x432 0.001580 s   fill+drain 0.000480 s
+#   PSWk6p3s   m=864x864x432 0.001588 s   fill+drain 0.000485 s
+#   PSWk6p4s   m=864x864x432 0.001637 s   fill+drain 0.000535 s
+#   PR363k3p2s m=576x288x288 0.002160 s   fill+drain 0.000507 s
+#   PR363k3p3s m=576x288x288 0.001903 s   fill+drain 0.000462 s
+#   PR363k3p4s m=576x288x288 0.001614 s   fill+drain 0.000793 s
+#   PR363k6p2s m=576x288x288 0.002261 s   fill+drain 0.000009 s
+#   PR363k6p3s m=576x288x288 0.001961 s   fill+drain 0.000074 s
+#   PR363k6p4s m=576x288x288 0.001568 s   fill+drain 0.000656 s
+#   PR633k3p2s m=288x576x288 0.002103 s   fill+drain 0.000708 s
+#   PR633k3p3s m=288x576x288 0.001763 s   fill+drain 0.000887 s
+#   PR633k3p4s m=288x576x288 0.001663 s   fill+drain 0.000925 s
+#   PR633k6p2s m=288x576x288 0.002091 s   fill+drain 0.000733 s
+#   PR633k6p3s m=288x576x288 0.001883 s   fill+drain 0.000590 s
+#   PR633k6p4s m=288x576x288 0.001584 s   fill+drain 0.000611 s
+#   G    m=1728x1728x864 0.001445 s
+#   SW   m=864x864x432 0.000485 s   GSW 0.000265  G3SW 0.000215  G4SW 0.000227  G6SW 0.000212
+#   G    m=864x864x432 0.000194 s
+#   R363 m=576x288x288 0.000710 s   GR363 0.000073  G3R363 0.000034  G4R363 0.000033  G6R363 0.000032
+#   G    m=576x288x288 0.000059 s
+#   R633 m=288x576x288 0.000727 s   GR633 0.000080  G3R633 0.000036  G4R633 0.000034  G6R633 0.000032
+#   G    m=288x576x288 0.000058 s
+#   D48  m=864x864x432 0.002567 s   GD48 0.000257  G3D48 0.000207  G4D48 0.000199  G6D48 0.000191
+#   R336 m=1152x1152x288 0.002720 s   GR336 0.000295  G3R336 0.000253  G4R336 0.000246  G6R336 0.000235
+#   G    m=1152x1152x288 0.000237 s
+#   R363 m=1152x576x576 0.002467 s   GR363 0.000272  G3R363 0.000233  G4R363 0.000225  G6R363 0.000220
+#   PSWk3p2s   m=576x288x288 0.000260 s   fill+drain 0.000182 s
+#   PSWk3p3s   m=576x288x288 0.000257 s   fill+drain 0.000139 s
+#   PSWk3p4s   m=576x288x288 0.000256 s   fill+drain 0.000125 s
+#   PSWk6p2s   m=576x288x288 0.000331 s   fill+drain 0.000039 s
+#   PSWk6p3s   m=576x288x288 0.000278 s   fill+drain 0.000132 s
+#   PSWk6p4s   m=576x288x288 0.000257 s   fill+drain 0.000136 s
+#   G    m=1152x576x576 0.000230 s
+#   SW   m=576x288x288 0.000207 s   GSW 0.000063  G3SW 0.000063  G4SW 0.000061  G6SW 0.000061
+#   R633 m=576x1152x576 0.002435 s   GR633 0.000288  G3R633 0.000239  G4R633 0.000231  G6R633 0.000224
+#   PSWk3p2s   m=288x576x288 0.000260 s   fill+drain 0.000183 s
+#   PSWk3p3s   m=288x576x288 0.000256 s   fill+drain 0.000143 s
+#   PSWk3p4s   m=288x576x288 0.000259 s   fill+drain 0.000136 s
+#   PSWk6p2s   m=288x576x288 0.000343 s   fill+drain 0.000021 s
+#   PSWk6p3s   m=288x576x288 0.000303 s   fill+drain 0.000081 s
+#   PSWk6p4s   m=288x576x288 0.000272 s   fill+drain 0.000109 s
+#   G    m=576x1152x576 0.000230 s
+#   SW   m=288x576x288 0.000189 s   GSW 0.000063  G3SW 0.000065  G4SW 0.000060  G6SW 0.000063
+f32 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0112 s  Accelerate   0.0121 s  speedup  1.08  rel. difference 2.50e-06  ok  (predicted 0.0112 s, calibrated for this shape; planning 0.008 s)
+   calibration 7 s
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.008 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0050 s  Accelerate   0.0050 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.008 s)
+f32 6912x6912x3456       budget 0    plan D48/G3                         fmm   0.0764 s  Accelerate   0.1040 s  speedup  1.36  rel. difference 4.08e-06  ok  (predicted 0.0783 s, estimated; planning 0.010 s)
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0024 s  Accelerate   0.0024 s  speedup  0.99  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0184 s  Accelerate   0.0256 s  speedup  1.39  rel. difference 4.92e-15  ok
+f64 n=3000  ld=3000  budget 0    plan D48/G3                         fmm   0.0532 s  Accelerate   0.0738 s  speedup  1.39  rel. difference 5.21e-15  ok
+f64 n=4096  ld=4096  budget 0    plan D48/G3                         fmm   0.1403 s  Accelerate   0.1762 s  speedup  1.26  rel. difference 5.50e-15  ok
+f64 n=5000  ld=5000  budget 0    plan D48/G6                         fmm   0.2292 s  Accelerate   0.3049 s  speedup  1.33  rel. difference 7.29e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.7996 s  Accelerate   1.2873 s  speedup  1.61  rel. difference 9.28e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   1.0307 s  Accelerate   1.7049 s  speedup  1.65  rel. difference 9.50e-15  ok
+f64 n=4096  ld=4160  budget 0    plan D48/G3                         fmm   0.1331 s  Accelerate   0.1625 s  speedup  1.22  rel. difference 6.46e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.7996 s  Accelerate   1.2989 s  speedup  1.62  rel. difference 9.51e-15  ok
+# calibrating 48 entries (f64)
+#   G    m=3456x3456x1728 0.047938 s
+#   SW   m=1728x1728x864 0.003683 s   GSW 0.005901  G3SW 0.006097  G4SW 0.006103  G6SW 0.006601
+#   PSWk3p2s   m=864x864x432 0.005759 s   fill+drain 0.000777 s
+#   PSWk3p3s   m=864x864x432 0.005745 s   fill+drain 0.000800 s
+#   PSWk3p4s   m=864x864x432 0.005894 s   fill+drain 0.000574 s
+#   PSWk6p2s   m=864x864x432 0.005741 s   fill+drain 0.000814 s
+#   PSWk6p3s   m=864x864x432 0.005796 s   fill+drain 0.000767 s
+#   PSWk6p4s   m=864x864x432 0.005903 s   fill+drain 0.000000 s
+#   PR363k3p2s m=576x288x288 0.004944 s   fill+drain 0.002801 s
+#   PR363k3p3s m=576x288x288 0.004963 s   fill+drain 0.001830 s
+#   PR363k3p4s m=576x288x288 0.004898 s   fill+drain 0.001701 s
+#   PR363k6p2s m=576x288x288 0.005127 s   fill+drain 0.002139 s
+#   PR363k6p3s m=576x288x288 0.004953 s   fill+drain 0.001520 s
+#   PR363k6p4s m=576x288x288 0.004689 s   fill+drain 0.001753 s
+#   PR633k3p2s m=288x576x288 0.005204 s   fill+drain 0.002696 s
+#   PR633k3p3s m=288x576x288 0.005206 s   fill+drain 0.002245 s
+#   PR633k3p4s m=288x576x288 0.005183 s   fill+drain 0.001440 s
+#   PR633k6p2s m=288x576x288 0.004961 s   fill+drain 0.002895 s
+#   PR633k6p3s m=288x576x288 0.004941 s   fill+drain 0.001845 s
+#   PR633k6p4s m=288x576x288 0.004848 s   fill+drain 0.001579 s
+#   G    m=1728x1728x864 0.005883 s
+#   SW   m=864x864x432 0.000985 s   GSW 0.000781  G3SW 0.000748  G4SW 0.000753  G6SW 0.000754
+#   G    m=864x864x432 0.000694 s
+#   R363 m=576x288x288 0.001239 s   GR363 0.000137  G3R363 0.000113  G4R363 0.000113  G6R363 0.000111
+#   G    m=576x288x288 0.000125 s
+#   R633 m=288x576x288 0.001210 s   GR633 0.000150  G3R633 0.000119  G4R633 0.000117  G6R633 0.000114
+#   G    m=288x576x288 0.000130 s
+#   D48  m=864x864x432 0.004844 s   GD48 0.000768  G3D48 0.000693  G4D48 0.000687  G6D48 0.000682
+#   R336 m=1152x1152x288 0.005480 s   GR336 0.001017  G3R336 0.000854  G4R336 0.000846  G6R336 0.000821
+#   G    m=1152x1152x288 0.000929 s
+#   R363 m=1152x576x576 0.004578 s   GR363 0.000879  G3R363 0.000814  G4R363 0.000814  G6R363 0.000797
+#   PSWk3p2s   m=576x288x288 0.000946 s   fill+drain 0.000383 s
+#   PSWk3p3s   m=576x288x288 0.000962 s   fill+drain 0.000184 s
+#   PSWk3p4s   m=576x288x288 0.000967 s   fill+drain 0.000185 s
+#   PSWk6p2s   m=576x288x288 0.000887 s   fill+drain 0.000383 s
+#   PSWk6p3s   m=576x288x288 0.000924 s   fill+drain 0.000162 s
+#   PSWk6p4s   m=576x288x288 0.000904 s   fill+drain 0.000186 s
+#   G    m=1152x576x576 0.000812 s
+#   SW   m=576x288x288 0.000306 s   GSW 0.000162  G3SW 0.000128  G4SW 0.000124  G6SW 0.000138
+#   R633 m=576x1152x576 0.004858 s   GR633 0.000967  G3R633 0.000827  G4R633 0.000852  G6R633 0.000863
+#   PSWk3p2s   m=288x576x288 0.000968 s   fill+drain 0.000282 s
+#   PSWk3p3s   m=288x576x288 0.000945 s   fill+drain 0.000260 s
+#   PSWk3p4s   m=288x576x288 0.000968 s   fill+drain 0.000261 s
+#   PSWk6p2s   m=288x576x288 0.000891 s   fill+drain 0.000328 s
+#   PSWk6p3s   m=288x576x288 0.000919 s   fill+drain 0.000199 s
+#   PSWk6p4s   m=288x576x288 0.000911 s   fill+drain 0.000332 s
+#   G    m=576x1152x576 0.000968 s
+#   SW   m=288x576x288 0.000295 s   GSW 0.000145  G3SW 0.000125  G4SW 0.000129  G6SW 0.000124
+f64 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0362 s  Accelerate   0.0482 s  speedup  1.33  rel. difference 5.02e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.009 s)
+   calibration 15 s
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0142 s  Accelerate   0.0147 s  speedup  1.03  rel. difference 6.39e-15  ok  (predicted 0.0132 s, estimated; planning 0.009 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0173 s  Accelerate   0.0195 s  speedup  1.13  rel. difference 5.42e-15  ok  (predicted 0.0171 s, estimated; planning 0.009 s)
+f64 6912x6912x3456       budget 0    plan D48+4/R363/G6                  fmm   0.2543 s  Accelerate   0.3887 s  speedup  1.53  rel. difference 7.39e-15  ok  (predicted 0.2452 s, estimated; planning 0.010 s)
+all ok
+## Rust round 1
+f32 1000           ld=1000  budget 0    plan G                              fmm   0.0009 s  Accelerate   0.0010 s  speedup  1.02  rel. difference 0.00e+00  ok  (predicted 0.0005 s; planning 0.006 s)
+f32 2048           ld=2048  budget 0    plan G                              fmm   0.0054 s  Accelerate   0.0053 s  speedup  0.98  rel. difference 0.00e+00  ok  (predicted 0.0048 s; planning 0.002 s)
+f32 3000           ld=3000  budget 0    plan D48/G6                         fmm   0.0160 s  Accelerate   0.0181 s  speedup  1.13  rel. difference 2.92e-06  ok  (predicted 0.0143 s; planning 0.001 s)
+f32 4096           ld=4096  budget 0    plan D48/G6                         fmm   0.0375 s  Accelerate   0.0421 s  speedup  1.12  rel. difference 3.39e-06  ok  (predicted 0.0336 s; planning 0.002 s)
+f32 5000           ld=5000  budget 0    plan D48/G3                         fmm   0.0679 s  Accelerate   0.0784 s  speedup  1.16  rel. difference 3.64e-06  ok  (predicted 0.0599 s; planning 0.002 s)
+f32 8192           ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2427 s  Accelerate   0.3854 s  speedup  1.59  rel. difference 5.47e-06  ok  (predicted 0.2258 s; planning 0.002 s)
+f32 9000           ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   0.3271 s  Accelerate   0.5277 s  speedup  1.61  rel. difference 5.12e-06  ok  (predicted 0.3162 s; planning 0.002 s)
+f32 4096           ld=4160  budget 0    plan D48/G6                         fmm   0.0383 s  Accelerate   0.0453 s  speedup  1.18  rel. difference 3.76e-06  ok  (predicted 0.0336 s; planning 0.000 s)
+f32 8192           ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2387 s  Accelerate   0.3269 s  speedup  1.37  rel. difference 4.96e-06  ok  (predicted 0.2258 s; planning 0.002 s)
+f32 3456x3456x1728 ld=3464  budget 0    plan R363/G6                        fmm   0.0126 s  Accelerate   0.0121 s  speedup  0.96  rel. difference 2.50e-06  ok  (predicted 0.0112 s, calibrated for this shape; planning 0.001 s)
+f32 1000x3000x2000 ld=3008  budget 0    plan G                              fmm   0.0037 s  Accelerate   0.0036 s  speedup  0.99  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.001 s)
+f32 2048x4096x1024 ld=4104  budget 0    plan G                              fmm   0.0051 s  Accelerate   0.0050 s  speedup  0.99  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.001 s)
+f32 6912x6912x3456 ld=6920  budget 0    plan D48/G3                         fmm   0.0777 s  Accelerate   0.1160 s  speedup  1.49  rel. difference 4.08e-06  ok  (predicted 0.0783 s, estimated; planning 0.002 s)
+f64 1000           ld=1000  budget 0    plan G                              fmm   0.0020 s  Accelerate   0.0020 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0021 s; planning 0.002 s)
+f64 2048           ld=2048  budget 0    plan D48/G6                         fmm   0.0180 s  Accelerate   0.0243 s  speedup  1.35  rel. difference 4.92e-15  ok  (predicted 0.0167 s; planning 0.001 s)
+f64 3000           ld=3000  budget 0    plan D48/G3                         fmm   0.0506 s  Accelerate   0.0716 s  speedup  1.42  rel. difference 5.21e-15  ok  (predicted 0.0486 s; planning 0.001 s)
+f64 4096           ld=4096  budget 0    plan D48/G3                         fmm   0.1331 s  Accelerate   0.1606 s  speedup  1.21  rel. difference 5.50e-15  ok  (predicted 0.1202 s; planning 0.002 s)
+f64 5000           ld=5000  budget 0    plan D48/G6                         fmm   0.2304 s  Accelerate   0.2891 s  speedup  1.25  rel. difference 7.29e-15  ok  (predicted 0.2189 s; planning 0.002 s)
+f64 8192           ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.8100 s  Accelerate   1.3737 s  speedup  1.70  rel. difference 9.28e-15  ok  (predicted 0.7663 s; planning 0.002 s)
+f64 9000           ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   1.0048 s  Accelerate   1.9440 s  speedup  1.93  rel. difference 9.50e-15  ok  (predicted 1.0691 s; planning 0.002 s)
+f64 4096           ld=4160  budget 0    plan D48/G3                         fmm   0.1369 s  Accelerate   0.1618 s  speedup  1.18  rel. difference 6.46e-15  ok  (predicted 0.1202 s; planning 0.000 s)
+f64 8192           ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.8097 s  Accelerate   1.2872 s  speedup  1.59  rel. difference 9.51e-15  ok  (predicted 0.7663 s; planning 0.002 s)
+f64 3456x3456x1728 ld=3464  budget 0    plan R363/G6                        fmm   0.0381 s  Accelerate   0.0483 s  speedup  1.27  rel. difference 5.02e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.001 s)
+f64 1000x3000x2000 ld=3008  budget 0    plan SW/G4                          fmm   0.0151 s  Accelerate   0.0171 s  speedup  1.13  rel. difference 6.39e-15  ok  (predicted 0.0132 s, estimated; planning 0.001 s)
+f64 2048x4096x1024 ld=4104  budget 0    plan D48/G6                         fmm   0.0186 s  Accelerate   0.0194 s  speedup  1.04  rel. difference 5.42e-15  ok  (predicted 0.0171 s, estimated; planning 0.002 s)
+f64 6912x6912x3456 ld=6920  budget 0    plan D48+4/R363/G6                  fmm   0.2492 s  Accelerate   0.3916 s  speedup  1.57  rel. difference 7.39e-15  ok  (predicted 0.2452 s, estimated; planning 0.002 s)
+all ok
+## C 16384 round 1
+f32 n=16384 ld=16384 budget 0    plan G                              fmm   2.6213 s  Accelerate   2.6245 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0358 s  Accelerate   0.0399 s  speedup  1.11  rel. difference 3.03e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2288 s  Accelerate   0.3270 s  speedup  1.43  rel. difference 4.76e-06  ok
+f32 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0112 s  Accelerate   0.0120 s  speedup  1.07  rel. difference 3.20e-06  ok  (predicted 0.0112 s, calibrated for this shape; planning 0.008 s)
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.008 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0051 s  Accelerate   0.0051 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.008 s)
+f32 6912x6912x3456       budget 0    plan D48/G3                         fmm   0.0734 s  Accelerate   0.0999 s  speedup  1.36  rel. difference 4.47e-06  ok  (predicted 0.0783 s, estimated; planning 0.009 s)
+f64 n=16384 ld=16384 budget 0    plan G                              fmm  11.1202 s  Accelerate  11.9583 s  speedup  1.08  rel. difference 0.00e+00  ok
+f64 n=4096  ld=4160  budget 0    plan D48/G3                         fmm   0.1459 s  Accelerate   0.1646 s  speedup  1.13  rel. difference 6.61e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.8012 s  Accelerate   1.2880 s  speedup  1.61  rel. difference 9.39e-15  ok
+f64 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0363 s  Accelerate   0.0477 s  speedup  1.31  rel. difference 5.37e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.008 s)
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0138 s  Accelerate   0.0144 s  speedup  1.04  rel. difference 5.43e-15  ok  (predicted 0.0132 s, estimated; planning 0.008 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0171 s  Accelerate   0.0194 s  speedup  1.13  rel. difference 6.59e-15  ok  (predicted 0.0171 s, estimated; planning 0.008 s)
+f64 6912x6912x3456       budget 0    plan D48+4/R363/G6                  fmm   0.2524 s  Accelerate   0.3859 s  speedup  1.53  rel. difference 8.04e-15  ok  (predicted 0.2452 s, estimated; planning 0.009 s)
+all ok
+## Rust 16384 round 1
+f32 16384          ld=16384 budget 0    plan G                              fmm   2.8180 s  Accelerate   2.9960 s  speedup  1.06  rel. difference 0.00e+00  ok  (predicted -; planning 0.004 s)
+f32 4096           ld=4160  budget 0    plan D48/G6                         fmm   0.0386 s  Accelerate   0.0448 s  speedup  1.16  rel. difference 3.03e-06  ok  (predicted 0.0336 s; planning 0.002 s)
+f32 8192           ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2436 s  Accelerate   0.3905 s  speedup  1.60  rel. difference 4.76e-06  ok  (predicted 0.2258 s; planning 0.002 s)
+f32 3456x3456x1728 ld=3464  budget 0    plan R363/G6                        fmm   0.0128 s  Accelerate   0.0130 s  speedup  1.02  rel. difference 3.20e-06  ok  (predicted 0.0112 s, calibrated for this shape; planning 0.001 s)
+f32 1000x3000x2000 ld=3008  budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0038 s  speedup  1.04  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.001 s)
+f32 2048x4096x1024 ld=4104  budget 0    plan G                              fmm   0.0053 s  Accelerate   0.0051 s  speedup  0.97  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.001 s)
+f32 6912x6912x3456 ld=6920  budget 0    plan D48/G3                         fmm   0.0806 s  Accelerate   0.1010 s  speedup  1.25  rel. difference 4.47e-06  ok  (predicted 0.0783 s, estimated; planning 0.002 s)
+f64 16384          ld=16384 budget 0    plan G                              fmm  12.0080 s  Accelerate  10.4039 s  speedup  0.87  rel. difference 0.00e+00  ok  (predicted -; planning 0.002 s)
+f64 4096           ld=4160  budget 0    plan D48/G3                         fmm   0.1365 s  Accelerate   0.1845 s  speedup  1.35  rel. difference 6.61e-15  ok  (predicted 0.1202 s; planning 0.002 s)
+f64 8192           ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.8102 s  Accelerate   1.4944 s  speedup  1.84  rel. difference 9.39e-15  ok  (predicted 0.7663 s; planning 0.002 s)
+f64 3456x3456x1728 ld=3464  budget 0    plan R363/G6                        fmm   0.0379 s  Accelerate   0.0478 s  speedup  1.26  rel. difference 5.37e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.001 s)
+f64 1000x3000x2000 ld=3008  budget 0    plan SW/G4                          fmm   0.0144 s  Accelerate   0.0146 s  speedup  1.02  rel. difference 5.43e-15  ok  (predicted 0.0132 s, estimated; planning 0.001 s)
+f64 2048x4096x1024 ld=4104  budget 0    plan D48/G6                         fmm   0.0184 s  Accelerate   0.0193 s  speedup  1.05  rel. difference 6.59e-15  ok  (predicted 0.0171 s, estimated; planning 0.001 s)
+f64 6912x6912x3456 ld=6920  budget 0    plan D48+4/R363/G6                  fmm   0.2503 s  Accelerate   0.4084 s  speedup  1.63  rel. difference 8.04e-15  ok  (predicted 0.2452 s, estimated; planning 0.002 s)
+all ok
+## C round 2
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0006 s  Accelerate   0.0006 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0053 s  Accelerate   0.0053 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0148 s  Accelerate   0.0163 s  speedup  1.10  rel. difference 2.92e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0349 s  Accelerate   0.0417 s  speedup  1.19  rel. difference 3.39e-06  ok
+f32 n=5000  ld=5000  budget 0    plan D48/G3                         fmm   0.0619 s  Accelerate   0.0764 s  speedup  1.23  rel. difference 3.64e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2294 s  Accelerate   0.3270 s  speedup  1.43  rel. difference 5.47e-06  ok
+f32 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   0.3137 s  Accelerate   0.4427 s  speedup  1.41  rel. difference 5.12e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0353 s  Accelerate   0.0399 s  speedup  1.13  rel. difference 3.76e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2299 s  Accelerate   0.3303 s  speedup  1.44  rel. difference 4.96e-06  ok
+f32 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0111 s  Accelerate   0.0120 s  speedup  1.08  rel. difference 2.50e-06  ok  (predicted 0.0112 s, calibrated for this shape; planning 0.008 s)
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0035 s  Accelerate   0.0035 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.008 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0050 s  Accelerate   0.0051 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.008 s)
+f32 6912x6912x3456       budget 0    plan D48/G3                         fmm   0.0742 s  Accelerate   0.0999 s  speedup  1.35  rel. difference 4.08e-06  ok  (predicted 0.0783 s, estimated; planning 0.009 s)
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0020 s  Accelerate   0.0020 s  speedup  1.00  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0174 s  Accelerate   0.0214 s  speedup  1.23  rel. difference 4.92e-15  ok
+f64 n=3000  ld=3000  budget 0    plan D48/G3                         fmm   0.0487 s  Accelerate   0.0625 s  speedup  1.28  rel. difference 5.21e-15  ok
+f64 n=4096  ld=4096  budget 0    plan D48/G3                         fmm   0.1344 s  Accelerate   0.1624 s  speedup  1.21  rel. difference 5.50e-15  ok
+f64 n=5000  ld=5000  budget 0    plan D48/G6                         fmm   0.2282 s  Accelerate   0.2925 s  speedup  1.28  rel. difference 7.29e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.8020 s  Accelerate   1.3008 s  speedup  1.62  rel. difference 9.28e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   1.0412 s  Accelerate   1.6989 s  speedup  1.63  rel. difference 9.50e-15  ok
+f64 n=4096  ld=4160  budget 0    plan D48/G3                         fmm   0.1291 s  Accelerate   0.1624 s  speedup  1.26  rel. difference 6.46e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.7955 s  Accelerate   1.2944 s  speedup  1.63  rel. difference 9.51e-15  ok
+f64 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0367 s  Accelerate   0.0478 s  speedup  1.30  rel. difference 5.02e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.008 s)
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0139 s  Accelerate   0.0146 s  speedup  1.04  rel. difference 6.39e-15  ok  (predicted 0.0132 s, estimated; planning 0.008 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0171 s  Accelerate   0.0192 s  speedup  1.12  rel. difference 5.42e-15  ok  (predicted 0.0171 s, estimated; planning 0.008 s)
+f64 6912x6912x3456       budget 0    plan D48+4/R363/G6                  fmm   0.2522 s  Accelerate   0.3856 s  speedup  1.53  rel. difference 7.39e-15  ok  (predicted 0.2452 s, estimated; planning 0.010 s)
+all ok
+## Rust round 2
+f32 1000           ld=1000  budget 0    plan G                              fmm   0.0006 s  Accelerate   0.0006 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0005 s; planning 0.003 s)
+f32 2048           ld=2048  budget 0    plan G                              fmm   0.0054 s  Accelerate   0.0051 s  speedup  0.93  rel. difference 0.00e+00  ok  (predicted 0.0048 s; planning 0.001 s)
+f32 3000           ld=3000  budget 0    plan D48/G6                         fmm   0.0165 s  Accelerate   0.0163 s  speedup  0.99  rel. difference 2.92e-06  ok  (predicted 0.0143 s; planning 0.001 s)
+f32 4096           ld=4096  budget 0    plan D48/G6                         fmm   0.0366 s  Accelerate   0.0418 s  speedup  1.14  rel. difference 3.39e-06  ok  (predicted 0.0336 s; planning 0.002 s)
+f32 5000           ld=5000  budget 0    plan D48/G3                         fmm   0.0650 s  Accelerate   0.0757 s  speedup  1.17  rel. difference 3.64e-06  ok  (predicted 0.0599 s; planning 0.002 s)
+f32 8192           ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2404 s  Accelerate   0.3240 s  speedup  1.35  rel. difference 5.47e-06  ok  (predicted 0.2258 s; planning 0.002 s)
+f32 9000           ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   0.3269 s  Accelerate   0.5318 s  speedup  1.63  rel. difference 5.12e-06  ok  (predicted 0.3162 s; planning 0.002 s)
+f32 4096           ld=4160  budget 0    plan D48/G6                         fmm   0.0369 s  Accelerate   0.0449 s  speedup  1.22  rel. difference 3.76e-06  ok  (predicted 0.0336 s; planning 0.000 s)
+f32 8192           ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2408 s  Accelerate   0.3852 s  speedup  1.60  rel. difference 4.96e-06  ok  (predicted 0.2258 s; planning 0.002 s)
+f32 3456x3456x1728 ld=3464  budget 0    plan R363/G6                        fmm   0.0129 s  Accelerate   0.0140 s  speedup  1.08  rel. difference 2.50e-06  ok  (predicted 0.0112 s, calibrated for this shape; planning 0.002 s)
+f32 1000x3000x2000 ld=3008  budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.001 s)
+f32 2048x4096x1024 ld=4104  budget 0    plan G                              fmm   0.0050 s  Accelerate   0.0051 s  speedup  1.01  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.001 s)
+f32 6912x6912x3456 ld=6920  budget 0    plan D48/G3                         fmm   0.0834 s  Accelerate   0.0987 s  speedup  1.18  rel. difference 4.08e-06  ok  (predicted 0.0783 s, estimated; planning 0.002 s)
+f64 1000           ld=1000  budget 0    plan G                              fmm   0.0021 s  Accelerate   0.0021 s  speedup  0.97  rel. difference 0.00e+00  ok  (predicted 0.0021 s; planning 0.002 s)
+f64 2048           ld=2048  budget 0    plan D48/G6                         fmm   0.0181 s  Accelerate   0.0243 s  speedup  1.35  rel. difference 4.92e-15  ok  (predicted 0.0167 s; planning 0.001 s)
+f64 3000           ld=3000  budget 0    plan D48/G3                         fmm   0.0506 s  Accelerate   0.0658 s  speedup  1.30  rel. difference 5.21e-15  ok  (predicted 0.0486 s; planning 0.001 s)
+f64 4096           ld=4096  budget 0    plan D48/G3                         fmm   0.1340 s  Accelerate   0.1897 s  speedup  1.42  rel. difference 5.50e-15  ok  (predicted 0.1202 s; planning 0.002 s)
+f64 5000           ld=5000  budget 0    plan D48/G6                         fmm   0.2339 s  Accelerate   0.2907 s  speedup  1.24  rel. difference 7.29e-15  ok  (predicted 0.2189 s; planning 0.002 s)
+f64 8192           ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.8067 s  Accelerate   1.3093 s  speedup  1.62  rel. difference 9.28e-15  ok  (predicted 0.7663 s; planning 0.002 s)
+f64 9000           ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   1.0049 s  Accelerate   1.6975 s  speedup  1.69  rel. difference 9.50e-15  ok  (predicted 1.0691 s; planning 0.002 s)
+f64 4096           ld=4160  budget 0    plan D48/G3                         fmm   0.1340 s  Accelerate   0.1646 s  speedup  1.23  rel. difference 6.46e-15  ok  (predicted 0.1202 s; planning 0.000 s)
+f64 8192           ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.8091 s  Accelerate   1.2893 s  speedup  1.59  rel. difference 9.51e-15  ok  (predicted 0.7663 s; planning 0.002 s)
+f64 3456x3456x1728 ld=3464  budget 0    plan R363/G6                        fmm   0.0381 s  Accelerate   0.0486 s  speedup  1.28  rel. difference 5.02e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.001 s)
+f64 1000x3000x2000 ld=3008  budget 0    plan SW/G4                          fmm   0.0147 s  Accelerate   0.0146 s  speedup  1.00  rel. difference 6.39e-15  ok  (predicted 0.0132 s, estimated; planning 0.001 s)
+f64 2048x4096x1024 ld=4104  budget 0    plan D48/G6                         fmm   0.0186 s  Accelerate   0.0198 s  speedup  1.06  rel. difference 5.42e-15  ok  (predicted 0.0171 s, estimated; planning 0.002 s)
+f64 6912x6912x3456 ld=6920  budget 0    plan D48+4/R363/G6                  fmm   0.2491 s  Accelerate   0.4149 s  speedup  1.67  rel. difference 7.39e-15  ok  (predicted 0.2452 s, estimated; planning 0.002 s)
+all ok
+## C 16384 round 2
+f32 n=16384 ld=16384 budget 0    plan G                              fmm   3.0879 s  Accelerate   3.0753 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0352 s  Accelerate   0.0400 s  speedup  1.14  rel. difference 3.03e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2291 s  Accelerate   0.3733 s  speedup  1.63  rel. difference 4.76e-06  ok
+f32 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0111 s  Accelerate   0.0121 s  speedup  1.09  rel. difference 3.20e-06  ok  (predicted 0.0112 s, calibrated for this shape; planning 0.008 s)
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.008 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0050 s  Accelerate   0.0050 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.008 s)
+f32 6912x6912x3456       budget 0    plan D48/G3                         fmm   0.0738 s  Accelerate   0.0991 s  speedup  1.34  rel. difference 4.47e-06  ok  (predicted 0.0783 s, estimated; planning 0.009 s)
+f64 n=16384 ld=16384 budget 0    plan G                              fmm  11.9796 s  Accelerate  11.9377 s  speedup  1.00  rel. difference 0.00e+00  ok
+f64 n=4096  ld=4160  budget 0    plan D48/G3                         fmm   0.1351 s  Accelerate   0.1595 s  speedup  1.18  rel. difference 6.61e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.7985 s  Accelerate   1.2957 s  speedup  1.62  rel. difference 9.39e-15  ok
+f64 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0366 s  Accelerate   0.0479 s  speedup  1.31  rel. difference 5.37e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.008 s)
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0142 s  Accelerate   0.0145 s  speedup  1.02  rel. difference 5.43e-15  ok  (predicted 0.0132 s, estimated; planning 0.008 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0172 s  Accelerate   0.0193 s  speedup  1.13  rel. difference 6.59e-15  ok  (predicted 0.0171 s, estimated; planning 0.008 s)
+f64 6912x6912x3456       budget 0    plan D48+4/R363/G6                  fmm   0.2525 s  Accelerate   0.3848 s  speedup  1.52  rel. difference 8.04e-15  ok  (predicted 0.2452 s, estimated; planning 0.010 s)
+all ok
+## Rust 16384 round 2
+f32 16384          ld=16384 budget 0    plan G                              fmm   2.6261 s  Accelerate   2.6280 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted -; planning 0.004 s)
+f32 4096           ld=4160  budget 0    plan D48/G6                         fmm   0.0371 s  Accelerate   0.0401 s  speedup  1.08  rel. difference 3.03e-06  ok  (predicted 0.0336 s; planning 0.002 s)
+f32 8192           ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2390 s  Accelerate   0.3316 s  speedup  1.39  rel. difference 4.76e-06  ok  (predicted 0.2258 s; planning 0.002 s)
+f32 3456x3456x1728 ld=3464  budget 0    plan R363/G6                        fmm   0.0125 s  Accelerate   0.0121 s  speedup  0.97  rel. difference 3.20e-06  ok  (predicted 0.0112 s, calibrated for this shape; planning 0.001 s)
+f32 1000x3000x2000 ld=3008  budget 0    plan G                              fmm   0.0035 s  Accelerate   0.0035 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.001 s)
+f32 2048x4096x1024 ld=4104  budget 0    plan G                              fmm   0.0050 s  Accelerate   0.0050 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.001 s)
+f32 6912x6912x3456 ld=6920  budget 0    plan D48/G3                         fmm   0.0785 s  Accelerate   0.1015 s  speedup  1.29  rel. difference 4.47e-06  ok  (predicted 0.0783 s, estimated; planning 0.002 s)
+f64 16384          ld=16384 budget 0    plan G                              fmm  10.3303 s  Accelerate  11.9289 s  speedup  1.15  rel. difference 0.00e+00  ok  (predicted -; planning 0.002 s)
+f64 4096           ld=4160  budget 0    plan D48/G3                         fmm   0.1422 s  Accelerate   0.1829 s  speedup  1.29  rel. difference 6.61e-15  ok  (predicted 0.1202 s; planning 0.002 s)
+f64 8192           ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.8099 s  Accelerate   1.3991 s  speedup  1.73  rel. difference 9.39e-15  ok  (predicted 0.7663 s; planning 0.002 s)
+f64 3456x3456x1728 ld=3464  budget 0    plan R363/G6                        fmm   0.0383 s  Accelerate   0.0509 s  speedup  1.33  rel. difference 5.37e-15  ok  (predicted 0.0364 s, calibrated for this shape; planning 0.002 s)
+f64 1000x3000x2000 ld=3008  budget 0    plan SW/G4                          fmm   0.0151 s  Accelerate   0.0175 s  speedup  1.16  rel. difference 5.43e-15  ok  (predicted 0.0132 s, estimated; planning 0.002 s)
+f64 2048x4096x1024 ld=4104  budget 0    plan D48/G6                         fmm   0.0186 s  Accelerate   0.0225 s  speedup  1.21  rel. difference 6.59e-15  ok  (predicted 0.0171 s, estimated; planning 0.002 s)
+f64 6912x6912x3456 ld=6920  budget 0    plan D48+4/R363/G6                  fmm   0.2513 s  Accelerate   0.3974 s  speedup  1.58  rel. difference 8.04e-15  ok  (predicted 0.2452 s, estimated; planning 0.002 s)
+all ok
+# done 15:53
+# top CPU users after the run:
+#    %CPU   PID     ELAPSED COMM
+#    91.1   803 22-06:44:05 /usr/libexec/duetexpertd
+#    63.2   649 22-06:44:07 /System/Applications/Preview.app/Contents/MacOS/Preview
+#    36.2   418 22-06:44:11 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+#     2.4 45691 02-17:16:30 /Applications/RustRover.app/Contents/MacOS/rustrover
+#     1.6  9073       00:01 /usr/libexec/biomesyncd
+# done 2026-11-15 15:53

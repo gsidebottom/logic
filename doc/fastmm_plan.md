@@ -1673,3 +1673,20 @@ accuracy at this resolution (about 5% a cell); what a new scheme pays is its gro
 one scheme, uniform inputs, constants within a factor 3 of one, clang's default contraction.  Also noted: the f64
 passes of the f32 path (FMM_F64PASS) already exist for the 4x4 level, so "wider accumulation in the passes" is not
 a new idea here.  results/nondyadic_2026-11-14.txt, _summary.txt.
+
+**2026-11-15: the paper's campaign on the library as it stands, and the tie rule corrected.**  Campaign
+(matmul/fastmm/run_final2.sh, results/final_campaign_2026-11-15.txt): a first run under a busy machine
+(mediaanalysisd 1.5 cores; f64 GEMM 6.82 s at 13824) was set aside and re-run quiet.  Accelerate's f64 GEMM at
+13824 still runs 6.22-7.02 s within one campaign (spot checks 6.99-7.15): the paper's speedups use Accelerate's
+best time over the campaign.  THE TIE RULE OF 11-14 WAS BELOW THE ERROR MODEL'S RESOLUTION: it decided three
+picks, wrongly at two -- 6912 f32 R336+4/R363/G6 (predicted 11% more accurate, measured 2.44e-6 against the
+fastest-predicted R363+4/D48/G6's 2.26e-6), 6912 f64 R363+3/R336/G6 (order rule, 4.16e-15 against R336+2/R363/G6's
+3.66e-15) -- and rightly at 13824 f64 (R363+3/R336/G3 6.40e-15 against SW/R336+2/R363/G6 8.68e-15, a predicted gap
+of 33%).  The model is good to about 25%: PLAN_TIE_GAIN 0.10 -> 0.25 and the order rule dropped (C and Rust; the
+order rule's premise, R363 over R336 at 13824 f64, reverses at 6912 f64).  Picks re-measured on the same
+calibration: results/final_campaign_2026-11-15b.txt (run_final2b.sh).
+DC ZVA PORTED TO RUST (2026-11-15): rust/src/sys.rs zva_block() (asm! mrs dczid_el0, FMM_ZVA=0 off) and
+claim_lines(&mut [T], zb) (asm! dc zva on aligned blocks wholly inside the slice; unit-tested), exec.rs row() tiles
+each pass row into 4 KB pieces and claims each output tile before the kernel, as C's rows().  Crosscheck all
+identical; Rust vs C best of two: f64 8192 0.797/0.796 s, f32 8192 0.231/0.229, f32 6912x6912x3456 0.076/0.074;
+Rust FMM_ZVA=0 1-4% slower (0.814, 0.241, 0.077).  results/rust_zva_2026-11-15.txt (run_rust_zva.sh).

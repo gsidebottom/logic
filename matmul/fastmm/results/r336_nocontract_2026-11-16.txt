@@ -1,0 +1,23 @@
+# R336 plans without FMA contraction; 2026-11-16 09:10; campaign err64: 13824 f32 R336+4/R363/G6 3.34e-6, R363+4/R336/G6 3.33e-6, R336/G 3.80e-6; 6912 f32 R336/G 2.27e-6; 13824 f64 R363+3/R336/G3 6.40e-15, R336+3/R363/G3 6.72e-15, R336/G 7.21e-15; 6912 f64 R336+2/R363/G6 3.66e-15, R336/G 4.53e-15
+plan=R336+4/R363/G6
+err64 3.34e-06
+plan=R363+4/R336/G6
+err64 3.53e-06
+plan=R336/G
+err64 3.80e-06
+plan=R336/G
+err64 2.27e-06
+plan=R363+3/R336/G3
+err64 6.18e-15
+plan=R336+3/R363/G3
+err64 6.72e-15
+plan=R336/G
+err64 7.21e-15
+plan=R336+2/R363/G6
+err64 3.66e-15
+plan=R336/G
+err64 4.53e-15
+# done 09:11
+## 13824 f64 SW/R336+2/R363/G6 (campaign 8.68e-15) 09:11
+plan=SW/R336+2/R363/G6
+err64 8.68e-15

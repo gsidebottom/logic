@@ -10,7 +10,7 @@
 //! timing the leaves on the pool, as at first, overstated them and the planner passed over the
 //! classical GEMM at 2048 f32.
 
-use crate::calib::{self, Calib, Kind, ERR_PLANS, N_E, STREAMS};
+use crate::calib::{self, Calib, Kind, ERR_PLANS, GSTREAMS, N_E, STREAMS};
 use crate::exec::{self, Blocks, BlocksMut, Real, Side};
 use crate::plan::{Entry, Level, Plan, Shape};
 use rayon::prelude::*;
@@ -85,10 +85,21 @@ fn time_plan<T: Real>(plan: &Plan, s: Shape, a: &[T], b: &[T], c: &mut [T], work
 }
 
 /// one fused level of type lv whose products have shape t, with GEMM products (as `streams`
-/// streams): the medians of its pass time and of its GEMM time per product
-fn time_level<T: Real>(lv: Level, t: Shape, streams: usize, a: &[T], b: &[T], c: &mut [T], work: &mut [T]) -> (f64, f64) {
+/// streams, shared with the GPU if gpu): the medians of its pass time and of its GEMM time per
+/// product.  A K level has no passes: its products are strips of a, b, c themselves.
+fn time_level<T: Real>(lv: Level, t: Shape, streams: usize, gpu: bool, a: &[T], b: &[T], c: &mut [T], work: &mut [T])
+                       -> (f64, f64) {
     let r = lv.rank();
     let s = lv.up(t);
+    if lv.is_split() {
+        let plan = [Entry::new(lv), Entry { gpu, ..Entry::gemm(streams as u8) }];
+        let [q] = repeat(Evict::Pool, || {
+            let t0 = Instant::now();
+            exec::exec(&plan, s, a, s.k, b, s.n, &mut c[..s.m * s.n], s.n, &mut *work);
+            [t0.elapsed().as_secs_f64() / r as f64]
+        });
+        return (0.0, q);
+    }
     let (bss, bst, bsm) = exec::block_strides(t);
     let [p, q] = repeat(Evict::Pool, || {
         let (s_all, rest) = work.split_at_mut(r * bss);
@@ -98,8 +109,8 @@ fn time_level<T: Real>(lv: Level, t: Shape, streams: usize, a: &[T], b: &[T], c:
         exec::run_par(exec::factor_chunks(lv, Side::L, a, s.k, t, &mut *s_all, bss, 64));
         exec::run_par(exec::factor_chunks(lv, Side::R, b, s.n, t, &mut *t_all, bst, 64));
         let t1 = Instant::now();
-        if streams > 0 {
-            exec::gemm_streams(r, t, s_all, t_all, &mut *m_all, bss, bst, bsm, streams);
+        if streams > 0 || gpu {
+            exec::gemm_streams(r, t, s_all, t_all, &mut *m_all, bss, bst, bsm, streams, gpu);
         } else {
             for k in 0..r {
                 T::gemm(t, &s_all[k * bss..k * bss + t.m * t.k], t.k, &t_all[k * bst..k * bst + t.k * t.n], t.n, 0.0,
@@ -130,11 +141,12 @@ impl<T> BlocksMut<T> for SameMut<'_, T> {
 }
 
 /// a pipeline of q sub-problems, each a level ly whose products have shape ty over k streams with
-/// p pass threads, on synthetic inputs: the slope of the times for 2 and 10 sub-problems is the
-/// steady time per sub-problem, the rest the fill and drain
-fn time_pipe<T: Real>(ly: Level, ty: Shape, k: u8, p: usize, a: &[T], b: &[T], c: &mut [T], work: &mut [T]) -> (f64, f64) {
+/// p pass threads (the products shared with the GPU if gpu), on synthetic inputs: the slope of the
+/// times for 2 and 10 sub-problems is the steady time per sub-problem, the rest the fill and drain
+fn time_pipe<T: Real>(ly: Level, ty: Shape, k: u8, p: usize, gpu: bool, a: &[T], b: &[T], c: &mut [T], work: &mut [T])
+                      -> (f64, f64) {
     let t = ly.up(ty);
-    let py = [Entry::new(ly), Entry::gemm(k)];
+    let py = [Entry::new(ly), Entry { gpu, ..Entry::gemm(k) }];
     let (sx, tx) = (Same(&a[..t.m * t.k]), Same(&b[..t.k * t.n]));
     let [t2, t10] = repeat(Evict::Pool, || {
         let mut out = [0.0; 2];
@@ -243,21 +255,28 @@ fn calib_errors<T: Real>(c: &mut Calib) {
 
 /// measure the entries the planner needs for the shape s0 that the calibration lacks, and save it;
 /// a, b, c hold s0.m*s0.k, s0.k*s0.n and s0.m*s0.n elements, smaller problems use their first
-/// elements as contiguous matrices; returns the number of entries measured
+/// elements as contiguous matrices; returns the number of entries measured.  With the GPU
+/// (cal.gpu) its entries too: a, b, c and the workspace must then be wrapped for it (Pinned), or
+/// its products fall back to the CPU and are timed there.
 pub fn calibrate<T: Real>(cal: &mut Calib, s0: Shape, a: &[T], b: &[T], c: &mut [T]) -> usize {
-    let need = calib::need(s0);
+    let need = calib::need(s0, cal.gpu);
+    let needs = |k: Kind, s: Shape| need.contains(&(k, s));
     let missing = |cal: &Calib, (kind, s): (Kind, Shape)| -> bool {
         match kind {
             Kind::Err(_) => cal.get(kind, s).is_none(),
-            Kind::Pipe { over: true, .. } | Kind::Gin(..) => false,     // measured with their partners
-            Kind::Pipe { level, streams, passes, over: false } => {
-                cal.get(kind, s).is_none() || cal.get(Kind::Pipe { level, streams, passes, over: true }, s).is_none()
+            Kind::Pipe { over: true, .. } | Kind::Gin(..) | Kind::Ggpu(..) => false,     // measured with their partners
+            Kind::Pipe { level, streams, passes, over: false, gpu } => {
+                cal.get(kind, s).is_none() || cal.get(Kind::Pipe { level, streams, passes, over: true, gpu }, s).is_none()
             }
-            Kind::Passes(lv) => cal.get(kind, s).is_none() || STREAMS.iter().any(|&k| cal.get(Kind::Gin(lv, k), s).is_none()),
+            Kind::Passes(lv) => {
+                cal.get(kind, s).is_none()
+                    || (!lv.is_split() && STREAMS.iter().any(|&k| cal.get(Kind::Gin(lv, k), s).is_none()))
+                    || GSTREAMS.iter().any(|&k| needs(Kind::Ggpu(lv, k), s) && cal.get(Kind::Ggpu(lv, k), s).is_none())
+            }
             Kind::Leaf(_) => cal.get(kind, s).is_none(),
         }
     };
-    let todo: Vec<(Kind, Shape)> = need.into_iter().filter(|&e| missing(cal, e)).collect();
+    let todo: Vec<(Kind, Shape)> = need.iter().copied().filter(|&e| missing(cal, e)).collect();
     if todo.is_empty() {
         return 0;
     }
@@ -266,13 +285,15 @@ pub fn calibrate<T: Real>(cal: &mut Calib, s0: Shape, a: &[T], b: &[T], c: &mut 
     let wmax = todo
         .iter()
         .map(|&(kind, s)| match kind {
+            Kind::Passes(lv) if lv.is_split() => 0,
             Kind::Passes(lv) => Plan(vec![Entry::new(lv), Entry::new(Level::G)]).work(lv.up(s)),
             Kind::Pipe { level, .. } => 2 * Plan(vec![Entry::new(level), Entry::new(Level::G)]).work(level.up(s)),
             _ => 0,
         })
         .max()
         .unwrap_or(0);
-    let mut work = mapped::<T>(wmax + 16);
+    let mut pinned = crate::gpu::Pinned::new(wmax + 16, T::from_f64(1.0), cal.gpu).expect("fmm: calibration workspace");
+    let work = pinned.as_mut_slice();
     let mut errors_done = false;
     for (kind, s) in todo {
         match kind {
@@ -283,30 +304,46 @@ pub fn calibrate<T: Real>(cal: &mut Calib, s0: Shape, a: &[T], b: &[T], c: &mut 
                 }
             }
             Kind::Leaf(lv) => {
-                let t = time_plan(&Plan(vec![Entry::new(lv)]), s, a, b, c, &mut work);
+                let t = time_plan(&Plan(vec![Entry::new(lv)]), s, a, b, c, &mut *work);
                 cal.put(kind, s, t);
                 println!("#   {:<4} m={:<14} {:.6} s", kind.name(), s.to_string(), t);
             }
             Kind::Passes(lv) => {
                 print!("#   {:<4} m={:<14}", kind.name(), s.to_string());
-                for (i, &k) in STREAMS.iter().enumerate() {
-                    let (tp, tg) = crate::pool().install(|| time_level(lv, s, k as usize, a, b, c, &mut work));
-                    if i == 0 {
+                if lv.is_split() {
+                    cal.put(kind, s, 0.0);      // no passes
+                }
+                for &k in STREAMS.iter().filter(|_| !lv.is_split()) {
+                    if cal.get(kind, s).is_some() && cal.get(Kind::Gin(lv, k), s).is_some() {
+                        continue;
+                    }
+                    let (tp, tg) = crate::pool().install(|| time_level(lv, s, k as usize, false, a, b, c, &mut *work));
+                    if cal.get(kind, s).is_none() {
                         cal.put(kind, s, tp);
                         print!(" {tp:.6} s ");
                     }
                     cal.put(Kind::Gin(lv, k), s, tg);
                     print!("  {} {tg:.6}", Kind::Gin(lv, k).name());
                 }
+                for k in GSTREAMS {
+                    let kg = Kind::Ggpu(lv, k);
+                    if !needs(kg, s) || cal.get(kg, s).is_some() {
+                        continue;
+                    }
+                    let (_, tg) = crate::pool().install(|| time_level(lv, s, k as usize, true, a, b, c, &mut *work));
+                    cal.put(kg, s, tg);
+                    print!("  {} {tg:.6}", kg.name());
+                }
                 println!();
             }
-            Kind::Pipe { level, streams, passes, .. } => {
-                let (st, ov) = crate::pool().install(|| time_pipe(level, s, streams, passes as usize, a, b, c, &mut work));
+            Kind::Pipe { level, streams, passes, gpu, .. } => {
+                let (st, ov) =
+                    crate::pool().install(|| time_pipe(level, s, streams, passes as usize, gpu, a, b, c, &mut *work));
                 cal.put(kind, s, st);
-                cal.put(Kind::Pipe { level, streams, passes, over: true }, s, ov);
+                cal.put(Kind::Pipe { level, streams, passes, over: true, gpu }, s, ov);
                 println!("#   {:<10} m={:<14} {st:.6} s   fill+drain {ov:.6} s", kind.name(), s.to_string());
             }
-            Kind::Gin(..) => {}
+            Kind::Gin(..) | Kind::Ggpu(..) => {}
         }
     }
     if let Err(e) = calib::save(cal, T::F64) {

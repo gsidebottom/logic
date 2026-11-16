@@ -9,7 +9,11 @@
 //! such a level, run one at a time or as k streams); PYkKpPs, PYkKpPo (the steady time per
 //! sub-problem and the fill and drain of a pipeline of level-Y sub-problems whose products have
 //! that shape, over K streams with P pass threads); ESW, ED48, ED48D48, ER336, ER363, ER633 at
-//! N_E (the error model's measurements).
+//! N_E (the error model's measurements).  With the GPU (f32, the feature `gpu`): GMX, GkMX (the GEMM
+//! time per product of level X with its products shared between the GPU and Accelerate's own
+//! threading or k streams), PYkKpPMs, PYkKpPMo (pipelines so shared) and K16, K32, K64 (the
+//! classical product in strips: no passes, 0), kept in their own file beside the cache
+//! (calib5gpu_f32.txt) as the C library keeps them, so builds without the GPU never see them.
 
 use crate::kernels;
 use crate::plan::{pad, Level, Shape};
@@ -32,7 +36,9 @@ pub enum Kind {
     Leaf(Level),
     Passes(Level),
     Gin(Level, u8),
-    Pipe { level: Level, streams: u8, passes: u8, over: bool },
+    /// the GEMM time per product inside a level whose products are shared with the GPU
+    Ggpu(Level, u8),
+    Pipe { level: Level, streams: u8, passes: u8, over: bool, gpu: bool },
     Err(u8),
 }
 
@@ -42,8 +48,10 @@ impl Kind {
             Kind::Leaf(l) | Kind::Passes(l) => l.name().to_string(),
             Kind::Gin(l, 0) => format!("G{}", l.name()),
             Kind::Gin(l, k) => format!("G{k}{}", l.name()),
-            Kind::Pipe { level, streams, passes, over } => {
-                format!("P{}k{streams}p{passes}{}", level.name(), if over { 'o' } else { 's' })
+            Kind::Ggpu(l, 0) => format!("GM{}", l.name()),
+            Kind::Ggpu(l, k) => format!("G{k}M{}", l.name()),
+            Kind::Pipe { level, streams, passes, over, gpu } => {
+                format!("P{}k{streams}p{passes}{}{}", level.name(), if gpu { "M" } else { "" }, if over { 'o' } else { 's' })
             }
             Kind::Err(i) => ERR_NAMES[i as usize].to_string(),
         }
@@ -60,21 +68,39 @@ impl Kind {
             let (name, rest) = rest.split_once('k')?;
             let (k, rest) = rest.split_once('p')?;
             let (p, part) = rest.split_at(rest.len().checked_sub(1)?);
+            let (p, gpu) = match p.strip_suffix('M') {
+                Some(p) => (p, true),
+                None => (p, false),
+            };
             let level = Level::from_name(name)?;
-            return Some(Kind::Pipe { level, streams: k.parse().ok()?, passes: p.parse().ok()?, over: part == "o" })
+            return Some(Kind::Pipe { level, streams: k.parse().ok()?, passes: p.parse().ok()?, over: part == "o", gpu })
                 .filter(|_| part == "o" || part == "s");
         }
         let rest = s.strip_prefix('G')?;
         let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
         let k = if digits == 0 { 0 } else { rest[..digits].parse().ok()? };
-        let level = Level::from_name(&rest[digits..]).filter(|l| !l.is_leaf())?;
-        Some(Kind::Gin(level, k))
+        if let Some(level) = Level::from_name(&rest[digits..]).filter(|l| !l.is_leaf()) {
+            return Some(Kind::Gin(level, k));
+        }
+        let level = Level::from_name(rest[digits..].strip_prefix('M')?).filter(|l| !l.is_leaf())?;
+        Some(Kind::Ggpu(level, k))
+    }
+
+    /// an entry of the GPU's file (calib5gpu_f32.txt): the GPU's leaves and pipelines, the K levels
+    pub fn is_gpu(&self) -> bool {
+        match *self {
+            Kind::Ggpu(..) | Kind::Pipe { gpu: true, .. } => true,
+            Kind::Passes(l) => l.is_split(),
+            _ => false,
+        }
     }
 }
 
 #[derive(Clone, Default, Debug)]
 pub struct Calib {
     pub entries: BTreeMap<(Kind, Shape), f64>,
+    /// the planner may share products with the GPU (f32, the feature `gpu`, a GPU, FMM_GPU != 0)
+    pub gpu: bool,
 }
 
 impl Calib {
@@ -147,18 +173,25 @@ pub fn equivalent(kind: Kind, s: Shape) -> f64 {
 pub const STREAMS: [u8; 4] = [0, 3, 4, 6];
 pub const PIPE_K: [u8; 2] = [3, 6];
 pub const PIPE_P: [u8; 3] = [2, 3, 4];
+/// with the GPU: the products shared between it and Accelerate's own threading (GM) or six streams
+/// (G6M); pipelines of six streams and the GPU with 3 or 4 pass threads (the C library's rules)
+pub const GSTREAMS: [u8; 2] = [0, 6];
+pub const GPIPE_K: u8 = 6;
+pub const GPIPE_P: [u8; 2] = [3, 4];
 
 /// the entries the planner needs for a problem of shape s: the leaves alone at s, and for each
 /// fused level dividing s its passes, per-product GEMM (every stream count) and pipelines of the
 /// levels below, at its product shape, and the needs of that shape; the error model once, for
-/// square problems of N_E and up
-pub fn need(s: Shape) -> Vec<(Kind, Shape)> {
+/// square problems of N_E and up; with the GPU (gpu) its entries too, and on top the K levels (their
+/// products are strips of the problem, so they are measured for this shape only)
+pub fn need(s: Shape, gpu: bool) -> Vec<(Kind, Shape)> {
     fn put(out: &mut Vec<(Kind, Shape)>, k: Kind, s: Shape) {
         if !out.contains(&(k, s)) {
             out.push((k, s));
         }
     }
-    fn rec(s: Shape, out: &mut Vec<(Kind, Shape)>) {
+    fn rec(s: Shape, gpu: bool, out: &mut Vec<(Kind, Shape)>) {
+        use crate::plan::GPU_MINB;
         let minb = crate::plan::minb();
         if s.is_sq() && s.m >= N_E {
             for i in 0..ERR_PLANS.len() {
@@ -178,6 +211,11 @@ pub fn need(s: Shape) -> Vec<(Kind, Shape)> {
             for k in STREAMS {
                 put(out, Kind::Gin(lv, k), t);
             }
+            if gpu && t.min_dim() >= GPU_MINB {
+                for k in GSTREAMS {
+                    put(out, Kind::Ggpu(lv, k), t);
+                }
+            }
             for ly in Level::FUSED {
                 if !ly.divides(t) || ly.sub(t).min_dim() < minb {
                     continue;
@@ -186,17 +224,41 @@ pub fn need(s: Shape) -> Vec<(Kind, Shape)> {
                 for k in PIPE_K {
                     for p in PIPE_P {
                         for over in [false, true] {
-                            put(out, Kind::Pipe { level: ly, streams: k, passes: p, over }, ty);
+                            put(out, Kind::Pipe { level: ly, streams: k, passes: p, over, gpu: false }, ty);
+                        }
+                    }
+                }
+                if gpu && ty.min_dim() >= GPU_MINB {
+                    for p in GPIPE_P {
+                        for over in [false, true] {
+                            put(out, Kind::Pipe { level: ly, streams: GPIPE_K, passes: p, over, gpu: true }, ty);
                         }
                     }
                 }
             }
-            rec(t, out);
+            rec(t, gpu, out);
         }
     }
     let mut out = vec![];
-    rec(s, &mut out);
+    rec(s, gpu, &mut out);
+    if gpu {
+        for lv in Level::SPLIT {
+            if !lv.divides(s) || lv.sub(s).m < crate::plan::K_MINROWS {
+                continue;
+            }
+            put(&mut out, Kind::Passes(lv), lv.sub(s));
+            for k in GSTREAMS {
+                put(&mut out, Kind::Ggpu(lv, k), lv.sub(s));
+            }
+        }
+    }
     out
+}
+
+/// whether the planner may use the GPU in this precision: f32, the feature `gpu`, a GPU, and
+/// FMM_GPU not 0
+pub fn gpu_mode(f64: bool) -> bool {
+    !f64 && std::env::var("FMM_GPU").ok().and_then(|v| v.trim().parse::<i64>().ok()) != Some(0) && crate::gpu::available()
 }
 
 pub fn machine() -> &'static str {
@@ -222,6 +284,11 @@ pub fn path(f64: bool) -> PathBuf {
     dir.join(if f64 { "calib5_f64.txt" } else { "calib5_f32.txt" })
 }
 
+/// the GPU's entries, beside the cache
+pub fn path_gpu() -> PathBuf {
+    path(false).with_file_name("calib5gpu_f32.txt")
+}
+
 /// the kernels the cache was measured with: the D48 program, the R levels' operation counts and the
 /// 2x2 level's programs (the C library writes the same string)
 fn kernels_key() -> String {
@@ -229,13 +296,11 @@ fn kernels_key() -> String {
             kernels::SW_PROGRAM, kernels::SW_OPS)
 }
 
-/// the cache, if it was measured on this machine with this padding, format and kernels
-pub fn load(f64: bool) -> Calib {
-    let mut c = Calib::default();
-    if std::env::var("FMM_RECALIB").ok().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0) != 0 {
-        return c;
-    }
-    let Ok(text) = std::fs::read_to_string(path(f64)) else { return c };
+/// the entries of a cache file whose header matches this machine, padding, format and kernels
+/// (keep: which kinds to take), None if it does not
+fn read_file(p: &std::path::Path, keep: impl Fn(Kind) -> bool) -> Option<Vec<(Kind, Shape, f64)>> {
+    let text = std::fs::read_to_string(p).ok()?;
+    let mut v = vec![];
     let (mut ok_machine, mut ok_pad, mut ok_format, mut ok_kernels) = (false, false, false, false);
     for line in text.lines() {
         if let Some(v) = line.strip_prefix("# machine ") {
@@ -251,18 +316,54 @@ pub fn load(f64: bool) -> Calib {
             if f.len() == 5
                 && let (Some(kind), Ok(m), Ok(k), Ok(n), Ok(t)) =
                     (Kind::parse(f[0]), f[1].parse(), f[2].parse(), f[3].parse(), f[4].parse())
+                && keep(kind)
             {
-                c.put(kind, Shape::new(m, k, n), t);
+                v.push((kind, Shape::new(m, k, n), t));
             }
         }
     }
-    if ok_machine && ok_pad && ok_format && ok_kernels { c } else { Calib::default() }
+    (ok_machine && ok_pad && ok_format && ok_kernels).then_some(v)
 }
 
+/// the cache, if it was measured on this machine with this padding, format and kernels, and with
+/// the GPU (gpu_mode) the GPU's entries from their file if it was measured beside it
+pub fn load(f64: bool) -> Calib {
+    let mut c = Calib { gpu: gpu_mode(f64), ..Calib::default() };
+    if std::env::var("FMM_RECALIB").ok().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0) != 0 {
+        return c;
+    }
+    let Some(v) = read_file(&path(f64), |k| !k.is_gpu()) else { return c };
+    for (kind, s, t) in v {
+        c.put(kind, s, t);
+    }
+    if c.gpu {
+        for (kind, s, t) in read_file(&path_gpu(), |k| k.is_gpu()).unwrap_or_default() {
+            c.put(kind, s, t);
+        }
+    }
+    c
+}
+
+/// the cache's two files: the entries without the GPU, and the GPU's if there are any
 pub fn save(c: &Calib, f64: bool) -> std::io::Result<()> {
     let p = path(f64);
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir)?;
+    }
+    let head = format!("# machine {}\n# pad {}\n# format {}\n# kernels {}\n", machine(), pad(), FORMAT, kernels_key());
+    let body = |gpu: bool| -> String {
+        c.entries
+            .iter()
+            .filter(|((k, _), _)| k.is_gpu() == gpu)
+            .map(|(&(kind, sh), &t)| format!("{} {} {} {} {}\n", kind.name(), sh.m, sh.k, sh.n, fmt_g9(t)))
+            .collect()
+    };
+    if !f64 && c.entries.keys().any(|(k, _)| k.is_gpu()) {
+        let g = "# bench_fmm calibration, f32, the GPU's entries (beside calib5_f32.txt): GMX, GkMX = the GEMM time per product \
+                 of level X with its products shared between Accelerate's own threading (k streams) and the GPU; PYkKpPMs, \
+                 PYkKpPMo = pipelined sub-problems of level Y so shared; K16, K32, K64 = the classical product in strips of rows \
+                 (no passes: 0)\n";
+        std::fs::write(path_gpu(), format!("{g}{head}{}", body(true)))?;
     }
     let mut s = format!(
         "# bench_fmm calibration, {}, seconds; entries kind m k n t for a product of shape (m x k)(k x n): G = one GEMM of \
@@ -272,10 +373,8 @@ pub fn save(c: &Calib, f64: bool) -> std::io::Result<()> {
          errors at n = N_E\n",
         if f64 { "f64" } else { "f32" }
     );
-    s += &format!("# machine {}\n# pad {}\n# format {}\n# kernels {}\n", machine(), pad(), FORMAT, kernels_key());
-    for (&(kind, sh), &t) in &c.entries {
-        s += &format!("{} {} {} {} {}\n", kind.name(), sh.m, sh.k, sh.n, fmt_g9(t));
-    }
+    s += &head;
+    s += &body(false);
     std::fs::write(p, s)
 }
 
@@ -314,8 +413,8 @@ fn fmt_g9(t: f64) -> String {
 pub struct ErrModel {
     pub base: f64,
     pub rho: f64,
-    /// the factor of each fused level, by Level::ALL's order
-    pub f: [f64; 7],
+    /// the factor of each fused level, by Level::ALL's order (1 for the others)
+    pub f: [f64; 10],
 }
 
 impl ErrModel {
@@ -335,8 +434,8 @@ impl Calib {
         }
         let base = v[6];                        /* the classical GEMM's own error at N_E */
         let rho = v[2] * base / (v[1] * v[1]);  /* D48/D48 over the product of two D48 factors */
-        let mut f = [1.0; 7];
-        let set = |f: &mut [f64; 7], lv: Level, x: f64| f[Level::ALL.iter().position(|l| *l == lv).unwrap()] = x;
+        let mut f = [1.0; 10];
+        let set = |f: &mut [f64; 10], lv: Level, x: f64| f[Level::ALL.iter().position(|l| *l == lv).unwrap()] = x;
         set(&mut f, Level::Sw, v[0] / base);
         set(&mut f, Level::D48, v[1] / base);
         set(&mut f, Level::R336, v[3] / base);
@@ -364,15 +463,19 @@ mod tests {
 
     #[test]
     fn kind_names_round_trip() {
-        let need = need(Shape::sq(13824));
-        assert!(need.len() > 300, "{}", need.len());
+        let need = need(Shape::sq(13824), true);
+        assert!(need.len() > 400, "{}", need.len());
         for (k, _) in need {
             assert_eq!(Kind::parse(&k.name()), Some(k), "{}", k.name());
         }
-        for s in ["G", "B2", "SW", "D48", "R336", "GSW", "G6D48", "G3R363", "PD48k6p2s", "PSWk3p4o", "PR633k6p4s", "ESW", "ED48D48", "ER633"] {
+        for s in ["G", "B2", "SW", "D48", "R336", "GSW", "G6D48", "G3R363", "PD48k6p2s", "PSWk3p4o", "PR633k6p4s", "ESW", "ED48D48", "ER633",
+                  "GMR363", "G6MD48", "GMK32", "G6MK16", "PR363k6p4Ms", "PSWk6p3Mo", "K32"] {
             assert_eq!(Kind::parse(s).map(|k| k.name()), Some(s.to_string()));
         }
-        for s in ["", "X", "GG", "G6", "PD48k6p2", "PD48k6p2x", "E", "R36"] {
+        for (s, gpu) in [("GMR363", true), ("PR363k6p4Ms", true), ("K64", true), ("PR363k6p4s", false), ("G6R363", false), ("R363", false)] {
+            assert_eq!(Kind::parse(s).unwrap().is_gpu(), gpu, "{s}");
+        }
+        for s in ["", "X", "GG", "G6", "PD48k6p2", "PD48k6p2x", "E", "R36", "GM", "G6M", "GMG", "PD48k6pMs"] {
             assert_eq!(Kind::parse(s), None, "{s}");
         }
     }
@@ -407,12 +510,20 @@ mod tests {
 
     #[test]
     fn needs_include_rectangular_products() {
-        let n = need(Shape::sq(6912));
+        let n = need(Shape::sq(6912), false);
         assert!(n.contains(&(Kind::Passes(Level::R336), Shape::new(2304, 2304, 1152))));
         assert!(n.contains(&(Kind::Gin(Level::R363, 6), Shape::new(2304, 1152, 2304))));
-        assert!(n.contains(&(Kind::Pipe { level: Level::D48, streams: 3, passes: 2, over: false }, Shape::new(576, 576, 288))));
+        assert!(n.contains(&(Kind::Pipe { level: Level::D48, streams: 3, passes: 2, over: false, gpu: false }, Shape::new(576, 576, 288))));
         assert!(n.contains(&(Kind::Err(5), Shape::sq(N_E))));
-        let r = need(Shape::new(3456, 3456, 1728));
+        assert!(!n.iter().any(|(k, _)| k.is_gpu()));
+        let g = need(Shape::sq(6912), true);
+        assert!(g.contains(&(Kind::Ggpu(Level::R363, 6), Shape::new(2304, 1152, 2304))));
+        assert!(g.contains(&(Kind::Passes(Level::K32), Shape::new(216, 6912, 6912))));
+        assert!(g.contains(&(Kind::Ggpu(Level::K64, 0), Shape::new(108, 6912, 6912))));
+        let h = need(Shape::sq(13824), true);
+        assert!(h.contains(&(Kind::Pipe { level: Level::R363, streams: 6, passes: 4, over: true, gpu: true }, Shape::new(1536, 768, 768))));
+        assert!(!g.contains(&(Kind::Ggpu(Level::D48, 6), Shape::new(432, 432, 432))));     // under GPU_MINB
+        let r = need(Shape::new(3456, 3456, 1728), false);
         assert!(r.contains(&(Kind::Leaf(Level::G), Shape::new(3456, 3456, 1728))));
         assert!(!r.iter().any(|(k, _)| matches!(k, Kind::Err(_))));
     }

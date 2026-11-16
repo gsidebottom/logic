@@ -4,13 +4,17 @@
 //! computes the products M_q = S_q T_q by the rest of the plan and writes C from the M_q (one
 //! pass).  Passes run as row chunks on the library's thread pool, each chunk owning its rows of
 //! every output block; GEMM streams take products from a shared queue; a pipelined level runs its
-//! sub-problems' passes on a few threads while the streams compute.  All borrows are disjoint by
-//! construction and checked by the compiler: no unsafe code here.
+//! sub-problems' passes on a few threads while the streams compute.  With the GPU (f32, the feature
+//! `gpu`) a level's products are shared: the streams take them from the front of the queue, one
+//! thread submitting to the GPU from the back, a few at a time, until they meet; a K level hands
+//! strips of A and C (and all of B) to the two engines with no passes.  All borrows are disjoint
+//! by construction and checked by the compiler: no unsafe code here.
 
 use crate::kernels;
 use crate::plan::{pad, Entry, Level, Shape};
 use crate::sys;
 use rayon::prelude::*;
+use std::collections::VecDeque;
 use std::sync::Mutex;
 
 /// row chunks per pass
@@ -36,12 +40,14 @@ pub trait Real: Copy + Send + Sync + Default + PartialEq + std::fmt::Debug + 'st
     const R633_P: fn(usize, [&[Self]; 40], [&mut [Self]; 18]);
     /// C = A B + beta C for an m x k matrix A and a k x n matrix B, row-major
     fn gemm(s: Shape, a: &[Self], lda: usize, b: &[Self], ldb: usize, beta: f64, c: &mut [Self], ldc: usize);
+    /// C_i = A_i B_i on the GPU for every item (f32 with the feature `gpu`); false if not done
+    fn gpu_batch(t: Shape, items: &mut [Product<'_, Self>], lda: usize, ldb: usize, ldc: usize) -> bool;
     fn from_f64(x: f64) -> Self;
     fn to_f64(self) -> f64;
 }
 
 macro_rules! real_impl {
-    ($t:tt, $f64:expr, $sgemm:path) => {
+    ($t:tt, $f64:expr, $sgemm:path, $gpu:expr) => {
         impl Real for $t {
             const F64: bool = $f64;
             const SW_L: fn(usize, [&[$t]; 4], [&mut [$t]; 7]) = paste_kernel!(sw_l, $t);
@@ -61,6 +67,9 @@ macro_rules! real_impl {
             const R633_P: fn(usize, [&[$t]; 40], [&mut [$t]; 18]) = paste_kernel!(r633_p, $t);
             fn gemm(s: Shape, a: &[$t], lda: usize, b: &[$t], ldb: usize, beta: f64, c: &mut [$t], ldc: usize) {
                 $sgemm(s, a, lda, b, ldb, beta as $t, c, ldc)
+            }
+            fn gpu_batch(t: Shape, items: &mut [Product<'_, $t>], lda: usize, ldb: usize, ldc: usize) -> bool {
+                $gpu(t, items, lda, ldb, ldc)
             }
             fn from_f64(x: f64) -> $t {
                 x as $t
@@ -91,8 +100,15 @@ macro_rules! paste_kernel {
     (r633_p, f32) => { kernels::r633_p_f32 }; (r633_p, f64) => { kernels::r633_p_f64 };
 }
 
-real_impl!(f32, false, sys::sgemm);
-real_impl!(f64, true, sys::dgemm);
+/// one product of a level: its left and right factors and its result
+pub type Product<'a, T> = (&'a [T], &'a [T], &'a mut [T]);
+
+fn no_gpu(_: Shape, _: &mut [Product<'_, f64>], _: usize, _: usize, _: usize) -> bool {
+    false
+}
+
+real_impl!(f32, false, sys::sgemm, crate::gpu::sgemm_batch);
+real_impl!(f64, true, sys::dgemm, no_gpu);
 
 // ---- passes as row chunks ------------------------------------------------------------------
 
@@ -325,29 +341,89 @@ pub fn run_par<T: Real>(chunks: Vec<Chunk<'_, T>>) {
 // ---- products ------------------------------------------------------------------------------
 
 /// the r products of a level, of shape t, as k single-threaded GEMM streams taking products in
-/// turn; the S, T and M blocks are bss, bst and bsm apart
+/// turn (gpu: shared with the GPU); the S, T and M blocks are bss, bst and bsm apart
 pub fn gemm_streams<T: Real>(r: usize, t: Shape, s_all: &[T], t_all: &[T], m_all: &mut [T], bss: usize, bst: usize,
-                             bsm: usize, k: usize) {
-    let items: Vec<(&[T], &[T], &mut [T])> = m_all
+                             bsm: usize, k: usize, gpu: bool) {
+    let items: Vec<Product<'_, T>> = m_all
         .chunks_mut(bsm)
         .take(r)
         .enumerate()
         .map(|(q, mm)| (&s_all[q * bss..q * bss + t.m * t.k], &t_all[q * bst..q * bst + t.k * t.n], mm.split_at_mut(t.m * t.n).0))
         .collect();
-    let queue = Mutex::new(items.into_iter());
-    rayon::scope(|s| {
-        for _ in 0..k {
-            s.spawn(|_| {
+    let queue = Mutex::new(VecDeque::from(items));
+    rayon::scope(|sc| spawn_products(sc, &queue, t, (t.k, t.n, t.n), k, gpu));
+}
+
+/// products a GPU command buffer takes: about FMM_GPU_FLOPS flops (default 2.5e10, some
+/// milliseconds, so that the last batch does not leave the streams idle for long), 1 to 8
+fn gpu_batch_size(t: Shape) -> usize {
+    let target = std::env::var("FMM_GPU_FLOPS").ok().and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(2.5e10);
+    ((target / (2.0 * t.m as f64 * t.k as f64 * t.n as f64)) as usize).clamp(1, 8)
+}
+
+/// the workers of a queue of products of shape t (leading dimensions ld): k single-threaded GEMM
+/// streams from the front (k = 0: one thread with Accelerate's own threading, when the GPU shares
+/// them), and with gpu one thread submitting batches to the GPU from the back; a batch the GPU
+/// refuses is computed by that thread with the GEMM
+fn spawn_products<'s, 'q: 's, 'p: 'q, T: Real>(sc: &rayon::Scope<'s>, queue: &'q Mutex<VecDeque<Product<'p, T>>>, t: Shape,
+                                               ld: (usize, usize, usize), k: usize, gpu: bool) {
+    let (lda, ldb, ldc) = ld;
+    for _ in 0..k.max(if gpu { 1 } else { 0 }) {
+        sc.spawn(move |_| {
+            if k > 0 {
                 sys::set_single_threaded(true);
-                loop {
-                    let next = queue.lock().unwrap().next();
-                    let Some((sa, ta, ma)) = next else { break };
-                    T::gemm(t, sa, t.k, ta, t.n, 0.0, ma, t.n);
-                }
+            }
+            loop {
+                let next = queue.lock().unwrap().pop_front();
+                let Some((sa, ta, ma)) = next else { break };
+                T::gemm(t, sa, lda, ta, ldb, 0.0, ma, ldc);
+            }
+            if k > 0 {
                 sys::set_single_threaded(false);
-            });
+            }
+        });
+    }
+    if gpu {
+        let batch = gpu_batch_size(t);
+        sc.spawn(move |_| loop {
+            let mut items: Vec<Product<'p, T>> = {
+                let mut q = queue.lock().unwrap();
+                (0..batch).map_while(|_| q.pop_back()).collect()
+            };
+            if items.is_empty() {
+                break;
+            }
+            if !T::gpu_batch(t, &mut items, lda, ldb, ldc) {
+                for (sa, ta, ma) in items {
+                    T::gemm(t, sa, lda, ta, ldb, 0.0, ma, ldc);
+                }
+            }
+        });
+    }
+}
+
+/// a K level on top: C_i = A_i B for the r strips of rows of A and C (shape t each), the products
+/// of the leaf below shared between `k` streams and the GPU, or each by the plan below
+fn split_level<T: Real>(lv: Level, below: &[Entry], s: Shape, a: &[T], lda: usize, b: &[T], ldb: usize, c: &mut [T],
+                        ldc: usize, work: &mut [T]) {
+    let (r, t) = (lv.rank(), lv.sub(s));
+    let ea = sys::extent(t.m, t.k, lda);
+    let strips: Vec<Product<'_, T>> = c
+        .chunks_mut(t.m * ldc)
+        .take(r)
+        .enumerate()
+        .map(|(q, cq)| (&a[q * t.m * lda..q * t.m * lda + ea], b, cq))
+        .collect();
+    assert_eq!(strips.len(), r, "fmm: C too short for the strips");
+    let e = below[0];
+    if e.level == Level::G && (e.streams > 0 || e.gpu) {
+        let queue = Mutex::new(VecDeque::from(strips));
+        rayon::scope(|sc| spawn_products(sc, &queue, t, (lda, ldb, ldc), e.streams as usize, e.gpu));
+    } else {
+        for (aq, bq, cq) in strips {
+            exec(below, t, aq, lda, bq, ldb, cq, ldc, &mut *work);
         }
-    });
+    }
 }
 
 /// inputs of a pipeline's sub-problems: sub-problem q's matrix, contiguous (leading dimension its
@@ -394,7 +470,7 @@ impl<T> BlocksMut<T> for StridedMut<'_, T> {
 /// the passes.  The first factors and the last result run on every thread.
 pub fn pipeline<T: Real>(py: &[Entry], t: Shape, r: usize, sx: &dyn Blocks<T>, tx: &dyn Blocks<T>,
                          mx: &mut dyn BlocksMut<T>, work: &mut [T], w: usize) {
-    let (ly, k) = (py[0].level, py[1].streams as usize);
+    let (ly, k, gpu) = (py[0].level, py[1].streams as usize, py[1].gpu);
     let ry = ly.rank();
     let ty = ly.sub(t);
     let (bss, bst, bsm) = block_strides(ty);
@@ -422,26 +498,16 @@ pub fn pipeline<T: Real>(py: &[Entry], t: Shape, r: usize, sx: &dyn Blocks<T>, t
             run_par(chunks);                // fill and drain: nothing to hide the passes behind
             continue;
         }
-        let gemms: Vec<(&[T], &[T], &mut [T])> = gm
+        let gemms: Vec<Product<'_, T>> = gm
             .chunks_mut(bsm)
             .take(ry)
             .enumerate()
             .map(|(j, mm)| (&gs[j * bss..j * bss + ty.m * ty.k], &gt[j * bst..j * bst + ty.k * ty.n], mm.split_at_mut(ty.m * ty.n).0))
             .collect();
-        let gq_items = Mutex::new(gemms.into_iter());
+        let gq_items = Mutex::new(VecDeque::from(gemms));
         let pq_items = Mutex::new(chunks.into_iter());
         rayon::scope(|s| {
-            for _ in 0..k {
-                s.spawn(|_| {
-                    sys::set_single_threaded(true);
-                    loop {
-                        let next = gq_items.lock().unwrap().next();
-                        let Some((sa, ta, ma)) = next else { break };
-                        T::gemm(ty, sa, ty.k, ta, ty.n, 0.0, ma, ty.n);
-                    }
-                    sys::set_single_threaded(false);
-                });
-            }
+            spawn_products(s, &gq_items, ty, (ty.k, ty.n, ty.n), k, gpu);
             for _ in 0..w {
                 s.spawn(|_| loop {
                     let next = pq_items.lock().unwrap().next();
@@ -476,6 +542,7 @@ pub fn exec<T: Real>(plan: &[Entry], s: Shape, a: &[T], lda: usize, b: &[T], ldb
     match e.level {
         Level::G => T::gemm(s, a, lda, b, ldb, 0.0, c, ldc),
         Level::B2 => classical_blocked(2, s, a, lda, b, ldb, c, ldc),
+        lv if lv.is_split() => split_level(lv, &plan[1..], s, a, lda, b, ldb, c, ldc, work),
         lv => {
             let r = lv.rank();
             let t = lv.sub(s);
@@ -492,8 +559,8 @@ pub fn exec<T: Real>(plan: &[Entry], s: Shape, a: &[T], lda: usize, b: &[T], ldb
                 let tx = Strided { buf: t_all, bs: bst, len: t.k * t.n };
                 let mut mx = StridedMut { buf: &mut *m_all, bs: bsm, len: t.m * t.n };
                 pipeline(&plan[1..3], t, r, &sx, &tx, &mut mx, deeper, e.pass_threads());
-            } else if next.level == Level::G && next.streams > 0 {
-                gemm_streams(r, t, s_all, t_all, &mut *m_all, bss, bst, bsm, next.streams as usize);
+            } else if next.level == Level::G && (next.streams > 0 || next.gpu) {
+                gemm_streams(r, t, s_all, t_all, &mut *m_all, bss, bst, bsm, next.streams as usize, next.gpu);
             } else {
                 for q in 0..r {
                     let mq = &mut m_all[q * bsm..q * bsm + t.m * t.n];

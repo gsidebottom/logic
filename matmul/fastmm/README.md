@@ -81,7 +81,11 @@ documented where they are read, in `fmm.c` and `bench_impl.h`.
 k x n), `fmm_calibrate`, `fmm_calibrate_mkn`, `fmm_plan`, `fmm_plan_mkn`, `fmm_release`; link
 `build/libfmm.a -framework Accelerate`.  The Rust crate in `rust/` has the same entry points
 (`fmm::sgemm`, `fmm::dgemm`, ...), the same plans and the same results bit for bit, and its own
-README.
+README.  The C library is built with `-ffp-contract=off`, so the passes compute their programs as
+written, as Rust does: with clang's default contraction the R336 level's P program, whose one
+statement `v + X*5` has a non-dyadic factor, rounded once where Rust rounds twice, and plans with
+an R336 level differed from Rust's in the last bits (found 2026-11-16, when the crosscheck first
+ran on the real cache at 6912 and 13824).
 
 The planner takes the fastest plan within the error budget and, of the plans predicted within 2%
 of it, one predicted at least 25% more accurate, the error model's resolution (faster first,
@@ -119,8 +123,9 @@ the same plan at different places in a run: a plan with the GPU runs 10-20% slow
 CPU-only work than after another GPU plan (not the GPU's clock: keeping it busy during the first
 passes changed nothing), which is why the planner treats GPU plans predicted within 8% as ties
 and takes the more accurate.  There is no f64 on Metal: double precision is unchanged.
-Not ported to Rust.  `FMM_GPU=0` plans without the GPU; its calibration entries live beside the
-cache in `calib5gpu_f32.txt`.
+The Rust crate has the same leaves with `--features gpu` (same plans, predictions and results,
+bit for bit: `results/crosscheck_2026-11-16.txt`).  `FMM_GPU=0` plans without the GPU; its
+calibration entries live beside the cache in `calib5gpu_f32.txt`.
 
 ## Files
 

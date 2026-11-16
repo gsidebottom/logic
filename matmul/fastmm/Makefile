@@ -1,8 +1,11 @@
 # fast matrix multiplication benchmark (Apple silicon, Accelerate)
+# -ffp-contract=off: the passes compute their programs as written, as the Rust port does (clang's default
+# contracted v + X*5 in the R336 P program into an FMA, which rounds once where Rust rounds twice: plans with an
+# R336 level differed from Rust's in the last bits; results/crosscheck_2026-11-16.txt)
 all: build/bench_fmm build/libfmm.a build/test_fmm build/probe_threads build/neon_test build/probe_overlap
 
 build/bench_fmm: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild bench_fmm.c -framework Accelerate -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild bench_fmm.c -framework Accelerate -o $@
 
 # the kernels: dps48 from DPS's 262-operation accurate program (4x4x4_48_accurate_262), op-by-op
 # lists from ours (201)
@@ -13,12 +16,12 @@ build/kernels.h: gen_kernels.py schemes/opt/dps7_L.slp schemes/opt/dps7_R.slp sc
 # levels to share the classical product (gpu_leaf.m; gpu_share.m is the probe)
 build/bench_fmm_gpu: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h gpu_leaf.h gpu_leaf.m build/kernels.h
 	clang -O2 -fobjc-arc -Wall -c gpu_leaf.m -o build/gpu_leaf.o
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -DFMM_GPU -Ibuild bench_fmm.c build/gpu_leaf.o -framework Accelerate -framework Foundation -framework Metal -framework MetalPerformanceShaders -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -DFMM_GPU -Ibuild bench_fmm.c build/gpu_leaf.o -framework Accelerate -framework Foundation -framework Metal -framework MetalPerformanceShaders -o $@
 
 # the library with the GPU: link with -framework Accelerate -framework Foundation -framework Metal
 # -framework MetalPerformanceShaders
 build/libfmm_gpu.a: fmm.c fmm_impl.h fmm.h neon_gemm.h gpu_leaf.h gpu_leaf.m build/kernels.h
-	mkdir -p build && clang -O2 -fobjc-arc -Wall -c gpu_leaf.m -o build/gpu_leaf.o && clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -DFMM_GPU -Ibuild -c fmm.c -o build/fmm_gpu.o && ar rcs $@ build/fmm_gpu.o build/gpu_leaf.o
+	mkdir -p build && clang -O2 -fobjc-arc -Wall -c gpu_leaf.m -o build/gpu_leaf.o && clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -DFMM_GPU -Ibuild -c fmm.c -o build/fmm_gpu.o && ar rcs $@ build/fmm_gpu.o build/gpu_leaf.o
 
 build/test_fmm_gpu: test_fmm.c fmm.h build/libfmm_gpu.a
 	clang -O3 -mcpu=apple-m4 -Wall test_fmm.c build/libfmm_gpu.a -framework Accelerate -framework Foundation -framework Metal -framework MetalPerformanceShaders -o $@
@@ -33,7 +36,7 @@ build/probe_nt: probe_nt.c
 	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall probe_nt.c -framework Accelerate -o $@
 
 build/probe_strip: probe_strip.c build/kernels.h
-	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild probe_strip.c -o $@
+	mkdir -p build && clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild probe_strip.c -o $@
 
 # the SME leaf kernel of sme_gemm.h against Accelerate on a level's products
 build/sme_test: sme_test.c sme_gemm.h
@@ -42,7 +45,7 @@ build/sme_test: sme_test.c sme_gemm.h
 # the same with every use of a scaled value as a fused multiply-add (x * 0.5 + y -> one FMLA);
 # -ffp-contract=fast alone fuses nothing here: each halving feeds 4-5 additions
 build/bench_fmm_fma: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/fma/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/fma bench_fmm.c -framework Accelerate -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/fma bench_fmm.c -framework Accelerate -o $@
 
 build/fma/kernels.h: gen_kernels.py ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
 	mkdir -p build/fma && python3 gen_kernels.py $@ --fma --dps48 ../dps48/cand48/p005_201n
@@ -55,7 +58,7 @@ build/gpu_gemm: gpu_gemm.m
 # the same with the direct-sum programs for the R levels (schemes/) instead of the PLinOpt-optimized
 # ones (schemes/opt, the default): results/r336_opt_vs_direct_2026-10-28.txt
 build/bench_fmm_rdirect: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/rdirect/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/rdirect bench_fmm.c -framework Accelerate -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/rdirect bench_fmm.c -framework Accelerate -o $@
 
 build/rdirect/kernels.h: gen_kernels.py schemes/r336_L.slp schemes/r336_R.slp schemes/r336_P.slp schemes/r363_L.slp schemes/r363_R.slp schemes/r363_P.slp schemes/r633_L.slp schemes/r633_R.slp schemes/r633_P.slp schemes/t336_L.slp schemes/t336_R.slp schemes/t336_P.slp schemes/t363_L.slp schemes/t363_R.slp schemes/t363_P.slp schemes/t633_L.slp schemes/t633_R.slp schemes/t633_P.slp
 	mkdir -p build/rdirect && python3 gen_kernels.py $@ --rschemes schemes
@@ -70,11 +73,11 @@ build/neon_test: neon_test.c neon_gemm.h
 
 # a fused pass beside SME GEMM streams: how much each slows the other
 build/probe_overlap: probe_overlap.c build/kernels.h
-	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild probe_overlap.c -framework Accelerate -o $@
+	mkdir -p build && clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild probe_overlap.c -framework Accelerate -o $@
 
 # the library: fmm.h, link with -framework Accelerate
 build/libfmm.a: fmm.c fmm_impl.h fmm.h neon_gemm.h build/kernels.h
-	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild -c fmm.c -o build/fmm.o && ar rcs $@ build/fmm.o
+	mkdir -p build && clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild -c fmm.c -o build/fmm.o && ar rcs $@ build/fmm.o
 
 # the library's entry points against Accelerate (FMM_CALIB_DIR=results build/test_fmm)
 build/test_fmm: test_fmm.c fmm.h build/libfmm.a
@@ -84,21 +87,21 @@ build/test_fmm: test_fmm.c fmm.h build/libfmm.a
 # then the level's programs are DPS's dyadic accurate point, schemes/opt/dps7_*): the A/B of
 # results/sw_dps7_2026-11-02.txt
 build/bench_fmm_winograd: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/winograd/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/winograd bench_fmm.c -framework Accelerate -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/winograd bench_fmm.c -framework Accelerate -o $@
 
 build/winograd/kernels.h: gen_kernels.py
 	mkdir -p build/winograd && python3 gen_kernels.py $@ --sw winograd
 
 # the same with dps48's fused kernels from the original rational rank-48 scheme (315 operations)
 build/bench_fmm_orig: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/orig/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/orig bench_fmm.c -framework Accelerate -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/orig bench_fmm.c -framework Accelerate -o $@
 
 build/orig/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_rational_L.slp ../dps48/plinopt/data/4x4x4_48_rational_R.slp ../dps48/plinopt/data/4x4x4_48_rational_P.slp
 	mkdir -p build/orig && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_rational
 
 # the same with dps48's fused kernels from our 201-operation program
 build/bench_fmm_201: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/201/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/201 bench_fmm.c -framework Accelerate -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/201 bench_fmm.c -framework Accelerate -o $@
 
 build/201/kernels.h: gen_kernels.py ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp
 	mkdir -p build/201 && python3 gen_kernels.py $@ --dps48 ../dps48/cand48/p005_201n
@@ -109,13 +112,13 @@ build/var/%/kernels.h: gen_kernels.py ../dps48/gamma/slp/%_L.slp ../dps48/gamma/
 	mkdir -p build/var/$* && python3 gen_kernels.py $@ --dps48 ../dps48/gamma/slp/$*
 
 build/bench_fmm_var_%: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/var/%/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/var/$* bench_fmm.c -framework Accelerate -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/var/$* bench_fmm.c -framework Accelerate -o $@
 
 # the same with dps48's fused kernels from DPS's 262-operation accurate programs (PLinOpt's
 # 4x4x4_48_accurate_262, equivalent to the gamma search's 16 sqrt2 point; the default since
 # 2026-10-25, kept for the paper's commands)
 build/bench_fmm_acc262: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/acc262/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/acc262 bench_fmm.c -framework Accelerate -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/acc262 bench_fmm.c -framework Accelerate -o $@
 
 build/acc262/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp
 	mkdir -p build/acc262 && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_accurate_262
@@ -124,7 +127,7 @@ build/acc262/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_2
 # (Table 1 of arXiv:2603.18699, PLinOpt's 4x4x4_48_accurate; the library's default before
 # 2026-10-25)
 build/bench_fmm_acc284: bench_fmm.c bench_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/acc284/kernels.h
-	clang -O3 -mcpu=apple-m4 -Wall -Wno-unused-function -Ibuild/acc284 bench_fmm.c -framework Accelerate -o $@
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/acc284 bench_fmm.c -framework Accelerate -o $@
 
 build/acc284/kernels.h: gen_kernels.py ../dps48/plinopt/data/4x4x4_48_accurate_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_P.slp
 	mkdir -p build/acc284 && python3 gen_kernels.py $@ --dps48 ../dps48/plinopt/data/4x4x4_48_accurate

@@ -1189,3 +1189,26 @@ void fmm_release(void) {
     api_nplans = api_next = 0;
     pthread_mutex_unlock(&api_lock);
 }
+
+/* testing (not in fmm.h): C = A B for contiguous n x n matrices by a named plan ("R336/R363/G6"), the
+ * Rust port's crosscheck runs the same plan in both libraries; 0, or -1 if the plan does not parse */
+int fmm_run_plan(const char *plan, size_t n, int f64, const void *A, const void *B, void *C) {
+    int p[PLAN_MAX];
+    char name[160];
+    snprintf(name, sizeof name, "plan=%s", plan);
+    if (!parse_plan(name, sq(n), p)) return -1;
+    size_t w = plan_work(p, sq(n)) + 16, es = f64 ? sizeof(double) : sizeof(float);
+    void *work = NULL;
+    if (posix_memalign(&work, 16384, w * es) != 0) return -1;
+    memset(work, 0, w * es);
+#ifdef FMM_GPU
+    if (!f64) fmm_gpu_attach(work, w * es);
+#endif
+    if (f64) execd(p, sq(n), A, n, B, n, C, n, work, NULL);
+    else execf(p, sq(n), A, n, B, n, C, n, work, NULL);
+#ifdef FMM_GPU
+    if (!f64) fmm_gpu_detach(work);
+#endif
+    free(work);
+    return 0;
+}

@@ -9,8 +9,10 @@ description = "Fast matrix multiplication on Apple silicon in Rust: fused fast-s
 rayon = "1"
 
 [features]
-# the benchmarks against the C library (links ../build/libfmm.a and its kernels)
+# the benchmarks against the C library (links ../build/libfmm.a and its kernels; with gpu, ../build/libfmm_gpu.a)
 cbench = []
+# the GPU as a second engine for a level's f32 products (links ../gpu_leaf.m and Metal), as the C library's GPU build
+gpu = []
 
 [[bin]]
 name = "passbench"

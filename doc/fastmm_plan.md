@@ -1690,3 +1690,27 @@ claim_lines(&mut [T], zb) (asm! dc zva on aligned blocks wholly inside the slice
 each pass row into 4 KB pieces and claims each output tile before the kernel, as C's rows().  Crosscheck all
 identical; Rust vs C best of two: f64 8192 0.797/0.796 s, f32 8192 0.231/0.229, f32 6912x6912x3456 0.076/0.074;
 Rust FMM_ZVA=0 1-4% slower (0.814, 0.241, 0.077).  results/rust_zva_2026-11-15.txt (run_rust_zva.sh).
+
+**2026-11-16: the GPU leaves ported to Rust; the crosscheck made real; C built without FMA contraction.**
+Rust feature `gpu` (rust/src/gpu.rs, build.rs compiles ../gpu_leaf.m): GM/G6M leaves (streams from the front of a
+VecDeque, one GPU submitter from the back in batches of FMM_GPU_FLOPS), K16/K32/K64 on top, pipelines over G6M,
+the planner's GPU rules (Planner View {gpu, nok}, 8% window, hold to the fastest non-GPU plan's growth),
+calibration kinds GMX/GkMX/PYkKpPM[so]/K in calib5gpu_f32.txt (C's format and split), Pinned page-aligned
+buffers wrapped from creation to drop, a caller's matrices wrapped only inside with_attached for one call (else
+the plan without a K level, as C's nok).  Tests: a GPU batch = Accelerate bit for bit, refused outside wrapped
+regions; R363/G6M, R363/GM, R363+4/R336/G6M, K32/G6M, K64/GM = their CPU plans bit for bit with the GPU's product
+counter rising.  THE CROSSCHECKS OF run_rust_zva.sh AND THE FIRST run_rust_gpu.sh WERE HOLLOW: FMM_CALIB_DIR=results
+(relative) while the crosscheck runs in rust/, so neither library found the cache and every case was plan G
+("predicted - / -").  With an absolute path (run_crosscheck.sh) the plans and predictions matched everywhere but
+every plan with an R336 level differed in the last bits: clang's default -ffp-contract=on fused v59 + X*5 in the
+R336 P program (PLinOpt's optimized program has one /5 ... *5 statement, the only non-dyadic factor in the
+programs) where Rust rounds twice.  Makefile now -ffp-contract=off (and rust/build.rs for ckernels.c).  Then
+66/66 identical, default build and GPU build (results/crosscheck_2026-11-16.txt; the failing run's log was
+overwritten by the passing one).  Exact errors of the quoted R336 plans without contraction
+(results/r336_nocontract_2026-11-16.txt): R363+3/R336/G3 13824 f64 6.40 -> 6.18e-15, R363+4/R336/G6 13824 f32
+3.33 -> 3.53e-6, the rest unchanged (R336+4/R363/G6 3.34e-6, R336/G 3.80e-6 / 2.27e-6 / 7.21e-15 / 4.53e-15,
+R336+3/R363/G3 6.72e-15, R336+2/R363/G6 3.66e-15, SW/R336+2/R363/G6 8.68e-15); paper updated.  Rust vs C with
+the GPU (busy machine, results/rust_gpu_2026-11-16.txt): 3456 0.0155-0.0160 / 0.0151-0.0188 s, 6912
+0.087-0.099 / 0.084-0.093, 13824 R363+4/R336/G6M 0.611-0.628 / 0.559-0.580 (Rust 5-10% slower; not chased).
+Also: the ternary trial's f64 rows rerun against the exact product (run_t42_exact64.sh,
+results/t42_exact64_2026-11-16.txt): T 2.5-4.3x R's error, every T plan above the GEMM's in f64.

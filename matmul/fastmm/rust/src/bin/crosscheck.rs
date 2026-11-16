@@ -5,6 +5,11 @@
 //!
 //!   make build/libfmm.a    (in matmul/fastmm)
 //!   FMM_CALIB_DIR=../results cargo run --release --features cbench --bin crosscheck [n ...]
+//!
+//! With the GPU, against the C library's GPU build (the GPU's calibration file beside the cache;
+//! adds the plan without a budget at 3456, a K level when the matrices can be wrapped):
+//!   make build/libfmm_gpu.a
+//!   FMM_CALIB_DIR=../results cargo run --release --features cbench,gpu --bin crosscheck 3456 6912 13824
 #![allow(unsafe_code)]
 
 use fmm::{Real, Shape};
@@ -152,6 +157,9 @@ fn main() {
         }
         run(Shape::sq(4096), 4096 + 64, 0.0);
         run(Shape::sq(8192), 8192, 4.0);
+        if cfg!(feature = "gpu") {
+            run(Shape::sq(3456), 3456, -1.0);      // no budget: with the GPU, the classical product in strips
+        }
         for s in [Shape::new(3456, 3456, 1728), Shape::new(1000, 3000, 2000), Shape::new(2048, 4096, 1024), Shape::new(6912, 6912, 3456)] {
             run(s, 0, 0.0);
         }

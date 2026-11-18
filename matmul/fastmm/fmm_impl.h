@@ -75,6 +75,126 @@ static void FN(pass)(FN(kern_t) k, size_t rows, size_t cols, size_t ld_in, size_
     });
 }
 
+/* Prescaling (outside and inside diagonal scaling by powers of two, exact): the product is
+ * diag(1/r) [diag(r) A diag(t)] [diag(1/t) B diag(c)] diag(1/c), with r and c bringing each row of A
+ * and column of B to a largest entry in [1,2) and t balancing column l of A against row l of B.
+ * A scaled side of a pass: element (i, j) of block q is multiplied by rf[bro[q] + i] * cf[bco[q] + j]
+ * (block q's top-left corner is (bro[q], bco[q]) in the whole matrix), on the way in for the L and
+ * R passes (into an L1 buffer, tile by tile) and on the way out for the P pass (in the tile just
+ * written, still in the cache). */
+typedef struct {
+    const T *rf, *cf;
+    size_t bro[64], bco[64];
+    int in_side;
+} FN(scl_t);
+
+static void FN(rows_scaled)(FN(kern_t) k, size_t cols, size_t ld_in, size_t ld_out, const T *const *in, int nin,
+                            T *const *out, int nout, size_t r0, size_t r1, const FN(scl_t) *sc) {
+    size_t zb = fmm_zva();
+    const size_t W = 4096 / sizeof(T);
+    const T *pi[64];
+    T *po[64];
+    T *buf = sc->in_side ? malloc((size_t)nin * W * sizeof(T)) : NULL;
+    for (size_t r = r0; r < r1; r++)
+        for (size_t c0 = 0; c0 < cols; c0 += W) {
+            size_t w = c0 + W < cols ? W : cols - c0;
+            for (int i = 0; i < nin; i++) {
+                const T *src = in[i] + r * ld_in + c0;
+                if (sc->in_side) {
+                    T f = sc->rf[sc->bro[i] + r], *d = buf + (size_t)i * W;
+                    const T *cf = sc->cf + sc->bco[i] + c0;
+                    for (size_t c = 0; c < w; c++) d[c] = src[c] * (f * cf[c]);
+                    pi[i] = d;
+                } else {
+                    pi[i] = src;
+                }
+            }
+            for (int q = 0; q < nout; q++) {
+                po[q] = out[q] + r * ld_out + c0;
+                if (!zb) continue;
+                uintptr_t lo = ((uintptr_t)po[q] + zb - 1) & ~(uintptr_t)(zb - 1),
+                          hi = ((uintptr_t)po[q] + w * sizeof(T)) & ~(uintptr_t)(zb - 1);
+#if defined(__aarch64__)
+                for (uintptr_t x = lo; x < hi; x += zb) __asm__ volatile("dc zva, %0" : : "r"(x) : "memory");
+#else
+                (void)lo; (void)hi;
+#endif
+            }
+            k(w, 0, 0, pi, po, 0, 1);
+            if (!sc->in_side)
+                for (int q = 0; q < nout; q++) {
+                    T f = sc->rf[sc->bro[q] + r], *d = po[q];
+                    const T *cf = sc->cf + sc->bco[q] + c0;
+                    for (size_t c = 0; c < w; c++) d[c] *= f * cf[c];
+                }
+        }
+    free(buf);
+}
+
+static void FN(pass_scaled)(FN(kern_t) k, size_t rows, size_t cols, size_t ld_in, size_t ld_out, const T *const *in,
+                            int nin, T *const *out, int nout, const FN(scl_t) *sc) {
+    size_t chunks = 64, step = (rows + chunks - 1) / chunks;
+    dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
+        size_t r0 = ch * step, r1 = r0 + step < rows ? r0 + step : rows;
+        if (r0 < r1) FN(rows_scaled)(k, cols, ld_in, ld_out, in, nin, out, nout, r0, r1, sc);
+    });
+}
+
+/* the six factor vectors of a prescaled product: A's rows ar (m) and columns ac (k), B's rows br
+ * (k) and columns bc (n), C's rows cr (m) and columns cc (n); four reads of the inputs, in parallel */
+typedef struct {
+    T *ar, *ac, *br, *bc, *cr, *cc;
+} FN(fac_t);
+
+static void FN(prescale_factors)(shape_t s, const T *A, size_t lda, const T *B, size_t ldb, FN(fac_t) f) {
+    int *er = malloc(s.m * sizeof(int)), *ec = malloc(s.n * sizeof(int));
+    size_t chunks = 64;
+    size_t stm = (s.m + chunks - 1) / chunks, stk = (s.k + chunks - 1) / chunks;
+    /* rows of A */
+    dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
+        for (size_t i = ch * stm; i < (ch + 1) * stm && i < s.m; i++) {
+            T mx = 0;
+            for (size_t l = 0; l < s.k; l++) { T v = fabs(A[i * lda + l]); mx = v > mx ? v : mx; }
+            er[i] = mx > 0 ? -ilogb(mx) : 0;
+        }
+    });
+    /* columns of B: per-chunk maxima over the chunk's rows, then reduced */
+    T *part = calloc(chunks * s.n, sizeof(T));
+    dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
+        T *p = part + ch * s.n;
+        for (size_t l = ch * stk; l < (ch + 1) * stk && l < s.k; l++)
+            for (size_t j = 0; j < s.n; j++) { T v = fabs(B[l * ldb + j]); p[j] = v > p[j] ? v : p[j]; }
+    });
+    for (size_t j = 0; j < s.n; j++) {
+        T mx = 0;
+        for (size_t ch = 0; ch < chunks; ch++) mx = part[ch * s.n + j] > mx ? part[ch * s.n + j] : mx;
+        ec[j] = mx > 0 ? -ilogb(mx) : 0;
+    }
+    free(part);
+    for (size_t i = 0; i < s.m; i++) { f.ar[i] = (T)ldexp(1, er[i]); f.cr[i] = (T)ldexp(1, -er[i]); }
+    for (size_t j = 0; j < s.n; j++) { f.bc[j] = (T)ldexp(1, ec[j]); f.cc[j] = (T)ldexp(1, -ec[j]); }
+    /* inside: the columns of the row-scaled A against the rows of the column-scaled B */
+    part = calloc(chunks * s.k, sizeof(T));
+    dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
+        T *p = part + ch * s.k;
+        for (size_t i = ch * stm; i < (ch + 1) * stm && i < s.m; i++)
+            for (size_t l = 0; l < s.k; l++) { T v = fabs(A[i * lda + l]) * f.ar[i]; p[l] = v > p[l] ? v : p[l]; }
+    });
+    dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
+        for (size_t l = ch * stk; l < (ch + 1) * stk && l < s.k; l++) {
+            T ma = 0, mb = 0;
+            for (size_t c = 0; c < chunks; c++) ma = part[c * s.k + l] > ma ? part[c * s.k + l] : ma;
+            for (size_t j = 0; j < s.n; j++) { T v = fabs(B[l * ldb + j]) * f.bc[j]; mb = v > mb ? v : mb; }
+            int et = ma > 0 && mb > 0 ? (ilogb(mb) - ilogb(ma)) / 2 : 0;
+            f.ac[l] = (T)ldexp(1, et);
+            f.br[l] = (T)ldexp(1, -et);
+        }
+    });
+    free(part);
+    free(er);
+    free(ec);
+}
+
 typedef struct {
     double tL, tR, tG, tP;
 } FN(split_t);
@@ -401,8 +521,17 @@ static void FN(pipeline2)(const int *pz, shape_t t, int r, T *const *SX, T *cons
  * T_q (one pass per side), computes M_q = S_q T_q by the rest of the plan (the scratch below this
  * level reused product after product) and writes C from the M_q (one pass).  GEMM time is counted
  * where the GEMMs run, pass time at every level. */
+static void FN(exec_s)(const int *plan, shape_t s, const T *A, size_t lda, const T *B, size_t ldb, T *C,
+                       size_t ldc, T *work, FN(split_t) *sp, const FN(fac_t) *fs);
 static void FN(exec)(const int *plan, shape_t s, const T *A, size_t lda, const T *B, size_t ldb, T *C,
                      size_t ldc, T *work, FN(split_t) *sp) {
+    FN(exec_s)(plan, s, A, lda, B, ldb, C, ldc, work, sp, NULL);
+}
+
+/* exec with the prescaling factors fs (or NULL) folded into the top level's three passes; the top
+ * level must be a fused level (not a leaf, not a K level) when fs is given */
+static void FN(exec_s)(const int *plan, shape_t s, const T *A, size_t lda, const T *B, size_t ldb, T *C,
+                       size_t ldc, T *work, FN(split_t) *sp, const FN(fac_t) *fs) {
     int lv = PLV(plan[0]);
     if (lv == LV_NONE) return;
     if (lv_leaf(lv)) {
@@ -440,10 +569,20 @@ static void FN(exec)(const int *plan, shape_t s, const T *A, size_t lda, const T
         ldS = lda; ldT = ldb; ldM = ldc;
         deeper = work;
     } else {
-        double t0 = now();
-        FN(pass)(k[0], t.m, t.k, lda, t.k, Ab, g1 * g2, S, r);
-        double t1 = now();
-        FN(pass)(k[1], t.k, t.n, ldb, t.n, Bb, g2 * g3, Tt, r);
+        double t0 = now(), t1s;
+        if (fs) {
+            FN(scl_t) sa = {fs->ar, fs->ac, {0}, {0}, 1}, sb = {fs->br, fs->bc, {0}, {0}, 1};
+            for (int q = 0; q < g1 * g2; q++) { sa.bro[q] = (size_t)(q / g2) * t.m; sa.bco[q] = (size_t)(q % g2) * t.k; }
+            for (int q = 0; q < g2 * g3; q++) { sb.bro[q] = (size_t)(q / g3) * t.k; sb.bco[q] = (size_t)(q % g3) * t.n; }
+            FN(pass_scaled)(k[0], t.m, t.k, lda, t.k, Ab, g1 * g2, S, r, &sa);
+            t1s = now();
+            FN(pass_scaled)(k[1], t.k, t.n, ldb, t.n, Bb, g2 * g3, Tt, r, &sb);
+        } else {
+            FN(pass)(k[0], t.m, t.k, lda, t.k, Ab, g1 * g2, S, r);
+            t1s = now();
+            FN(pass)(k[1], t.k, t.n, ldb, t.n, Bb, g2 * g3, Tt, r);
+        }
+        double t1 = t1s;
         double t2 = now();
         if (sp) {
             sp->tL += t1 - t0;
@@ -468,8 +607,45 @@ static void FN(exec)(const int *plan, shape_t s, const T *A, size_t lda, const T
     }
     if (lv_split(lv)) return;
     double t3 = now();
-    FN(pass)(k[2], t.m, t.n, t.n, ldc, (const T *const *)M, r, Cb, g1 * g3);
+    if (fs) {
+        FN(scl_t) sc = {fs->cr, fs->cc, {0}, {0}, 0};
+        for (int q = 0; q < g1 * g3; q++) { sc.bro[q] = (size_t)(q / g3) * t.m; sc.bco[q] = (size_t)(q % g3) * t.n; }
+        FN(pass_scaled)(k[2], t.m, t.n, t.n, ldc, (const T *const *)M, r, Cb, g1 * g3, &sc);
+    } else {
+        FN(pass)(k[2], t.m, t.n, t.n, ldc, (const T *const *)M, r, Cb, g1 * g3);
+    }
     if (sp) sp->tP += now() - t3;
+}
+
+/* C = A B through a plan with prescaling: mode 1 scales copies of A and B (copies: s.m*s.k + s.k*s.n
+ * elements), runs the plan on them and unscales C, three separate passes; mode 2 folds the scaling
+ * into the top level's passes (a fused top level; otherwise as mode 1).  Both include computing
+ * the factors.  The two give identical results. */
+static void FN(exec_prescaled)(int mode, const int *plan, shape_t s, const T *A, size_t lda, const T *B,
+                               size_t ldb, T *C, size_t ldc, T *work, T *copies, FN(split_t) *sp) {
+    T *fv = malloc((2 * s.m + 2 * s.k + 2 * s.n) * sizeof(T));
+    FN(fac_t) f = {fv, fv + s.m, fv + s.m + s.k, fv + s.m + 2 * s.k, fv + s.m + 2 * s.k + s.n,
+                   fv + 2 * s.m + 2 * s.k + s.n};
+    FN(prescale_factors)(s, A, lda, B, ldb, f);
+    int lv = PLV(plan[0]);
+    if (mode == 2 && !lv_leaf(lv) && !lv_split(lv)) {
+        FN(exec_s)(plan, s, A, lda, B, ldb, C, ldc, work, sp, &f);
+    } else {
+        T *As = copies, *Bs = copies + s.m * s.k;
+        size_t chunks = 64, stm = (s.m + chunks - 1) / chunks, stk = (s.k + chunks - 1) / chunks;
+        dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
+            for (size_t i = ch * stm; i < (ch + 1) * stm && i < s.m; i++)
+                for (size_t l = 0; l < s.k; l++) As[i * s.k + l] = A[i * lda + l] * (f.ar[i] * f.ac[l]);
+            for (size_t l = ch * stk; l < (ch + 1) * stk && l < s.k; l++)
+                for (size_t j = 0; j < s.n; j++) Bs[l * s.n + j] = B[l * ldb + j] * (f.br[l] * f.bc[j]);
+        });
+        FN(exec)(plan, s, As, s.k, Bs, s.n, C, ldc, work, sp);
+        dispatch_apply(chunks, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t ch) {
+            for (size_t i = ch * stm; i < (ch + 1) * stm && i < s.m; i++)
+                for (size_t j = 0; j < s.n; j++) C[i * ldc + j] *= f.cr[i] * f.cc[j];
+        });
+    }
+    free(fv);
 }
 
 /* the workspace elements of a plan on shape s run at the padded shape S: the padded copies of A

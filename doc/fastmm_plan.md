@@ -1714,3 +1714,42 @@ the GPU (busy machine, results/rust_gpu_2026-11-16.txt): 3456 0.0155-0.0160 / 0.
 0.087-0.099 / 0.084-0.093, 13824 R363+4/R336/G6M 0.611-0.628 / 0.559-0.580 (Rust 5-10% slower; not chased).
 Also: the ternary trial's f64 rows rerun against the exact product (run_t42_exact64.sh,
 results/t42_exact64_2026-11-16.txt): T 2.5-4.3x R's error, every T plan above the GEMM's in f64.
+
+2026-11-16 (late): BADLY SCALED INPUTS.  The paper's error (max |C - C_exact| / max |C_exact| on uniform [-1,1))
+cannot see the componentwise error of Strassen-type schemes.  bench_impl.h: FMM_INPUT (nonneg, outer:s,
+outerp:s, inner:s, innerp:s, cross:s, entry:s), the componentwise error cw = max |C - C_exact| / (|A||B|)
+next to err64, FMM_PRESCALE (1 bench copies, 2 library separate passes, 3 library folded into the top level's
+passes), FMM_HASH.  run_scaled_inputs.sh -> results/scaled_inputs_2026-11-16.txt (6912 every level, 13824
+default plans, f32+f64).  GEMM cw ~4e-7 / 7e-16 throughout.  Default plans unscaled: outer:6 cw 658 (f32) /
+1.2e-6 (f64) with err64 BELOW the GEMM's; inner:6 err64 0.10 / 2.0e-10 (GEMM 6e-6 / 1.2e-14); cross:6 cw 0.10
+/ 2e-10; entry:6 harmless.  Prescaling (power-of-two outside + inside, Ballard et al.) restores outer and inner
+to the GEMM's level in both precisions; cross unchanged (no diagonal scaling helps).  nonneg [0,1): f64 6912
+default plan 1.27e-14 vs GEMM 1.18e-14 -- above the GEMM in the paper's own metric; single D48/R336 levels above
+it in f32.  Prescaling uniform f32 data costs accuracy (13824 3.3 -> 5.8e-6: rows whose max rounds to 1.0f get
+factor 1, the rest 2); skip factors when the range is small -- not done.  Library: fmm_impl.h exec_prescaled
+(mode 1 separate, 2 folded: L/R scale each 4 KB tile into an L1 buffer, P unscales the tile it just wrote),
+bit-identical to each other and to the bench's copies (hashes, seven plans, both precisions, 1152).  Timing
+(run_prescale_timing.sh -> results/prescale_timing_2026-11-16.txt, min of 2 rounds; factors inside the timed
+run): 6912 f32 +8.7% separate / +5.3% folded (speedup 1.43 -> 1.32 / 1.36), 6912 f64 +4.7 / +2.9% (1.73 ->
+1.65 / 1.68), 13824 f32 +6.0 / +3.1% (1.72 -> 1.62 / 1.67), 13824 f64 +2.2 / +1.2% (1.92 -> 1.88 / 1.90).
+Most of the folded cost is the factors (two reads each of A and B).  Not in the public API yet.  Paper updated 2026-11-17 (Section "Badly scaled inputs", Tables scaled/prescale,
+abstract, intro, discussion and value claims qualified).
+
+2026-11-17: HEAD TO HEAD WITH ESSL's _GEMMS.  ESSL is closed and Power-only, so gemms_impl.h implements its
+published algorithm: Winograd's variant (15 block additions), up to four halving levels, conventional unfused
+schedule (two temporaries per level, Douglas et al. GEMMW / Boyer et al. Table 1), each addition a parallel pass,
+each product one Accelerate call, last-level U6/U1 folded into the GEMM's beta.  Bench method gemms:L.
+run_essl_gemms.sh -> results/essl_gemms_2026-11-17.txt, every depth measured, ESSL credited with its best.
+Uniform inputs (same interleaved run): best ESSL depth 1 at 3456-6912 f32, 2 at 8192-13824 f32 and 6912-8192 f64,
+3 at 13824 f64; ESSL 0.96-1.28x over the GEMM with 1.44-4.89x its error; our default plan 1.25-1.91x with
+0.42-0.79x; ours vs ESSL 1.26-1.62x faster with 1.9-9.7x less error at every size and precision.  Scaled inputs
+at 6912 (ESSL every depth): outer:6 ESSL also fails componentwise (f32 cw 0.25 / 142 / 3.6e3 / 1.1e4 at 1-4
+levels vs our 1.0e3; f64 5e-10 / 3.4e-7 / 5.8e-6 / 2.5e-5 vs our 1.3e-6) -- one Winograd level beats our
+two-level plan componentwise unprescaled; inner:6 ESSL 1 level 4e-3 (f32) vs ours 8e-2, 2 levels ~ ours;
+cross:6 ours better than every ESSL depth (f32 0.10 vs 0.42-2.5).  With prescaling ours is best on outer/inner
+(f32 outer cw 3.3e-7 vs 7e-7..6e-6).  nonneg: ESSL at 2-4 levels BEATS both us and the GEMM (f64 gemms:2
+6.1e-15, gemms:4 2.6e-15 vs ours 1.27e-14, GEMM 1.18e-14; f32 gemms:4 1.2e-6 vs ours 4.2e-6) -- shorter leaf
+accumulations without cancellation; worth understanding.  BUG FOUND: FMM_REFCACHE's key lacked FMM_INPUT, so a
+scaled run with the cache read the uniform reference (all methods identical err64); key fixed in bench_impl.h,
+part 2 rerun; the 2026-11-16 study ran with the cache unset and stands.  In the paper 2026-11-17: Section 6.1
+"Against ESSL's Strassen-Winograd" (Tables essl, essl-scaled), abstract, contributions, related work, value.

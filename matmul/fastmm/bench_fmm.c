@@ -67,6 +67,7 @@ static int max_temp(void) {
 typedef struct {
     const char *name;
     int plan[PLAN_MAX], is_plan;
+    int gemms;                      /* > 0: the ESSL _GEMMS baseline with that many levels */
     shape_t spad;                   /* the shape the plan runs at (the problem's, or padded) */
     double pred, perr;
 } meth_t;

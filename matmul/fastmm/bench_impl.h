@@ -6,6 +6,8 @@
 #define CAT(a, b) CAT_(a, b)
 #define FN(name) CAT(name, SUF)
 
+#include "gemms_impl.h"   /* the ESSL _GEMMS baseline (method gemms:L) */
+
 /* one elementwise block operation over m rows of m: dst = a (+ - ) b, or a * c, a / c */
 static void FN(blockop)(int kind, size_t m, T *dst, size_t ldd, const T *a, size_t lda, const T *b,
                         size_t ldb, int cst) {
@@ -184,9 +186,17 @@ static void FN(plan_table)(size_t n) {
     free(A); free(B); free(C);
 }
 
+/* FMM_PRESCALE=2, 3: the library's prescaling inside the timed run, as separate passes over copies
+ * (2) or folded into the top level's passes (3); unpadded plans only */
+static int FN(ps_mode);
+static T *FN(ps_copies);
+
 static void FN(run_method)(const meth_t *q, shape_t s, const T *A, const T *B, T *C, T *work, T **temps,
                            FN(split_t) *sp) {
-    if (q->is_plan) FN(exec_padded)(q->plan, s, q->spad, A, s.k, B, s.n, C, s.n, work, sp);
+    if (q->is_plan && FN(ps_mode) >= 2 && shape_eq(q->spad, s) && !lv_leaf(PLV(q->plan[0])))
+        FN(exec_prescaled)(FN(ps_mode) - 1, q->plan, s, A, s.k, B, s.n, C, s.n, work, FN(ps_copies), sp);
+    else if (q->is_plan) FN(exec_padded)(q->plan, s, q->spad, A, s.k, B, s.n, C, s.n, work, sp);
+    else if (q->gemms) FN(gemms)(q->gemms, s.m, s.k, s.n, A, s.k, B, s.n, C, s.n, work);
     else FN(dps48_opbyop)(s.m, A, B, C, work, temps, sp);
 }
 
@@ -223,6 +233,62 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
                 if (w == 0 && i < na) A[i] = (T)z;
                 if (w == 1 && i < nb) B[i] = (T)z;
             }
+    /* FMM_INPUT: badly scaled inputs for the error study (on top of the distribution above)
+     *   nonneg     |A| and |B|
+     *   outer:s    row i of A times 10^(-s i/(M-1)), column j of B times 10^(-s j/(N-1)): C's entries
+     *              range over 2s decades, the max-norm error sees only the largest
+     *   inner:s    column l of A times 10^(s (l/(K-1) - 1/2)), row l of B divided by the same: C is
+     *              unchanged, the inputs' norms grow by 10^(s/2) each
+     *   outerp:s, innerp:s  the same factors in a scrambled order (i -> 7919 i mod M)
+     *   cross:s    the off-diagonal halves of A and of B times 10^-s: no diagonal scaling evens it
+     *   entry:s    every entry times its own 10^(-s U), U uniform in [0,1): neither */
+    const char *inp = getenv("FMM_INPUT");
+    if (inp && *inp) {
+        double sc = 0;
+        const char *colon = strchr(inp, ':');
+        if (colon) sc = atof(colon + 1);
+        int perm = !strncmp(inp, "outerp", 6) || !strncmp(inp, "innerp", 6);
+#define PI_(i, len) (perm ? (size_t)(((unsigned long long)(i) * 7919ull) % (len)) : (size_t)(i))
+        if (!strcmp(inp, "nonneg")) {
+            for (size_t i = 0; i < na; i++) A[i] = (T)fabs((double)A[i]);
+            for (size_t i = 0; i < nb; i++) B[i] = (T)fabs((double)B[i]);
+        } else if (!strncmp(inp, "outer", 5)) {
+            for (size_t i = 0; i < s0.m; i++) {
+                double f = pow(10, -sc * (double)PI_(i, s0.m) / (double)(s0.m - 1));
+                for (size_t l = 0; l < s0.k; l++) A[i * s0.k + l] = (T)(A[i * s0.k + l] * f);
+            }
+            for (size_t j = 0; j < s0.n; j++) {
+                double f = pow(10, -sc * (double)PI_(j, s0.n) / (double)(s0.n - 1));
+                for (size_t l = 0; l < s0.k; l++) B[l * s0.n + j] = (T)(B[l * s0.n + j] * f);
+            }
+        } else if (!strncmp(inp, "inner", 5)) {
+            for (size_t l = 0; l < s0.k; l++) {
+                double f = pow(10, sc * ((double)PI_(l, s0.k) / (double)(s0.k - 1) - 0.5));
+                for (size_t i = 0; i < s0.m; i++) A[i * s0.k + l] = (T)(A[i * s0.k + l] * f);
+                for (size_t j = 0; j < s0.n; j++) B[l * s0.n + j] = (T)(B[l * s0.n + j] / f);
+            }
+        } else if (!strncmp(inp, "cross:", 6)) {
+            for (size_t i = 0; i < s0.m; i++)
+                for (size_t l = 0; l < s0.k; l++)
+                    if ((i < s0.m / 2) != (l < s0.k / 2)) A[i * s0.k + l] = (T)(A[i * s0.k + l] * pow(10, -sc));
+            for (size_t l = 0; l < s0.k; l++)
+                for (size_t j = 0; j < s0.n; j++)
+                    if ((l < s0.k / 2) != (j < s0.n / 2)) B[l * s0.n + j] = (T)(B[l * s0.n + j] * pow(10, -sc));
+        } else if (!strncmp(inp, "entry:", 6)) {
+            for (size_t i = 0; i < nmax; i++)
+                for (int w = 0; w < 2; w++) {
+                    s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+                    double f = pow(10, -sc * (double)(s >> 11) / 9007199254740992.0);
+                    if (w == 0 && i < na) A[i] = (T)(A[i] * f);
+                    if (w == 1 && i < nb) B[i] = (T)(B[i] * f);
+                }
+        } else {
+            fprintf(stderr, "unknown FMM_INPUT %s\n", inp);
+            exit(1);
+        }
+#undef PI_
+        printf("# inputs %s\n", inp);
+    }
     /* the methods: plans (named, plan=..., auto) or the op-by-op program; the calibration is
      * measured for auto and otherwise read from the cache, if there is one, for predictions */
     calib_t *cal = calloc(1, sizeof(calib_t));
@@ -254,6 +320,9 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
             printf("# %s %s %s: plan %s", tok, shp, f64 ? "f64" : "f32", ps);
             if (!shape_eq(q->spad, s0)) printf(" padded to %zux%zux%zu", q->spad.m, q->spad.k, q->spad.n);
             printf(", predicted %.3f s\n", q->pred);
+        } else if (!strncmp(tok, "gemms:", 6) && atoi(tok + 6) >= 1 && atoi(tok + 6) <= 6) {
+            q->gemms = atoi(tok + 6);   /* ESSL's _GEMMS: Strassen-Winograd, that many levels */
+            q->pred = -1;
         } else if (parse_plan(tok, s0, q->plan)) {
             q->is_plan = 1;
             q->pred = plan_cost(cal, q->plan, s0);
@@ -269,7 +338,9 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
     }
     size_t wsz = 1024;
     for (int j = 0; j < nm; j++) {
-        size_t w = ms[j].is_plan ? FN(padded_work)(ms[j].plan, s0, ms[j].spad) : (size_t)3 * 48 * (nn / 16);
+        size_t w = ms[j].is_plan ? FN(padded_work)(ms[j].plan, s0, ms[j].spad)
+                   : ms[j].gemms ? FN(gemms_work)(ms[j].gemms, s0.m, s0.k, s0.n)
+                                 : (size_t)3 * 48 * (nn / 16);
         if (w > wsz) wsz = w;
     }
     free(cal);
@@ -298,10 +369,12 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
     const char *rc = getenv("FMM_REFCACHE");
     char refpath[1024] = "";
     if (ex && atoi(ex) && rc) {
-        if (square) snprintf(refpath, sizeof refpath, "%s/ref_%s_%zu_%s_%s.bin", rc, f64 ? "f64" : "f32", n,
-                             (nrm && atoi(nrm)) ? "normal" : "uniform", seed ? seed : "0");
-        else snprintf(refpath, sizeof refpath, "%s/ref_%s_%zux%zux%zu_%s_%s.bin", rc, f64 ? "f64" : "f32", s0.m, s0.k, s0.n,
-                      (nrm && atoi(nrm)) ? "normal" : "uniform", seed ? seed : "0");
+        /* the key includes FMM_INPUT: without it a scaled run read the unscaled reference (2026-11-17) */
+        const char *ik = inp && *inp ? inp : "plain";
+        if (square) snprintf(refpath, sizeof refpath, "%s/ref_%s_%zu_%s_%s_%s.bin", rc, f64 ? "f64" : "f32", n,
+                             (nrm && atoi(nrm)) ? "normal" : "uniform", seed ? seed : "0", ik);
+        else snprintf(refpath, sizeof refpath, "%s/ref_%s_%zux%zux%zu_%s_%s_%s.bin", rc, f64 ? "f64" : "f32", s0.m, s0.k,
+                      s0.n, (nrm && atoi(nrm)) ? "normal" : "uniform", seed ? seed : "0", ik);
     }
     int cached = 0;
     if (refpath[0]) {
@@ -335,20 +408,89 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
             if (fw) { fwrite(R64, 8, nn, fw); fclose(fw); }
         }
     }
-    for (int j = 0; j < nm; j++) FN(run_method)(&ms[j], s0, A, B, C, work, temps, NULL);  /* warm-up */
+    /* with the exact reference, also the componentwise error max |C - C_exact| / (|A||B|), the
+     * quantity the classical GEMM's error bound holds entry by entry */
+    double *D64 = NULL, errcw[16] = {0};
+    if (R64) {
+        double *A64 = alloc_t(na * 8), *B64 = alloc_t(nb * 8);
+        D64 = alloc_t(nn * 8);
+        for (size_t i = 0; i < na; i++) A64[i] = fabs((double)A[i]);
+        for (size_t i = 0; i < nb; i++) B64[i] = fabs((double)B[i]);
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, (int)s0.m, (int)s0.n, (int)s0.k, 1.0, A64, (int)s0.k, B64,
+                    (int)s0.n, 0.0, D64, (int)s0.n);
+        free(A64); free(B64);
+    }
+    /* FMM_PRESCALE=1: every method multiplies diag(r) A diag(t) by diag(1/t) B diag(c) and unscales
+     * C by diag(1/r), diag(1/c), all powers of two (exact): r and c bring each row of A and column
+     * of B to a largest entry in [1,2) (outside scaling), t balances column l of A against row l of
+     * B (inside scaling) */
+    const char *pre = getenv("FMM_PRESCALE");
+    const T *Ar = A, *Br = B;
+    T *As = NULL, *Bs = NULL;
+    int *er = NULL, *ec = NULL;
+    FN(ps_mode) = pre ? atoi(pre) : 0;
+    if (FN(ps_mode) >= 2) {
+        FN(ps_copies) = alloc_t((na + nb) * sizeof(T));
+        printf("# prescaled by the library: %s\n", FN(ps_mode) == 2 ? "separate passes" : "folded into the top level");
+    }
+    if (pre && atoi(pre) == 1) {
+        er = calloc(s0.m, sizeof(int));
+        ec = calloc(s0.n, sizeof(int));
+        int *et = calloc(s0.k, sizeof(int));
+        As = alloc_t(na * sizeof(T));
+        Bs = alloc_t(nb * sizeof(T));
+        for (size_t i = 0; i < s0.m; i++) {
+            double mx = 0;
+            for (size_t l = 0; l < s0.k; l++) mx = fmax(mx, fabs((double)A[i * s0.k + l]));
+            er[i] = mx > 0 ? -ilogb(mx) : 0;
+        }
+        for (size_t j = 0; j < s0.n; j++) {
+            double mx = 0;
+            for (size_t l = 0; l < s0.k; l++) mx = fmax(mx, fabs((double)B[l * s0.n + j]));
+            ec[j] = mx > 0 ? -ilogb(mx) : 0;
+        }
+        for (size_t i = 0; i < s0.m; i++)
+            for (size_t l = 0; l < s0.k; l++) As[i * s0.k + l] = (T)ldexp((double)A[i * s0.k + l], er[i]);
+        for (size_t l = 0; l < s0.k; l++)
+            for (size_t j = 0; j < s0.n; j++) Bs[l * s0.n + j] = (T)ldexp((double)B[l * s0.n + j], ec[j]);
+        for (size_t l = 0; l < s0.k; l++) {
+            double ma = 0, mb = 0;
+            for (size_t i = 0; i < s0.m; i++) ma = fmax(ma, fabs((double)As[i * s0.k + l]));
+            for (size_t j = 0; j < s0.n; j++) mb = fmax(mb, fabs((double)Bs[l * s0.n + j]));
+            et[l] = ma > 0 && mb > 0 ? (ilogb(mb) - ilogb(ma)) / 2 : 0;
+            for (size_t i = 0; i < s0.m; i++) As[i * s0.k + l] = (T)ldexp((double)As[i * s0.k + l], et[l]);
+            for (size_t j = 0; j < s0.n; j++) Bs[l * s0.n + j] = (T)ldexp((double)Bs[l * s0.n + j], -et[l]);
+        }
+        free(et);
+        Ar = As;
+        Br = Bs;
+        printf("# prescaled: outside (rows of A, columns of B) and inside, by powers of two\n");
+    }
+    for (int j = 0; j < nm; j++) FN(run_method)(&ms[j], s0, Ar, Br, C, work, temps, NULL);  /* warm-up */
     double times[16][32];
     FN(split_t) sp[16];
     memset(sp, 0, sizeof sp);
     double err[16] = {0};
+    uint64_t hashes[16] = {0};
     for (int q = 0; q < reps; q++)          /* rounds: drift hits every method alike */
         for (int j = 0; j < nm; j++) {
             double t = now();
-            FN(run_method)(&ms[j], s0, A, B, C, work, temps, &sp[j]);
+            FN(run_method)(&ms[j], s0, Ar, Br, C, work, temps, &sp[j]);
             times[j][q] = now() - t;
             if (q == reps - 1) {
+                if (er)
+                    for (size_t i = 0; i < s0.m; i++)
+                        for (size_t c = 0; c < s0.n; c++)
+                            C[i * s0.n + c] = (T)ldexp((double)C[i * s0.n + c], -er[i] - ec[c]);
                 for (size_t i = 0; i < nn; i++) err[j] = fmax(err[j], fabs((double)C[i] - (double)Cref[i]));
                 if (R64)
                     for (size_t i = 0; i < nn; i++) err64[j] = fmax(err64[j], fabs((double)C[i] - R64[i]));
+                if (D64)
+                    for (size_t i = 0; i < nn; i++)
+                        if (D64[i] > 0) errcw[j] = fmax(errcw[j], fabs((double)C[i] - R64[i]) / D64[i]);
+                uint64_t h = 1469598103934665603ull;   /* FNV-1a over C's bytes */
+                for (size_t i = 0; i < nn * sizeof(T); i++) h = (h ^ ((const unsigned char *)C)[i]) * 1099511628211ull;
+                hashes[j] = h;
             }
         }
     double tclass = 0;
@@ -373,6 +515,8 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
             if (ms[j].perr > 0) printf("  perr %.2e", ms[j].perr);
         }
         if (R64) printf("  err64 %.2e", err64[j] / rmax64);
+        if (D64) printf("  cw %.2e", errcw[j]);
+        if (getenv("FMM_HASH")) printf("  hash %016llx", (unsigned long long)hashes[j]);
         printf("\n");
         fflush(stdout);
     }
@@ -380,7 +524,8 @@ static void FN(bench)(shape_t s0, const char *methods, int reps) {
         for (int k = 0; k < ntemps; k++) free(temps[k]);
         free(temps);
     }
-    free(R64);
+    free(R64); free(D64); free(As); free(Bs); free(er); free(ec); free(FN(ps_copies));
+    FN(ps_copies) = NULL;
 #if defined(FMM_FLOAT) && defined(FMM_GPU)
     fmm_gpu_detach_all();
 #endif

@@ -10,7 +10,7 @@
 \usepackage{url}
 \usepackage{xspace}
 \usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
-\hypersetup{pdftitle={Fast matrix multiplication: fused levels mixing fast, accurate schemes over a vendor GEMM, chosen by a calibrated planner},pdfauthor={Greg Sidebottom}}
+\hypersetup{pdftitle={Fast matrix multiplication: mixing fast, accurate schemes over a vendor GEMM, chosen by a calibrated planner},pdfauthor={Greg Sidebottom}}
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\mm}[1]{\langle #1\rangle}
 \newcommand{\ginf}{\gamma_{\infty,2}}
@@ -50,8 +50,8 @@
 \renewcommand{\floatpagefraction}{0.75}
 
 \title{Fast matrix multiplication:\\
-fused levels mixing fast, accurate schemes\\
-over a vendor GEMM, chosen by a calibrated planner}
+mixing fast, accurate schemes over a vendor GEMM,\\
+chosen by a calibrated planner}
 \author{Greg Sidebottom}
 \date{Draft --- November 16, 2026}
 
@@ -313,11 +313,23 @@ products into the blocks of its own product (Figure~\ref{fig:lrp}).}
 \label{fig:plan}
 \end{figure}
 
+A level runs three linear programs (Figure~\ref{fig:lrp}): $L$ forms the left
+factors from the blocks of $A$, $R$ the right factors from the blocks of $B$,
+and $P$ the blocks of $C$ from the products.  Each program is a sequence of
+block additions and scalings.  Done one operation at a time, as conventional
+implementations do (ESSL's Strassen--Winograd among them,
+Section~\ref{sec:essl}), every addition is its own sweep over whole blocks,
+reading its operands from main memory and writing its result back.  We
+\emph{fuse} the operations of a program into a single \emph{pass}: one loop
+over the element positions of a block that, at each position, loads that
+element of every input block, evaluates the whole program on those scalars
+in registers, and stores that element of every output block.
+
 Two facts about the costs organize everything.  First, a fused pass is bound
 by memory traffic -- the words it moves between main memory and the
-processor -- not by arithmetic.  A pass reads every input block once, computes
-the level's whole linear program for each element position in registers, and
-writes every output block once; the blocks stream from main memory, being far
+processor -- not by arithmetic.  A pass reads every input block once and
+writes every output block once, however many operations its program has;
+the blocks stream from main memory, being far
 larger than the caches (at $n=13824$ one block of a $4\times4$ level in f64
 is $95$~MB), and the arithmetic in registers is nearly free.  So the
 $201$-operation program we found for the
@@ -574,8 +586,9 @@ library's cancellation-free programs).}
 \label{fig:lrp}
 \end{figure}
 
-Each pass is \emph{fused}: one loop over the element positions of a block,
-with the whole program evaluated on scalars in registers at each position.
+Each program runs as one fused pass (Section~\ref{sec:intro}): one loop over
+the element positions of a block, with the whole program evaluated on
+scalars in registers at each position.
 A pass therefore reads every input block once and writes every output block
 once, and the program's operation count costs only arithmetic, which the
 memory system hides.
@@ -596,10 +609,11 @@ writes its output blocks once), that is $W(n,n,n) = n^2\bigl(3 +
 r(\tfrac{1}{g_1g_2} + \tfrac{1}{g_2g_3} + \tfrac{1}{g_1g_3})\bigr)$ on a
 square problem, and takes
 \begin{equation}\label{eq:level}
-\text{time}(m,k,n) \;=\; r\,\text{time}_{\text{below}}\!\Bigl(\frac{m}{g_1},\frac{k}{g_2},
+\text{time}(m,k,n) \;=\; r\,\text{time}\Bigl(\frac{m}{g_1},\frac{k}{g_2},
 \frac{n}{g_3}\Bigr) \;+\; \frac{w\,W(m,k,n)}{\mathcal{B}}
 \end{equation}
-seconds.  Two numbers of a scheme decide the second term: its \emph{traffic},
+seconds, a recurrence that ends at the leaf, where the time is the GEMM's.
+Two numbers of a scheme decide the second term: its \emph{traffic},
 the words it moves per $n^2$ on a square problem, $W(n,n,n)/n^2 = 3 +
 r(\tfrac{1}{g_1g_2} + \tfrac{1}{g_2g_3} + \tfrac{1}{g_1g_3})$, and its
 \emph{streams}, the number of blocks a pass reads and writes
@@ -2139,7 +2153,9 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
 \item[Level, pass, plan, leaf.]  A level is one application of a scheme to
   the current problem, executed as three fused passes ($L$, $R$, $P$;
   Figure~\ref{fig:lrp}) around
-  its products; a plan is the sequence of levels from the top down to the
+  its products; a fused pass is one loop over a block's element positions
+  that evaluates a whole linear program in registers, reading each input
+  block and writing each output block once (Section~\ref{sec:intro}); a plan is the sequence of levels from the top down to the
   leaf, the GEMM; the notation is in Table~\ref{tab:notation}.
 \item[\lv{D48}, \lv{R336}, \lv{R363}, \lv{R633}, \lv{SW}, \lv{T336},
   \lv{T363}, \lv{T633}, \lv{X}.]  The levels of the menu (Table~\ref{tab:levels}):

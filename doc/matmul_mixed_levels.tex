@@ -111,26 +111,6 @@ library, in C and in Rust, agree in plans and results bit for bit, with the
 GPU as without it.
 \end{abstract}
 
-\section{Introduction}\label{sec:intro}
-
-Throughout, the problem is $C=AB$ with $A$ an $m\times k$ and $B$ a
-$k\times n$ matrix; a problem is \emph{square} when $m=k=n$, and a square
-problem is named by that size $n$.  A scheme $\mm{g_1\times g_2\times g_3:r}$
-multiplies a $g_1\times g_2$ grid of blocks by a $g_2\times g_3$ grid of
-blocks with $r<g_1g_2g_3$ block products.  Applied to the problem, it cuts $A$
-and $B$ into those grids and hands down $r$ products of
-$(m/g_1)\times(k/g_2)$ by $(k/g_2)\times(n/g_3)$ blocks, and applied again to
-those products it saves products at every level of recursion.  On a real
-machine a level is not free: its linear combinations of blocks are passes
-over memory, and the products it hands down are General Matrix
-Multiplications (GEMMs, the matrix product routine of the BLAS, the Basic
-Linear Algebra Subprograms) whose rate depends on their size
-and shape.  Libraries that use fast schemes therefore apply one to three
-levels on top of a tuned GEMM and stop \cite{HSvdG16,DPSST26}.  Which scheme, how
-many levels, in what order, and at what cost in accuracy, are the questions
-this report answers for one machine,
-Apple's M4~Pro with Accelerate's GEMM, by measurement.
-
 \begin{table}[t]
 \centering\footnotesize
 \begin{tabular}{@{}l p{0.57\textwidth} >{\raggedright\arraybackslash}p{0.17\textwidth}@{}}
@@ -173,6 +153,10 @@ code & meaning & source\\
 \lv{G3}, \lv{G4}, \lv{G6} & the leaf as three, four or six concurrent
   single-threaded GEMM calls taking the block products in turn
   (Section~\ref{sec:machine}) & this report \cite{logic}\\
+\lv{GM}, \lv{G6M} & the leaf \lv{G} or \lv{G6} with the GPU as a second
+  engine (f32, GPU build; Section~\ref{sec:machine}) & this report \cite{logic}\\
+\lv{K16}, \lv{K32}, \lv{K64} & no scheme: the classical product in $16$,
+  $32$ or $64$ strips of rows for a shared leaf, as in \lv{K32/G6M} & this report \cite{logic}\\
 \lv{B2} & the classical $2\times2$ blocked product as a level, $8$ products,
   the calibration's reference & this report \cite{logic}\\
 \addlinespace
@@ -181,12 +165,31 @@ code & meaning & source\\
 \bottomrule
 \end{tabular}
 \caption{The notation for plans, with the source of each scheme and of each
-piece of the library.  Example: \lv{SW/R363+3/R633/G6} is a $2\times2$ level,
-then a $3\times6\times3$ level whose passes run on three threads, then a
-$6\times3\times3$ level, then six concurrent GEMM calls at the leaf
-(Figure~\ref{fig:plan}).}
+piece of the library.  Example: \lv{SW/R363+3/R633/G6}, drawn in
+Figure~\ref{fig:plan}.}
 \label{tab:notation}
 \end{table}
+
+\section{Introduction}\label{sec:intro}
+
+Throughout, the problem is $C=AB$ with $A$ an $m\times k$ and $B$ a
+$k\times n$ matrix; a problem is \emph{square} when $m=k=n$, and a square
+problem is named by that size $n$.  A scheme $\mm{g_1\times g_2\times g_3:r}$
+multiplies a $g_1\times g_2$ grid of blocks by a $g_2\times g_3$ grid of
+blocks with $r<g_1g_2g_3$ block products.  Applied to the problem, it cuts $A$
+and $B$ into those grids and hands down $r$ products of
+$(m/g_1)\times(k/g_2)$ by $(k/g_2)\times(n/g_3)$ blocks, and applied again to
+those products it saves products at every level of recursion.  On a real
+machine a level is not free: its linear combinations of blocks are passes
+over memory, and the products it hands down are General Matrix
+Multiplications (GEMMs, the matrix product routine of the BLAS, the Basic
+Linear Algebra Subprograms) whose rate depends on their size
+and shape.  Libraries that use fast schemes therefore apply one to three
+levels on top of a tuned GEMM and stop \cite{HSvdG16,DPSST26}.  Which scheme, how
+many levels, in what order, and at what cost in accuracy, are the questions
+this report answers by measurement for one machine, \emph{the machine}
+from here on: Apple's M4~Pro with Accelerate's GEMM (details in the Setting
+paragraph below and in Section~\ref{sec:glossary}).
 
 The approach is to mix.  Each scheme is an operator for one step down: a
 \emph{level} cuts the current problem's operands into a grid of blocks and
@@ -479,7 +482,7 @@ planner chooses the same plans except at $13824$ f64, where it takes
 \label{tab:intro-acc}
 \end{table}
 
-\begin{table}[H]
+\begin{table}[!htb]
 \centering\small
 \begin{tabular}{llrrlrr}
 \toprule
@@ -652,7 +655,8 @@ saving (Section~\ref{sec:menu}).}
 
 \subsection{What the implementation taught}
 
-Before the line claiming described below, the passes reached
+Before the passes zeroed each output cache line ahead of writing it (with
+Arm's \texttt{DC~ZVA}, at the end of this subsection), they reached
 $120$--$175$~GB/s against a peak of about $270$.  Two
 details were each worth a large factor.  With $64$ streams the compiler gave
 up vectorizing the fused loop (it could not rule out overlap among $64$
@@ -668,14 +672,19 @@ $284$-operation accurate program run at the same speed as fused passes
 the $\mm{3\times3\times6:40}$ scheme's $R$ and $P$ matrices cost $18$ operations per
 output, and their passes ran at $0.092$~s against $0.070$ for the $4\times4$
 level's at $13824$ in f32 for $0.99\times$ the words.  PLinOpt's optimizer
-\cite{PLinOpt} brought the nine programs of the three orientations from
-$152$, $344{+}384$ and $366{+}384$ operations ($L$, $R$, $P$ of the $3\times3\times6$
-orientation; additions plus scalings) to $59$, $117{+}22$ and $148{+}18$, which
-cut the $R$-level passes by a quarter and the plans by 1--7\% with the error
-unchanged.
+\cite{PLinOpt}, which shares common subexpressions, shortened the programs
+of all three orientations.  In the $3\times3\times6$ orientation, written as
+additions${}+{}$scalings, the $L$, $R$ and $P$ programs went from $152$,
+$344{+}384$ and $366{+}384$ operations as direct sums ($L$'s coefficients are
+all $\pm1$, so it has no scalings) to $59$, $117{+}22$ and $148{+}18$: $39\%$,
+$19\%$ and $22\%$ of the operations.  The passes got a quarter faster
+(\lv{R336/G} at $13824$: $0.098$ to $0.073$~s in f32, $0.179$ to
+$0.136$~s in f64, mostly in the $R$ and $P$ passes), the plans that use these
+levels 1--7\% faster, and the error was unchanged
+(\path{matmul/fastmm/results/r336_opt_vs_direct_2026-10-28.txt}~\cite{logic}).
 
 \paragraph{The passes paid for every output line twice.}
-A plain pass $d=a+b$ moves $208$--$220$~GB/s on this machine with two
+A plain pass $d=a+b$ moves $208$--$220$~GB/s on the machine with two
 threads; the fused passes moved $121$--$130$ (the $4\times4$ level's $L$
 pass: $16$ blocks in, $48$ out) to $155$--$174$ (its $P$ pass: $48$ in, $16$
 out).  The more a pass writes, the slower it runs, as if every written line
@@ -687,10 +696,10 @@ the first-level cache lost 10--20\%.  What works is Arm's \texttt{DC~ZVA}
 instruction, which zeroes a whole $64$-byte line without reading it: issued for
 the output lines of a $4$~KB tile just before the kernel computes that tile, it
 takes the $L$ passes to $164$--$168$~GB/s, 25--37\% more, and the $P$ passes up
-4--7\%, with identical results (\path{results/pass_probes_2026-11-14.txt}).
-The library's passes claim their output lines this way (\texttt{FMM\_ZVA=0}
+4--7\%, with identical results (\path{matmul/fastmm/results/pass_probes_2026-11-14.txt}~\cite{logic}).
+The library's passes zero their output lines this way (\texttt{FMM\_ZVA=0}
 switches it off).  In whole plans, measured alternately with it switched off
-(best of two rounds each, \path{results/final_campaign_2026-11-15.txt}), it
+(best of two rounds each, \path{matmul/fastmm/results/final_campaign_2026-11-15.txt}~\cite{logic}), it
 is worth 1--3.5\% in f32 and at most 1.5\% in f64, where the gains are
 within the run-to-run spread: the passes are a small part of a plan's time
 (Section~\ref{sec:disc}).
@@ -727,7 +736,7 @@ is faster than Accelerate in cache on blocks of $128$, but as a level's
 products through memory it runs at $0.81$--$0.94\times$ Accelerate's rate on
 blocks of $384$ and up and equals it below, where both are bound by
 bandwidth; an open kernel does not unlock deeper plans, and the library keeps
-Accelerate (\path{results/sme_leaf_2026-11-14.txt}).
+Accelerate (\path{matmul/fastmm/results/sme_leaf_2026-11-14.txt}~\cite{logic}).
 
 \paragraph{A second engine: the GPU.}
 In f32 the machine has a second matrix engine, the GPU (Metal has no f64).
@@ -735,22 +744,28 @@ Three facts make it usable \emph{inside} a level rather than instead of the
 library.  Its f32 product is bit for bit Accelerate's (Section~\ref{sec:gpu});
 the memory is unified, so it reads a level's factors and writes the level's
 products in the library's own scratch blocks without a copy; and it runs
-beside the SME units without slowing them.  A leaf \lv{GM} or \lv{G6M} shares
-the $r$ products of a level between the two engines: the GEMM streams take
-products from the front of the list, and one thread submitting to the GPU
+beside the SME units without slowing them.  The GPU build adds two kinds of
+code to the notation (Table~\ref{tab:notation}).  A leaf with the suffix
+\lv{M}, \lv{GM} or \lv{G6M}, is the leaf \lv{G} or \lv{G6} with the GPU
+added: it shares the $r$ products of the level above between the two
+engines.  Accelerate's GEMM (one call at a time in \lv{GM}, six streams in
+\lv{G6M}) takes products from the front of the list, and one thread submitting to the GPU
 (Metal Performance Shaders' matrix multiplication on the scratch wrapped as
 shared Metal buffers, a few milliseconds of products per command buffer, at
 most eight) takes them from the back, until they meet.  On blocks of $1152$ and up the two together run at
 $7.3$--$9.1$~TFLOP/s, against $3.3$--$3.8$ for the streams alone and
-$4.0$--$6.6$ for the GPU alone (\path{results/gpu_share_2026-11-14.txt}).
+$4.0$--$6.6$ for the GPU alone (\path{matmul/fastmm/results/gpu_share_2026-11-14.txt}~\cite{logic}).
 Since both engines compute the same bits, it does not matter which one takes
 which product: a plan's result, and so its error, is that of the same plan
 without the GPU.  Products smaller than $576$ are left to the streams (below
 that a command buffer's overhead is the product's time).  To separate the
 hardware's share of the gain from the scheme's, the same sharing is offered
-without any scheme: the levels \lv{K16}, \lv{K32} and \lv{K64} cut the
-classical product into $16$, $32$ or $64$ strips of rows, with no passes, and
-hand the strips to the two engines; their result is the GEMM's own.  The GPU
+without any scheme: the levels \lv{K16}, \lv{K32} and \lv{K64} are the
+classical product cut into $16$, $32$ or $64$ strips of rows
+of $A$ and $C$, each strip one product for a shared leaf below
+(\lv{K32/G6M}: $32$ strips shared between six GEMM streams and the GPU).
+They have no passes and save no products, and their result is the GEMM's
+own.  The GPU
 leaves live in a second build of the C library (\texttt{libfmm\_gpu.a}) and
 behind a feature of the Rust port (\texttt{gpu}), with their own calibration
 file beside the cache, so the default builds never see them.
@@ -947,7 +962,7 @@ $2.45$ for Strassen's original, and $\ginf$ $6.05$ against $8$ and $6.83$
 PLinOpt's optimizer, $8+3$, $8+3$ and $11+3$ additions and scalings.  Against
 Winograd's programs, with the two binaries otherwise identical, run
 alternately and measured against the exact product
-(\path{results/sw_dps7_2026-11-02.txt}; \texttt{gen\_kernels.py --sw
+(\path{matmul/fastmm/results/sw_dps7_2026-11-02.txt}~\cite{logic}; \texttt{gen\_kernels.py --sw
 winograd} builds the kernels with Winograd's programs):
 \begin{itemize}
 \item One level alone has $0.88$--$1.35\times$ the GEMM's error at $4096$ and
@@ -1057,7 +1072,7 @@ f64 & uniform  & \E{6.69}{-15} & \E{6.60}{-16} & \E{3.66}{-15} & \E{3.59}{-16} &
 \caption{Errors on badly scaled inputs at $n=6912$: Accelerate's GEMM, the
 planner's default plan (\lv{R363+4/D48/G6} in f32, \lv{R336+2/R363/G6} in
 f64), and the same plan prescaled; in bold, errors more than $100$ times
-the GEMM's.  \texttt{results/scaled\_inputs\_2026-11-16.txt} also has the
+the GEMM's.  \texttt{matmul/\allowbreak fastmm/\allowbreak results/\allowbreak scaled\_inputs\_2026-11-16.txt}~\cite{logic} also has the
 single levels, \lv{D48/D48/G}, \lv{R363/R336/G}, $s=3$, and $n=13824$.}
 \label{tab:scaled}
 \end{table}
@@ -1138,7 +1153,7 @@ $n$, prec. & GEMM (s) & default plan (s) & separate passes & folded & speedup: n
 \caption{The time prescaling costs the default plans: the best of two
 alternating rounds of seven (6912) or three (13824) runs, with the factors
 computed inside the timed call in both forms.  The two forms give the same
-result bit for bit.  \texttt{results/prescale\_timing\_2026-11-16.txt}.}
+result bit for bit.  \texttt{matmul/\allowbreak fastmm/\allowbreak results/\allowbreak prescale\_timing\_2026-11-16.txt}~\cite{logic}.}
 \label{tab:prescale}
 \end{table}
 
@@ -1330,8 +1345,9 @@ $n$, precision & plan & time (s) & over GEMM & relerr & err64\\
  & \lv{R363+3/R336/G3} (auto) & 3.244 & 1.92 & $1.3\cdot10^{-14}$ & $6.18\cdot10^{-15}$\\
 \bottomrule
 \end{tabular}
-\caption{Square problems on the M4~Pro (\texttt{results/final\_campaign\_2026-11-15b.txt}):
-best of five (f32 at $6912$) or three interleaved rounds; ``over GEMM'' is
+\caption{Square problems on the machine, best of five (f32 at $6912$) or
+three interleaved rounds (\texttt{matmul/\allowbreak fastmm/\allowbreak
+results/\allowbreak final\_campaign\_2026-11-15b.txt}~\cite{logic}); ``over GEMM'' is
 Accelerate's best time in the campaign divided by the plan's.  ``auto'' is
 the planner's choice under its default budget, ``no budget'' its choice
 without one where the two differ; in bold, the fastest plan measured at each
@@ -1394,7 +1410,7 @@ mixed plan.  What the table says:
   $2.86\cdot10^{-15}$.
 \end{itemize}
 
-\begin{table}[H]
+\begin{table}[!htb]
 \centering\small
 \begin{tabular}{lllrrrr}
 \toprule
@@ -1453,7 +1469,7 @@ $6912\times6912\times3456$ & estimated & f32 & \lv{D48/G3} & 0.0783 / 0.0739 & 1
 \bottomrule
 \end{tabular}
 \caption{Rectangular problems through the library's entry points
-(\texttt{test\_fmm} in \texttt{results/\allowbreak final\_\allowbreak campaign\_\allowbreak 2026-11-15b.txt}): the planner's plan under the default budget, its predicted
+(\texttt{test\_fmm} in \texttt{matmul/\allowbreak fastmm/\allowbreak results/\allowbreak final\_\allowbreak campaign\_\allowbreak 2026-11-15b.txt}~\cite{logic}): the planner's plan under the default budget, its predicted
 and measured time, and the speedup over Accelerate's GEMM on the same shape.
 ``Estimated'' shapes are priced from the square calibration by
 \eqref{eq:equiv}.}
@@ -1477,7 +1493,7 @@ IBM's ESSL \texttt{\_GEMMS} \cite{ESSL}: ``Winograd's variation of the
 Strassen's algorithm'', applied ``up to four times'', each step halving the
 dimensions, over ESSL's own GEMM, with the number of steps chosen from the
 size by an unpublished rule.  ESSL is closed and runs on IBM's Power systems,
-not on this machine, so we implemented the published algorithm over
+not on the machine, so we implemented the published algorithm over
 Accelerate's GEMM (\path{gemms_impl.h}, benchmark method
 \texttt{gemms:}$L$): Winograd's variant with its $15$ block additions, in the
 usual schedule with two temporaries per level (as in Douglas et al.'s GEMMW
@@ -1489,8 +1505,8 @@ implementation of the algorithm, not ESSL's code, and its leaves are
 Accelerate's, not ESSL's.  Since the depth rule is unpublished we measured
 one to four levels and credit the algorithm with its fastest depth at each
 size.  All methods ran interleaved in one run, on the same inputs, against
-the exact product (\path{run_essl_gemms.sh},
-\path{results/essl_gemms_2026-11-17.txt}).
+the exact product (\path{matmul/fastmm/run_essl_gemms.sh},
+\path{matmul/fastmm/results/essl_gemms_2026-11-17.txt}~\cite{logic}).
 
 \begin{table}[!tbp]
 \centering\footnotesize
@@ -1614,7 +1630,7 @@ $n$ (f32) & time (s) & time (s) & TFLOP/s & time (s) & plan & time (s) & error\\
 13824 & 1.558 & 0.870 & 6.1 & 0.737 & \lv{R363+4/R336/G6M} & 0.494 & $3.53\cdot10^{-6}$\\
 \bottomrule
 \end{tabular}
-\caption{The GPU in f32 (\texttt{results/final\_campaign\_2026-11-15b.txt},
+\caption{The GPU in f32 (\texttt{matmul/\allowbreak fastmm/\allowbreak results/\allowbreak final\_campaign\_2026-11-15b.txt}~\cite{logic},
 step (2g)): best of two rounds of five to seven; Accelerate's time is its
 best in the campaign.  The GPU alone and the classical product shared between
 the two engines (\lv{K32/G6M}, \lv{K64/G6M}, \lv{K32/GM}) have the GEMM's
@@ -1653,7 +1669,7 @@ What Table~\ref{tab:gpu} says:
   (Section~\ref{sec:planner}).
 \item The GPU's f16-input path (f32 result) is only 14\% faster than its f32
   at $13824$, and its error, $2.5$--$2.8\cdot10^{-4}$, is the rounding of the
-  inputs to 11 bits (\texttt{results/gpu\_gemm\_2026-10-28.txt}).
+  inputs to 11 bits (\path{matmul/fastmm/results/gpu_gemm_2026-10-28.txt}~\cite{logic}).
 \item In f64 the GPU does not compete, and the plans' $1.71$--$1.92\times$
   over Accelerate's dgemm at $6912$ and $13824$ stands alone.
 \end{itemize}
@@ -1723,10 +1739,10 @@ $n$, prec. & plan & R (s) & T (s) & T/R & R error & T error & T/R\\
 \end{tabular}
 \caption{The ternary $\mm{3\times3\times6:42}$ levels (T) against the accurate
 $\mm{3\times3\times6:40}$ levels (R) on the same plans
-(\texttt{results/final\_campaign\_2026-11-15.txt}, step (3); \lv{X} stands for \lv{R} or
+(\texttt{matmul/\allowbreak fastmm/\allowbreak results/\allowbreak final\_campaign\_2026-11-15.txt}~\cite{logic}, step (3); \lv{X} stands for \lv{R} or
 \lv{T}): best of five (f32) or three (f64) interleaved rounds; the f64
 errors from a second run on the same inputs
-(\texttt{results/t42\_exact64\_2026-11-16.txt}).  The GEMM's own errors are
+(\texttt{matmul/\allowbreak fastmm/\allowbreak results/\allowbreak t42\_exact64\_2026-11-16.txt}~\cite{logic}).  The GEMM's own errors are
 $6.40\cdot10^{-6}$ and $3.85\cdot10^{-6}$ in f32, $1.23\cdot10^{-14}$ and
 $6.69\cdot10^{-15}$ in f64.}
 \label{tab:ternary}
@@ -1801,7 +1817,7 @@ fused passes as safe Rust emitted by the same generator (each slice a
 separate parameter, cut to the row length first: the compiler then
 vectorizes as \texttt{restrict} and the pragma let it in C).  The only unsafe
 code is the three FFI declarations for Accelerate behind safe wrappers that
-check the slices, the two instructions of the passes' line claiming
+check the slices, the two instructions of the passes' output-line zeroing
 (\texttt{DC~ZVA} and the read of its block size) as inline assembly, behind
 a safe function that takes the output slice and zeroes only whole lines inside
 it, and, with the feature \texttt{gpu}, the four FFI declarations of the C
@@ -1820,7 +1836,7 @@ $n$, an error budget, four rectangular shapes, both precisions, and with the
 GPU the plan without a budget at $3456$, \lv{K32/G6M}) give the same plans,
 the same predicted times to the digit and results bit for bit, in the default
 builds and in the builds with the GPU against \texttt{libfmm\_gpu.a}
-(\path{results/crosscheck_2026-11-16.txt}).  Bit for bit needed one change to
+(\path{matmul/fastmm/results/crosscheck_2026-11-16.txt}~\cite{logic}).  Bit for bit needed one change to
 the C build.  With clang's default contraction of \texttt{a*b+c} into a fused
 multiply-add, the one statement of the programs with a factor that is not a
 power of two -- \texttt{v59 + (ov1 - (v48 + 2 v46)/5)*5} in the $P$ program of
@@ -1831,17 +1847,17 @@ programs as written.  Of the errors this report quotes, two change in the
 third digit (\lv{R363+3/R336/G3} at $13824$ f64, $6.40$ to
 $6.18\cdot10^{-15}$; \lv{R363+4/R336/G6} at $13824$ f32, $3.33$ to
 $3.53\cdot10^{-6}$) and the rest not at all
-(\path{results/r336_nocontract_2026-11-16.txt}); the tables give the new
+(\path{matmul/fastmm/results/r336_nocontract_2026-11-16.txt}~\cite{logic}); the tables give the new
 values.  (A first crosscheck of the Rust \texttt{DC~ZVA} passes,
-\path{results/rust_zva_2026-11-15.txt}, found no calibration -- a relative
+\path{matmul/fastmm/results/rust_zva_2026-11-15.txt}~\cite{logic}, found no calibration -- a relative
 cache path in a directory the crosscheck ran from -- and compared the classical
 GEMM only.)  Speeds match at large sizes
 (best of two alternating rounds, f64 $8192$: $0.797$~s in Rust against
 $0.796$ in C; f32 $8192$: $0.231$ against $0.229$; f32
-$6912\times6912\times3456$: $0.076$ against $0.074$); without the line
-claiming the Rust plans are 1--4\% slower ($0.814$, $0.241$ and $0.077$~s), as
+$6912\times6912\times3456$: $0.076$ against $0.074$); without the
+\texttt{DC~ZVA} zeroing the Rust plans are 1--4\% slower ($0.814$, $0.241$ and $0.077$~s), as
 the C plans are.  With the GPU (two alternating rounds, the machine busy with a
-system indexing process; \path{results/rust_gpu_2026-11-16.txt}) Rust runs
+system indexing process; \path{matmul/fastmm/results/rust_gpu_2026-11-16.txt}~\cite{logic}) Rust runs
 \lv{R363/G6M} at $3456$ in $0.0155$--$0.0160$~s against $0.0151$--$0.0188$ in
 C and at $6912$ in $0.087$--$0.099$ against $0.084$--$0.093$, and the
 pipelined \lv{R363+4/R336/G6M} at $13824$ 5--10\% slower, $0.611$--$0.628$
@@ -1864,10 +1880,10 @@ the point in its orbit and, at depth, by the roundings of its $P$ program,
 not by the operation count.  Under these measures the menu is short: two
 accurate schemes and an accurate $\mm{2\times2\times2:7}$ scheme for the top of a plan.  A
 scheme enters the menu only if a plan containing it beats every plan without
-it on this machine, and the planner decides that per shape and precision from
+it on the machine, and the planner decides that per shape and precision from
 measurements, which is why the library can take a new level (or a new machine) without
 any change but a calibration.  Its default objective is time at the GEMM's
-own accuracy or better, and on this machine that objective costs no time:
+own accuracy or better, and on the machine that objective costs no time:
 with the dyadic accurate point in the $2\times2$ level the fastest plans are
 within it (Section~\ref{sec:sw}), and where plans tie in time the default
 takes the one predicted clearly more accurate.  That accuracy is the
@@ -1934,7 +1950,7 @@ more hardware, and found the boundary rather than a level
   factor and constants that all round: its error against the exact product
   is $0.99$--$1.00$ of the dyadic programs' (geometric mean over five plans,
   two sizes and both precisions; single cells $0.94$--$1.05$) and its pass
-  time the same (\path{results/nondyadic_2026-11-14_summary.txt}).  A scheme
+  time the same (\path{matmul/fastmm/results/nondyadic_2026-11-14_summary.txt}~\cite{logic}).  A scheme
   pays for its growth factor and its rank, not for its constants.
 \item \emph{Operands used in place.}  A factor that is a single block needs
   no pass.  Only a rank-one factor can be one, the factor ranks are
@@ -1942,14 +1958,14 @@ more hardware, and found the boundary rather than a level
   move 8\% ($3\times3\times6$) or 17\% ($4\times4$) less, 1--2\% of a plan,
   at a point that is not the accurate one.
 \end{itemize}
-What would move f64 on this machine is a rank record or more hardware;
+What would move f64 on the machine is a rank record or more hardware;
 nothing else we measured does.
 
 What is next.  A dyadic point of the $3\times6\times3$ orientation closer to
 its class's amplification floor (DPS's is 14\% above it) would improve the
 plans that use it; the tools exist from the $4\times4$ search.  Fusing the $L$
 and $R$ passes into GEMM operand packing, the ``Strassen reloaded'' design,
-needs an open GEMM kernel; on this machine the vendor's SME kernels are
+needs an open GEMM kernel; on the machine the vendor's SME kernels are
 closed, so it waits for another machine (x86-64 with BLIS, or the Apple GPU).
 The planner's $0.07$~s per new shape in C should be a millisecond.  The error model's depth factor is one number for all levels; a factor per
 level, or a model of the leaves' accumulation length, would tighten its
@@ -2021,7 +2037,7 @@ the schemes are published \cite{DPS26a,DPS26b} and the engineering is
 reproducible from this report.  Two trends limit all of it.  Dense f64 work
 is moving to GPUs, where accuracy is already sold in the other direction,
 f64 products emulated on low-precision tensor cores by the Ozaki scheme
-\cite{Ozaki12}; and on this machine the GPU alone already ties the CPU
+\cite{Ozaki12}; and on the machine the GPU alone already ties the CPU
 plans in f32 at $13824$ (Section~\ref{sec:gpu}), so the gain on the CPU alone
 is cleanest in f64, the smallest market of all.  A port to an x86-64 server part with BLIS, measured, is what
 commercial traction would need.
@@ -2095,7 +2111,7 @@ of Arm's.  In one place, followed by the report's own terms and abbreviations:
   sequential FMA chain, which is why its result equals the GPU's bit for
   bit.  Its kernels are Apple's and closed, which keeps the ``Strassen
   reloaded'' design of fusing the passes into the GEMM's operand packing off
-  this machine.
+  the machine.
 \item[NEON.]  Arm's 128-bit SIMD vector instruction set, on every core.
   GEMMs on the idle cores with it were tried and not adopted
   (Section~\ref{sec:machine}).
@@ -2274,9 +2290,9 @@ were rerun against the exact product by \path{run_t42_exact64.sh}
 \path{run_final2b.sh} (\path{results/final_campaign_2026-11-15b.txt}), on
 part (a)'s calibration after the planner's tie rule was corrected: the
 square problems, the GPU, and the library's tests in both builds.  The Rust
-port with the passes' line claiming, its crosscheck against C
-(Section~\ref{sec:impl}) and its timing against C with and without the line
-claiming: \path{run_rust_zva.sh} (\path{results/rust_zva_2026-11-15.txt}); the
+port with the passes' \texttt{DC~ZVA} zeroing, its crosscheck against C
+(Section~\ref{sec:impl}) and its timing against C with and without the
+zeroing: \path{run_rust_zva.sh} (\path{results/rust_zva_2026-11-15.txt}); the
 crosscheck of both builds, with and without the GPU, on the real cache:
 \path{run_crosscheck.sh} (\path{results/crosscheck_2026-11-16.txt}); the Rust
 GPU leaves' tests and timing against C: \path{run_rust_gpu.sh}
@@ -2295,8 +2311,8 @@ discarded and rerun after the exact references' cache was found to ignore
 \texttt{FMM\_INPUT}).  The GPU's own GEMMs are measured by \path{gpu_gemm.m}
 (\texttt{make build/gpu\_gemm}; its f16 path in
 \path{gpu_gemm_2026-10-28.txt}), the sharing of a level's products by
-\path{gpu_share.m} (\path{gpu_share_2026-11-14.txt}), the passes' line
-claiming by \path{probe_strip.c} and \path{probe_nt.c}
+\path{gpu_share.m} (\path{gpu_share_2026-11-14.txt}), the probes that led to the
+\texttt{DC~ZVA} zeroing, \path{probe_strip.c} and \path{probe_nt.c}
 (\path{pass_probes_2026-11-14.txt}), and the non-dyadic test by
 \path{nondyadic.py} (\path{nondyadic_2026-11-14_summary.txt}); the comparison
 of the $2\times2$ level's programs is \path{sw_dps7_2026-11-02.txt}

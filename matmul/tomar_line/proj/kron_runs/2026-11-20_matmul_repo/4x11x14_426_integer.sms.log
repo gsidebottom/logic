@@ -1,0 +1,1 @@
+/Users/greg/projects/mat_mul/schemes/4x11x14_426_integer/4x11x14_426_integer_{L,R,P}.sms: <4x11x14:426>, nonzeros L 2424 R 5364 P 2855; wrong entries per trial [0, 0] -> ALL EXACT; changed P entry: 1 wrong -> REJECTED (0.1 s)

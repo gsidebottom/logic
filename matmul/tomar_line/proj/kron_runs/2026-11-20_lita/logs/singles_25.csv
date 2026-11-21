@@ -1,0 +1,4 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+25x25x25_m7507_Q.json,"I0",24x25x25,7157,0,"I0: 7470 alive, d0:27dep:313gone -> 7157",7507,,,177.6
+25x25x25_m7507_Q.json,"K0",24x25x25,7157,0,"K0: 7470 alive, d2:27dep:313gone -> 7157",7507,,,273.2
+25x25x25_m7507_Q.json,"J0",24x25x25,7157,0,"J0: 7470 alive, d1:27dep:313gone -> 7157",7507,,,337.3

@@ -1,0 +1,19 @@
+16x16x16_m2236_Q.json: 16 deletion sequences (I0;I1;I2;I3;I4;I5;I6;I7;I8;I9;I10;I11;I12;I13;I14;I15), mode each, walk 400, restarts 4, 6 workers
+I3: 15x16x16 I3: 2236 alive, d2:16dep:32gone -> 2204; catalog Q 2202 Z 2265 ZT 2302 (75 s)
+I2: 15x16x16 I2: 2236 alive, d2:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (76 s)
+I1: 15x16x16 I1: 2236 alive, d2:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (76 s)
+I4: 15x16x16 I4: 2236 alive, d2:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (77 s)
+I5: 15x16x16 I5: 2236 alive, d2:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (77 s)
+I0: 15x16x16 I0: 2236 alive, d2:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (80 s)
+I8: 15x16x16 I8: 2236 alive, d0:16dep:32gone -> 2204; catalog Q 2202 Z 2265 ZT 2302 (68 s)
+I7: 15x16x16 I7: 2236 alive, d2:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (70 s)
+I6: 15x16x16 I6: 2236 alive, d2:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (71 s)
+I10: 15x16x16 I10: 2236 alive, d0:16dep:32gone -> 2204; catalog Q 2202 Z 2265 ZT 2302 (70 s)
+I9: 15x16x16 I9: 2236 alive, d0:16dep:34gone -> 2202; catalog Q 2202 Z 2265 ZT 2302   (ties Q 2202) (73 s)
+I11: 15x16x16 I11: 2236 alive, d0:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (71 s)
+I12: 15x16x16 I12: 2236 alive, d0:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (69 s)
+I14: 15x16x16 I14: 2236 alive, d0:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (69 s)
+I13: 15x16x16 I13: 2236 alive, d0:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (70 s)
+I15: 15x16x16 I15: 2236 alive, d0:16dep:33gone -> 2203; catalog Q 2202 Z 2265 ZT 2302 (69 s)
+  15x16x16: best 2202, worst 2204 over 16 sequences; catalog {'Q': 2202, 'ZT': 2302, 'Z': 2265}
+done: 16 sequences, 0 below the catalog's Q rank, 218 s

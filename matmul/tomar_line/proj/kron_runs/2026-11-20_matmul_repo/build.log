@@ -1,0 +1,7 @@
+4x11x14_426_integer built 16:13:35: ALL EXACT; changed P entry: 1 wrong -> REJECTED SLP SUCCESS SUCCESS SUCCESS 
+4x11x16_477_dyadic built 16:13:35: ALL EXACT; changed P entry: 1 wrong -> REJECTED SLP SUCCESS SUCCESS SUCCESS 
+4x11x13_397_dyadic built 16:13:35: ALL EXACT; changed P entry: 1 wrong -> REJECTED SLP SUCCESS SUCCESS SUCCESS 
+8x11x13_749_dyadic built 16:13:50: ALL EXACT; changed P entry: 1 wrong -> REJECTED SLP SUCCESS SUCCESS SUCCESS 
+4x13x14_498_dyadic built 16:14:16: ALL EXACT; changed P entry: 1 wrong -> REJECTED SLP SUCCESS SUCCESS SUCCESS 
+9x11x11_705_dyadic built 16:15:14: ALL EXACT; changed P entry: 1 wrong -> REJECTED SLP SUCCESS SUCCESS SUCCESS 
+11x13x16_1444_dyadic built 16:16:41: ALL EXACT; changed P entry: 1 wrong -> REJECTED SLP SUCCESS SUCCESS SUCCESS 

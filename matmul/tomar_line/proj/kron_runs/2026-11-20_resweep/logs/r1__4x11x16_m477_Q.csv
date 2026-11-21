@@ -1,0 +1,32 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+4x11x16_m477_Q.json,"K8",4x11x15,458,0,"K8: 472 alive, d1:11dep:14gone -> 458",449,453,457,0.1
+4x11x16_m477_Q.json,"K4",4x11x15,459,0,"K4: 470 alive, d1:9dep:11gone -> 459",449,453,457,0.1
+4x11x16_m477_Q.json,"I2",3x11x16,405,0,"I2: 418 alive, d2:8dep:9gone, d0:4dep:4gone -> 405",394,396,396,0.1
+4x11x16_m477_Q.json,"I3",3x11x16,404,0,"I3: 417 alive, d2:7dep:7gone, d0:6dep:6gone -> 404",394,396,396,0.1
+4x11x16_m477_Q.json,"I0",3x11x16,404,0,"I0: 417 alive, d2:8dep:8gone, d0:5dep:5gone -> 404",394,396,396,0.1
+4x11x16_m477_Q.json,"K0",4x11x15,458,0,"K0: 473 alive, d1:12dep:15gone -> 458",449,453,457,0.1
+4x11x16_m477_Q.json,"J7",4x10x16,447,0,"J7: 473 alive, d1:19dep:26gone -> 447",441,441,441,0.1
+4x11x16_m477_Q.json,"J3",4x10x16,448,0,"J3: 473 alive, d1:18dep:25gone -> 448",441,441,441,0.1
+4x11x16_m477_Q.json,"J5",4x10x16,447,0,"J5: 463 alive, d1:16dep:16gone -> 447",441,441,441,0.1
+4x11x16_m477_Q.json,"K6",4x11x15,458,0,"K6: 470 alive, d1:9dep:11gone, d2:1dep:1gone -> 458",449,453,457,0.2
+4x11x16_m477_Q.json,"K7",4x11x15,457,0,"K7: 471 alive, d1:10dep:13gone, d2:1dep:1gone -> 457",449,453,457,0.2
+4x11x16_m477_Q.json,"K9",4x11x15,458,0,"K9: 473 alive, d1:12dep:15gone -> 458",449,453,457,0.1
+4x11x16_m477_Q.json,"K11",4x11x15,459,0,"K11: 471 alive, d1:10dep:12gone -> 459",449,453,457,0.0
+4x11x16_m477_Q.json,"K10",4x11x15,459,0,"K10: 471 alive, d1:10dep:12gone -> 459",449,453,457,0.1
+4x11x16_m477_Q.json,"K13",4x11x15,459,0,"K13: 469 alive, d1:8dep:9gone, d2:1dep:1gone -> 459",449,453,457,0.1
+4x11x16_m477_Q.json,"K12",4x11x15,459,0,"K12: 469 alive, d1:8dep:9gone, d2:1dep:1gone -> 459",449,453,457,0.2
+4x11x16_m477_Q.json,"K15",4x11x15,457,0,"K15: 471 alive, d1:10dep:14gone -> 457",449,453,457,0.2
+4x11x16_m477_Q.json,"K14",4x11x15,457,0,"K14: 471 alive, d1:10dep:14gone -> 457",449,453,457,0.2
+4x11x16_m477_Q.json,"J2",4x10x16,447,0,"J2: 467 alive, d1:20dep:20gone -> 447",441,441,441,0.2
+4x11x16_m477_Q.json,"J8",4x10x16,441,0,"J8: 459 alive, d1:18dep:18gone -> 441",441,441,441,0.3
+4x11x16_m477_Q.json,"K1",4x11x15,458,0,"K1: 473 alive, d1:12dep:15gone -> 458",449,453,457,0.3
+4x11x16_m477_Q.json,"J4",4x10x16,449,0,"J4: 471 alive, d1:16dep:22gone -> 449",441,441,441,0.3
+4x11x16_m477_Q.json,"K5",4x11x15,459,0,"K5: 471 alive, d1:10dep:12gone -> 459",449,453,457,0.3
+4x11x16_m477_Q.json,"K2",4x11x15,458,0,"K2: 470 alive, d1:9dep:11gone, d2:1dep:1gone -> 458",449,453,457,0.3
+4x11x16_m477_Q.json,"J0",4x10x16,452,0,"J0: 471 alive, d1:16dep:19gone -> 452",441,441,441,0.3
+4x11x16_m477_Q.json,"K3",4x11x15,458,0,"K3: 470 alive, d1:9dep:11gone, d2:1dep:1gone -> 458",449,453,457,0.3
+4x11x16_m477_Q.json,"J10",4x10x16,444,0,"J10: 461 alive, d1:8dep:13gone, d0:4dep:4gone -> 444",441,441,441,0.3
+4x11x16_m477_Q.json,"I1",3x11x16,404,0,"I1: 417 alive, d2:8dep:8gone, d0:5dep:5gone -> 404",394,396,396,0.5
+4x11x16_m477_Q.json,"J1",4x10x16,452,0,"J1: 469 alive, d1:14dep:17gone -> 452",441,441,441,0.4
+4x11x16_m477_Q.json,"J9",4x10x16,446,0,"J9: 463 alive, d1:10dep:15gone, d0:2dep:2gone -> 446",441,441,441,0.4
+4x11x16_m477_Q.json,"J6",4x10x16,447,0,"J6: 473 alive, d1:18dep:26gone -> 447",441,441,441,0.4

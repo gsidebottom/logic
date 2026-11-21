@@ -1,0 +1,8 @@
+17x17x17_m2723_Q.json: [17, 17, 17] with 2723 products (loaded in 0.1 s); 4 deletion sequences (I0;J0;K0;.), mode each, walk 50, restarts 2, 12 threads, seed 0
+
+thread '<unnamed>' (929117) panicked at src/bin/kronkill.rs:683:54:
+bad deletion .
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+I0: 16x17x17 I0: 2698 alive, d0:19dep:145gone -> 2553; catalog Q 2706 Z  ZT    <<< BELOW Q 2706 (6.2 s)
+J0: 16x17x17 J0: 2698 alive, d1:19dep:145gone -> 2553; catalog Q 2706 Z  ZT    <<< BELOW Q 2706 (8.0 s)
+K0: 16x17x17 K0: 2698 alive, d2:19dep:145gone -> 2553; catalog Q 2706 Z  ZT    <<< BELOW Q 2706 (9.3 s)

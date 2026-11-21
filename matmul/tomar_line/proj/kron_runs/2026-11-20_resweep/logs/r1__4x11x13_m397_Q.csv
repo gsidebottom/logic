@@ -1,0 +1,29 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+4x11x13_m397_Q.json,"K9",4x11x12,378,0,"K9: 391 alive, d1:10dep:13gone -> 378",362,362,362,0.1
+4x11x13_m397_Q.json,"K2",4x11x12,378,0,"K2: 392 alive, d1:13dep:14gone -> 378",362,362,362,0.1
+4x11x13_m397_Q.json,"K4",4x11x12,376,0,"K4: 392 alive, d1:12dep:16gone -> 376",362,362,362,0.1
+4x11x13_m397_Q.json,"I3",3x11x13,339,0,"I3: 351 alive, d2:7dep:7gone, d0:5dep:5gone -> 339",321,322,322,0.1
+4x11x13_m397_Q.json,"K0",4x11x12,377,0,"K0: 392 alive, d1:10dep:15gone -> 377",362,362,362,0.1
+4x11x13_m397_Q.json,"K6",4x11x12,376,0,"K6: 390 alive, d1:10dep:13gone, d2:1dep:1gone -> 376",362,362,362,0.1
+4x11x13_m397_Q.json,"J6",4x10x13,372,0,"J6: 393 alive, d1:15dep:21gone -> 372",361,361,361,0.1
+4x11x13_m397_Q.json,"I0",3x11x13,339,0,"I0: 352 alive, d2:6dep:6gone, d0:6dep:6gone, d1:1dep:1gone -> 339",321,322,322,0.1
+4x11x13_m397_Q.json,"J3",4x10x13,368,0,"J3: 386 alive, d1:16dep:17gone, d2:1dep:1gone -> 368",361,361,361,0.1
+4x11x13_m397_Q.json,"J10",4x10x13,372,0,"J10: 393 alive, d1:15dep:21gone -> 372",361,361,361,0.1
+4x11x13_m397_Q.json,"I2",3x11x13,338,0,"I2: 352 alive, d0:7dep:7gone, d2:6dep:6gone, d1:1dep:1gone -> 338",321,322,322,0.1
+4x11x13_m397_Q.json,"I1",3x11x13,340,0,"I1: 353 alive, d2:7dep:7gone, d0:5dep:5gone, d1:1dep:1gone -> 340",321,322,322,0.1
+4x11x13_m397_Q.json,"K10",4x11x12,378,0,"K10: 392 alive, d1:11dep:14gone -> 378",362,362,362,0.1
+4x11x13_m397_Q.json,"J7",4x10x13,368,0,"J7: 385 alive, d1:15dep:17gone -> 368",361,361,361,0.1
+4x11x13_m397_Q.json,"J1",4x10x13,370,0,"J1: 390 alive, d1:15dep:20gone -> 370",361,361,361,0.1
+4x11x13_m397_Q.json,"J4",4x10x13,372,0,"J4: 393 alive, d1:15dep:21gone -> 372",361,361,361,0.1
+4x11x13_m397_Q.json,"J8",4x10x13,372,0,"J8: 393 alive, d1:15dep:21gone -> 372",361,361,361,0.1
+4x11x13_m397_Q.json,"K7",4x11x12,377,0,"K7: 396 alive, d1:15dep:19gone -> 377",362,362,362,0.1
+4x11x13_m397_Q.json,"K8",4x11x12,378,0,"K8: 391 alive, d1:11dep:13gone -> 378",362,362,362,0.1
+4x11x13_m397_Q.json,"J9",4x10x13,373,0,"J9: 393 alive, d1:15dep:20gone -> 373",361,361,361,0.1
+4x11x13_m397_Q.json,"K11",4x11x12,377,0,"K11: 391 alive, d1:11dep:14gone -> 377",362,362,362,0.1
+4x11x13_m397_Q.json,"K12",4x11x12,377,0,"K12: 393 alive, d1:12dep:16gone -> 377",362,362,362,0.1
+4x11x13_m397_Q.json,"J0",4x10x13,370,0,"J0: 391 alive, d1:16dep:21gone -> 370",361,361,361,0.1
+4x11x13_m397_Q.json,"K3",4x11x12,377,0,"K3: 391 alive, d1:12dep:14gone -> 377",362,362,362,0.2
+4x11x13_m397_Q.json,"J5",4x10x13,372,0,"J5: 393 alive, d1:15dep:21gone -> 372",361,361,361,0.1
+4x11x13_m397_Q.json,"J2",4x10x13,370,0,"J2: 391 alive, d1:16dep:21gone -> 370",361,361,361,0.1
+4x11x13_m397_Q.json,"K1",4x11x12,377,0,"K1: 391 alive, d1:12dep:14gone -> 377",362,362,362,0.2
+4x11x13_m397_Q.json,"K5",4x11x12,378,0,"K5: 389 alive, d1:8dep:11gone -> 378",362,362,362,0.2

@@ -33,6 +33,8 @@ matmul/dbcache/
 # The committed, verified bits live in matmul/perminov_cache/bits/ and
 # the verifier scripts are tracked; everything else here is external.
 matmul/perminov_cache/repo/
+matmul/perminov_cache/f70078c/
+matmul/perminov_cache/catalog_f70078c/
 matmul/perminov_cache/*.html
 matmul/perminov_cache/*.pdf
 matmul/perminov_cache/*.log
@@ -171,3 +173,49 @@ matmul/dps48/plinopt_pr/
 # Drafts of letters, replies, proposals and PR texts to collaborators, with their attachments: semi-private notes
 # (Greg sends paraphrases), kept on Greg's machine for reference and never committed.
 doc/letters/
+# LITA's squares 17^3..32^3 converted to the catalog JSON layout (1.1 GB; regenerable from matmul/external/lita/schemes
+# by matmul/tomar_line/proj/lita_npz2json.py)
+matmul/external/lita/json/
+# Downloads without a stated licence, not redistributed here: Sedoglavic's table (github.com/sedoglavic/fmm_digest,
+# commit 8e6ad05) and LITA's square schemes (github.com/khoruzhii/lita, commit 472a79f); also the tables derived
+# from them and from Perminov's catalog (regenerable: table_closure.py, bud_groups.py, kronkill --status)
+matmul/external/fmm_sota/
+matmul/external/lita/
+matmul/tomar_line/proj/kron_runs/*/status_*.json
+matmul/tomar_line/proj/kron_runs/*/status_*.json.gz
+matmul/tomar_line/proj/kron_runs/*/buds*.json
+# Run directories of the projection / product searches (matmul/tomar_line/proj/kron_runs/): scripts, search paths,
+# build plans, progress files and summaries are tracked.  The scheme files a run produces or copies are not: 8 GB,
+# regenerable from the tracked paths (kronexact replay) and plans (kronexact build); the certified LITA-derived
+# ones are public in github.com/gsidebottom/mat_mul under large/.
+matmul/tomar_line/proj/kron_runs/*/lanes/
+matmul/tomar_line/proj/kron_runs/*/gate/sources/
+matmul/tomar_line/proj/kron_runs/*/gate/*.json
+matmul/tomar_line/proj/kron_runs/*/exact/
+matmul/tomar_line/proj/kron_runs/*/built/
+matmul/tomar_line/proj/kron_runs/*/sources/
+matmul/tomar_line/proj/kron_runs/*/sorted/
+matmul/tomar_line/proj/kron_runs/*/verify*/
+matmul/tomar_line/proj/kron_runs/*/reduce/src/
+matmul/tomar_line/proj/kron_runs/*/reduce/exact/
+# planner output of the screen variants (every candidate plan; regenerable with serendip_plan.py)
+matmul/tomar_line/proj/kron_runs/*/grid/plans*
+matmul/tomar_line/proj/kron_runs/*/sub/plans*
+matmul/tomar_line/proj/kron_runs/*/nogrid/plans*
+matmul/tomar_line/proj/kron_runs/*/plan40/plans/
+# directories of many small files, tracked as one archive each (NAME.tgz beside the directory):
+# the build plans, build logs and independent checks of the product schemes; the paths and exact-replay logs of
+# the deletions from them; the logs of the second catalog pass of the 2026-11-20 re-sweep
+matmul/tomar_line/proj/kron_runs/2026-11-21_serendip/plans/
+matmul/tomar_line/proj/kron_runs/2026-11-21_serendip/plans_*/
+matmul/tomar_line/proj/kron_runs/2026-11-21_serendip/logs/
+matmul/tomar_line/proj/kron_runs/2026-11-21_serendip/crosscheck/
+matmul/tomar_line/proj/kron_runs/2026-11-21_serendip/reduce/dpaths/
+matmul/tomar_line/proj/kron_runs/2026-11-21_serendip/reduce/xlogs/
+matmul/tomar_line/proj/kron_runs/2026-11-20_resweep/logs_cat2/
+# intermediate snapshots of the combined list (final_end.json is the one that is kept)
+matmul/tomar_line/proj/kron_runs/2026-11-21_serendip/final_[0-9n]*
+# schemes and dependency files of the records of 2026-11-19 and later in kron_reduced/: the schemes are public in
+# github.com/gsidebottom/mat_mul and both are regenerable from the tracked *.path.json (the earlier five stay tracked)
+matmul/tomar_line/proj/kron_reduced/*_Q.json.gz
+matmul/tomar_line/proj/kron_reduced/*.deps.json

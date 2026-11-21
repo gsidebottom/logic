@@ -1,0 +1,16 @@
+13x13x13_m1379_Q.json: 13 deletion sequences (I0;I1;I2;I3;I4;I5;I6;I7;I8;I9;I10;I11;I12), mode each, walk 400, restarts 4, 12 workers
+I1: 12x13x13 I1: 1361 alive, d0:15dep:85gone -> 1276; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I5: 12x13x13 I5: 1360 alive, d0:15dep:85gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I4: 12x13x13 I4: 1360 alive, d0:15dep:85gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I3: 12x13x13 I3: 1360 alive, d0:15dep:85gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I7: 12x13x13 I7: 1365 alive, d0:19dep:89gone -> 1276; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I2: 12x13x13 I2: 1360 alive, d0:15dep:85gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I0: 12x13x13 I0: 1360 alive, d0:15dep:85gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I10: 12x13x13 I10: 1365 alive, d0:20dep:90gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I11: 12x13x13 I11: 1365 alive, d0:20dep:90gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I9: 12x13x13 I9: 1365 alive, d0:20dep:90gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I8: 12x13x13 I8: 1365 alive, d0:20dep:90gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (19 s)
+I6: 12x13x13 I6: 1353 alive, d2:7dep:12gone, d1:1dep:1gone -> 1340; catalog Q 1274 Z 1298 ZT 1298 (23 s)
+I12: 12x13x13 I12: 1365 alive, d0:20dep:90gone -> 1275; catalog Q 1274 Z 1298 ZT 1298 (15 s)
+  12x13x13: best 1275, worst 1340 over 13 sequences; catalog {'Q': 1274, 'ZT': 1298, 'Z': 1298}
+done: 13 sequences, 0 below the catalog's Q rank, 34 s

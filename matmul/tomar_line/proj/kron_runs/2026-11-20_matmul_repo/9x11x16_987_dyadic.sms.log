@@ -1,0 +1,1 @@
+/Users/greg/projects/mat_mul/schemes/9x11x16_987_dyadic/9x11x16_987_dyadic_{L,R,P}.sms: <9x11x16:987>, nonzeros L 13322 R 29867 P 24780; wrong entries per trial [0, 0] -> ALL EXACT; changed P entry: 1 wrong -> REJECTED (0.6 s)

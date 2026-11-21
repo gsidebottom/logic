@@ -1,0 +1,6 @@
+VERIFIED r1 13x13x15 1578 from 13x14x15_m1646_Q K4: denominators: primes [2, 5, 17], max 1088 ranks [1578, 1578, 1578]
+VERIFIED r1 13x14x14 1540 from 13x14x15_m1646_Q J14: denominators: primes [2, 5, 17], max 1088 ranks [1540, 1540, 1540]
+VERIFIED r1 13x14x15 1645 from 13x15x15_m1762_Q K0: denominators: primes [2, 5, 17], max 1088 ranks [1645, 1645, 1645]
+VERIFIED r2 13x13x14 1479 from 13x13x15_m1578_Q J14: denominators: primes [2, 5, 17], max 1088 ranks [1479, 1479, 1479]
+VERIFIED r2 13x14x14 1538 from 13x14x15_m1645_Q J0: denominators: primes [2, 5, 17], max 1088 ranks [1538, 1538, 1538]
+VERIFIED alt 13x13x15 1577 from 13x15x15_m1762_Q K10,K2: denominators: primes [2, 5, 17], max 1088 ranks [1577, 1577, 1577]

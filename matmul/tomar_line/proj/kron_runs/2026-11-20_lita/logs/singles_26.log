@@ -1,0 +1,6 @@
+26x26x26_m8051_Q.json: [26, 26, 26] with 8051 products (loaded in 2.3 s); 3 deletion sequences (I0;J0;K0), mode each, walk 100, restarts 4, 12 threads, seed 0
+J0: 25x26x26 J0: 8051 alive, d0:26dep:54gone -> 7997; catalog Q 8051 Z  ZT    <<< BELOW Q 8051 (281.1 s)
+I0: 25x26x26 I0: 8051 alive, d2:26dep:53gone -> 7998; catalog Q 8051 Z  ZT    <<< BELOW Q 8051 (337.4 s)
+K0: 25x26x26 K0: 8051 alive, d1:26dep:53gone -> 7998; catalog Q 8051 Z  ZT    <<< BELOW Q 8051 (357.8 s)
+  25x26x26: best 7997, worst 7998 over 3 sequences; catalog Some({"Q": 8051})
+done: 3 sequences, 3 below the catalog's Q rank, 360 s

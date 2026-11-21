@@ -1,0 +1,17 @@
+14x14x14_m1594_Q.json: [14, 14, 14] with 1594 products (loaded in 0.1 s); 14 deletion sequences (I0;I1;I2;I3;I4;I5;I6;I7;I8;I9;I10;I11;I12;I13), mode each, walk 2000, restarts 16, 12 threads, seed 0
+I1: 13x14x14 I1: 1594 alive, d2:14dep:29gone -> 1565; catalog Q 1563 Z 1614 ZT 1614 (9.9 s)
+I13: 13x14x14 I13: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1563 Z 1614 ZT 1614 (9.9 s)
+I9: 13x14x14 I9: 1594 alive, d2:14dep:28gone -> 1566; catalog Q 1563 Z 1614 ZT 1614 (10.2 s)
+I5: 13x14x14 I5: 1594 alive, d2:14dep:29gone -> 1565; catalog Q 1563 Z 1614 ZT 1614 (10.2 s)
+I4: 13x14x14 I4: 1594 alive, d2:14dep:29gone -> 1565; catalog Q 1563 Z 1614 ZT 1614 (10.3 s)
+I6: 13x14x14 I6: 1594 alive, d2:14dep:29gone -> 1565; catalog Q 1563 Z 1614 ZT 1614 (10.6 s)
+I3: 13x14x14 I3: 1594 alive, d2:14dep:28gone -> 1566; catalog Q 1563 Z 1614 ZT 1614 (12.0 s)
+I8: 13x14x14 I8: 1594 alive, d0:14dep:31gone -> 1563; catalog Q 1563 Z 1614 ZT 1614   (ties Q 1563) (12.4 s)
+I10: 13x14x14 I10: 1594 alive, d2:14dep:29gone -> 1565; catalog Q 1563 Z 1614 ZT 1614 (12.6 s)
+I2: 13x14x14 I2: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1563 Z 1614 ZT 1614 (4.1 s)
+I11: 13x14x14 I11: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1563 Z 1614 ZT 1614 (3.8 s)
+I7: 13x14x14 I7: 1594 alive, d0:14dep:30gone -> 1564; catalog Q 1563 Z 1614 ZT 1614 (14.1 s)
+I0: 13x14x14 I0: 1594 alive, d2:14dep:30gone -> 1564; catalog Q 1563 Z 1614 ZT 1614 (14.1 s)
+I12: 13x14x14 I12: 1594 alive, d0:14dep:29gone -> 1565; catalog Q 1563 Z 1614 ZT 1614 (14.2 s)
+  13x14x14: best 1563, worst 1566 over 14 sequences; catalog Some({"ZT": 1614, "Q": 1563, "Z": 1614})
+done: 14 sequences, 0 below the catalog's Q rank, 14 s

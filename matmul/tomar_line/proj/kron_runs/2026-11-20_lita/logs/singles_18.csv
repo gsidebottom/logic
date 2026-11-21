@@ -1,0 +1,7 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+18x18x18_m3031_Q.json,"K0",17x18x18,2994,0,"K0: 3031 alive, d1:18dep:37gone -> 2994",3031,,,9.6
+18x18x18_m3031_Q.json,"I0",17x18x18,2994,0,"I0: 3031 alive, d2:18dep:37gone -> 2994",3031,,,15.1
+18x18x18_m3031_Q.json,"J0",17x18x18,2993,0,"J0: 3031 alive, d0:18dep:38gone -> 2993",3031,,,20.5
+18x18x18_m3031_Q.json,"I17",17x18x18,2994,0,"I17: 3031 alive, d0:18dep:37gone -> 2994",3031,,,22.7
+18x18x18_m3031_Q.json,"K17",17x18x18,2994,0,"K17: 3031 alive, d2:18dep:37gone -> 2994",3031,,,26.3
+18x18x18_m3031_Q.json,"J17",17x18x18,2993,0,"J17: 3031 alive, d1:18dep:36gone, d0:1dep:2gone -> 2993",3031,,,30.9

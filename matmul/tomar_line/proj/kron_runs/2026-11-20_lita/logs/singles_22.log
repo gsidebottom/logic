@@ -1,0 +1,9 @@
+22x22x22_m5141_Q.json: [22, 22, 22] with 5141 products (loaded in 0.6 s); 6 deletion sequences (I0;J0;K0;I21;J21;K21), mode each, walk 100, restarts 4, 12 threads, seed 0
+J21: 21x22x22 J21: 5141 alive, d1:22dep:44gone, d0:1dep:2gone -> 5095; catalog Q 5141 Z  ZT    <<< BELOW Q 5141 (83.9 s)
+J0: 21x22x22 J0: 5141 alive, d0:22dep:46gone -> 5095; catalog Q 5141 Z  ZT    <<< BELOW Q 5141 (112.4 s)
+K0: 21x22x22 K0: 5141 alive, d1:22dep:45gone -> 5096; catalog Q 5141 Z  ZT    <<< BELOW Q 5141 (112.4 s)
+K21: 21x22x22 K21: 5141 alive, d2:22dep:45gone -> 5096; catalog Q 5141 Z  ZT    <<< BELOW Q 5141 (135.1 s)
+I21: 21x22x22 I21: 5141 alive, d0:22dep:45gone -> 5096; catalog Q 5141 Z  ZT    <<< BELOW Q 5141 (147.4 s)
+I0: 21x22x22 I0: 5141 alive, d2:22dep:45gone -> 5096; catalog Q 5141 Z  ZT    <<< BELOW Q 5141 (168.3 s)
+  21x22x22: best 5095, worst 5096 over 6 sequences; catalog Some({"Q": 5141})
+done: 6 sequences, 6 below the catalog's Q rank, 169 s

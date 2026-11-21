@@ -1,0 +1,4 @@
+13x13x14_1477_rational|kron_runs/2026-11-20_matmul_repo/sorted/13x13x14_m1477_Q.json.gz|projected from LITA's <15x15x15:1977> (github.com/khoruzhii/lita) and 2-reduced; found as <13x14x13> and rotated
+13x13x15_1577_rational|kron_runs/2026-11-20_matmul_repo/sorted/13x13x15_m1577_Q.json.gz|projected from LITA's <15x15x15:1977> (github.com/khoruzhii/lita) and 2-reduced; found as <13x15x13> and rotated
+13x14x15_1645_rational|kron_runs/2026-11-20_matmul_repo/sorted/13x14x15_m1645_Q.json.gz|projected from LITA's <15x15x15:1977> (github.com/khoruzhii/lita) and 2-reduced; found as <13x15x14> and transposed
+15x16x16_2200_rational|kron_runs/2026-11-20_matmul_repo/sorted/15x16x16_m2200_Q.json.gz|from LITA's <16x16x16:2236> (github.com/khoruzhii/lita), one index deleted and 2-reduced; found as <16x15x16> and rotated

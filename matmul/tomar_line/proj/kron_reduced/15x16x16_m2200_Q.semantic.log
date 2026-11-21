@@ -1,0 +1,1 @@
+s0_t1_m2200_Q.json: shape (16, 15, 16), 2200 products; 2 random products with entries up to 1e9: wrong entries per trial [0, 0] -> ALL EXACT; one coefficient changed: 1 wrong entries -> REJECTED (3.1 s)

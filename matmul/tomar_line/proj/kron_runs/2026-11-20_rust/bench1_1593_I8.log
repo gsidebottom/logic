@@ -1,0 +1,22 @@
+14x14x14_m1593_Q.json: [14, 14, 14] with 1593 products (loaded in 0.1 s); 1 deletion sequences (I8), mode each, walk 400, restarts 4, 1 threads, seed 0
+I8: 13x14x14 I8: 1593 alive, d0:14dep:30gone -> 1563; catalog Q  Z  ZT  (3.2 s)
+  13x14x14: best 1563, worst 1563 over 1 sequences; catalog None
+done: 1 sequences, 0 below the catalog's Q rank, 3 s
+        3.29 real         3.27 user         0.01 sys
+           185974784  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               11525  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+                 161  involuntary context switches
+         66202687638  instructions retired
+         13290830320  cycles elapsed
+           185156088  peak memory footprint

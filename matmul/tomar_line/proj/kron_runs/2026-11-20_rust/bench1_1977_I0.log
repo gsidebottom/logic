@@ -1,0 +1,22 @@
+15x15x15_m1977_Q.json: [15, 15, 15] with 1977 products (loaded in 0.1 s); 1 deletion sequences (I0), mode each, walk 400, restarts 4, 1 threads, seed 0
+I0: 14x15x15 I0: 1955 alive, d0:17dep:113gone -> 1842; catalog Q  Z  ZT  (4.8 s)
+  14x15x15: best 1842, worst 1842 over 1 sequences; catalog None
+done: 1 sequences, 0 below the catalog's Q rank, 5 s
+        4.88 real         4.86 user         0.01 sys
+           233488384  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               14425  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+                  58  involuntary context switches
+         99554097272  instructions retired
+         19791230874  cycles elapsed
+           232686096  peak memory footprint

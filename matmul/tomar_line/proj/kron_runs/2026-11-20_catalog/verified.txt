@@ -1,0 +1,13 @@
+VERIFIED 4x11x16_m477_J11 denominators: primes [2], max 2 ranks ranks [477, 477, 477]
+VERIFIED 4x13x14_m498_K2 denominators: primes [2], max 8 ranks ranks [498, 498, 498]
+VERIFIED 8x11x13_m749_J5 denominators: primes [2], max 16 ranks ranks [749, 749, 749]
+VERIFIED 9x11x15_m953_J0 denominators: primes [2, 3], max 432 ranks ranks [953, 953, 953]
+VERIFIED 9x11x16_m987_J2 denominators: primes [2], max 8 ranks ranks [987, 987, 987]
+VERIFIED 11x13x16_m1444_I1 denominators: primes [2], max 8 ranks ranks [1444, 1444, 1444]
+VERIFIED 13x14x14_m1561_J8 denominators: primes [2, 5, 17], max 4000 ranks ranks [1561, 1561, 1561]
+VERIFIED 13x14x15_m1652_J7 denominators: primes [2, 5, 17], max 1088 ranks ranks [1652, 1652, 1652]
+VERIFIED 13x14x15_m1646_K12 denominators: primes [2, 5, 17], max 1088 ranks ranks [1646, 1646, 1646]
+VERIFIED 13x14x15_m1646_K1 denominators: primes [2, 5, 17], max 1088 ranks ranks [1646, 1646, 1646]
+VERIFIED 15x16x16_m2201_J8 denominators: primes [2, 3, 5, 7, 11, 29], max 287100 ranks ranks [2201, 2201, 2201]
+VERIFIED 15x16x16_m2200_J9 denominators: primes [2, 3, 5, 7], max 1440 ranks ranks [2200, 2200, 2200]
+AUTOVERIFY DONE

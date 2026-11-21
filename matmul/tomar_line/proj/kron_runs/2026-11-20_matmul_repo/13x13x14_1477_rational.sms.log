@@ -1,0 +1,1 @@
+/Users/greg/projects/mat_mul/schemes/13x13x14_1477_rational/13x13x14_1477_rational_{L,R,P}.sms: <13x13x14:1477>, nonzeros L 28157 R 28786 P 53060; wrong entries per trial [0, 0] -> ALL EXACT; changed P entry: 1 wrong -> REJECTED (1.1 s)

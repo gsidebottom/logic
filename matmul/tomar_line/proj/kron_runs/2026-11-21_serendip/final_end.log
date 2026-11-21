@@ -1,0 +1,12 @@
+lita   121 certified files
+proj    31 certified files
+prod   864 certified files
+del    628 certified files
+del      5 certified files
+table: 5456 formats, 0 below their own entry after closing
+formats below the closed table with everything we hold, closed: 1857 (total gain 102342)
+formats with a certified file below the bar: 1127 (gain 45682); primary 1014 (gain 42710)
+  lita   107 formats (gain  21144), primary   90 (gain  19330), all dims <= 16: 1
+  proj    14 formats (gain    141), primary   14 (gain    141), all dims <= 16: 14
+  prod   739 formats (gain  19660), primary  683 (gain  18974), all dims <= 16: 0
+  del    267 formats (gain   4737), primary  227 (gain   4265), all dims <= 16: 0

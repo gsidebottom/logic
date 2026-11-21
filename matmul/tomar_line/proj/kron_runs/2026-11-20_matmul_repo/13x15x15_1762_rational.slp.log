@@ -1,0 +1,4 @@
+13x15x15_1762_rational_L: 1762 x 195; 5044 additions, 1940 scalings; denominator primes of the program [2, 5, 17] (matrix [2, 5, 17]); program = matrix, exactly
+13x15x15_1762_rational_R: 1762 x 225; 5100 additions, 1852 scalings; denominator primes of the program [2, 5] (matrix [2, 5]); program = matrix, exactly
+13x15x15_1762_rational_P: 195 x 1762; 5892 additions, 1632 scalings; denominator primes of the program [2, 5] (matrix [2, 5]); program = matrix, exactly
+13x15x15_1762_rational: total 16036 additions + 5424 scalings = 21460

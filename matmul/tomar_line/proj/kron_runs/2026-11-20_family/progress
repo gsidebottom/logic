@@ -1,0 +1,20 @@
+round 1: 12 sources, start 16:05:59
+r1 13x13x14_m1479_Q done 16:06:45: 0 below
+r1 13x13x15_m1577_Q done 16:07:30: 1 below
+r1 13x13x15_m1578_Q done 16:08:20: 0 below
+r1 13x14x14_m1538_Q done 16:09:15: 0 below
+r1 13x14x14_m1540_Q done 16:10:10: 0 below
+r1 13x14x15_m1645_Q done 16:11:03: 0 below
+r1 13x14x15_m1646_Q done 16:12:02: 0 below
+r1 13x15x15_m1762_Q done 16:13:00: 0 below
+r1 13x15x15_m1763_Q done 16:14:04: 0 below
+r1 14x14x15_m1715_Q done 16:15:26: 0 below
+r1 14x15x15_m1842_Q done 16:16:53: 0 below
+r1 15x15x15_m1977_Q done 16:18:16: 0 below
+round 1: 1 shapes to verify, 16:18:16
+round 1 done 16:18:58
+round 2: 1 sources, start 16:18:58
+r2 13x13x14_m1477_Q done 16:19:44: 0 below
+round 2: 0 shapes to verify, 16:19:44
+round 2 done 16:19:44
+ALL DONE Fri Nov 20 16:19:44 EST 2026

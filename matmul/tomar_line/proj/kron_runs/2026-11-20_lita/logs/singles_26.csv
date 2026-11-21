@@ -1,0 +1,4 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+26x26x26_m8051_Q.json,"J0",25x26x26,7997,0,"J0: 8051 alive, d0:26dep:54gone -> 7997",8051,,,281.1
+26x26x26_m8051_Q.json,"I0",25x26x26,7998,0,"I0: 8051 alive, d2:26dep:53gone -> 7998",8051,,,337.4
+26x26x26_m8051_Q.json,"K0",25x26x26,7998,0,"K0: 8051 alive, d1:26dep:53gone -> 7998",8051,,,357.8

@@ -1,0 +1,9 @@
+20x20x20_m3994_Q.json: [20, 20, 20] with 3994 products (loaded in 0.4 s); 6 deletion sequences (I0;J0;K0;I19;J19;K19), mode each, walk 100, restarts 4, 12 threads, seed 0
+K19: 19x20x20 K19: 3994 alive, d2:20dep:41gone -> 3953; catalog Q 3994 Z  ZT    <<< BELOW Q 3994 (32.4 s)
+I0: 19x20x20 I0: 3994 alive, d2:20dep:41gone -> 3953; catalog Q 3994 Z  ZT    <<< BELOW Q 3994 (45.9 s)
+I19: 19x20x20 I19: 3994 alive, d0:20dep:41gone -> 3953; catalog Q 3994 Z  ZT    <<< BELOW Q 3994 (51.5 s)
+J0: 19x20x20 J0: 3994 alive, d0:20dep:42gone -> 3952; catalog Q 3994 Z  ZT    <<< BELOW Q 3994 (57.3 s)
+J19: 19x20x20 J19: 3994 alive, d0:20dep:40gone -> 3954; catalog Q 3994 Z  ZT    <<< BELOW Q 3994 (60.0 s)
+K0: 19x20x20 K0: 3994 alive, d1:20dep:41gone -> 3953; catalog Q 3994 Z  ZT    <<< BELOW Q 3994 (65.1 s)
+  19x20x20: best 3952, worst 3954 over 6 sequences; catalog Some({"Q": 3994})
+done: 6 sequences, 6 below the catalog's Q rank, 65 s

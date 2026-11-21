@@ -1,0 +1,4 @@
+9x18x18_m1600_orig_orig.json: [9, 18, 18] with 1600 products (loaded in 0.2 s); 1 deletion sequences (.), mode each, walk 100, restarts 1, 4 threads, seed 0
+: 9x18x18 : 1600 alive -> 1600; catalog Q  Z  ZT  (2.4 s)
+  9x18x18: best 1600, worst 1600 over 1 sequences; catalog None
+done: 1 sequences, 0 below the catalog's Q rank, 3 s

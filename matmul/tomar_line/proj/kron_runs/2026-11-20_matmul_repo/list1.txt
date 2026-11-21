@@ -1,0 +1,10 @@
+4x11x14_426_integer|kron_reduced/4x11x14_m426_Q.json.gz|from the <4x12x14:455> of Perminov's catalog (github.com/dronperminov/FastMatrixMultiplication), one index deleted and 2-reduced
+4x11x13_397_dyadic|kron_reduced/4x11x13_m397_Q.json.gz|from the <4x12x13:423> of Perminov's catalog (github.com/dronperminov/FastMatrixMultiplication), one index deleted and 2-reduced
+4x11x16_477_dyadic|kron_reduced/4x11x16_m477_Q.json.gz|from the <4x12x16:513> of Perminov's catalog (github.com/dronperminov/FastMatrixMultiplication), one index deleted and 2-reduced
+4x13x14_498_dyadic|kron_reduced/4x13x14_m498_Q.json.gz|from the <4x13x15:520> of Perminov's catalog (github.com/dronperminov/FastMatrixMultiplication), one index deleted and 2-reduced
+8x11x13_749_dyadic|kron_reduced/8x11x13_m749_Q.json.gz|from the <8x12x13:785> of Perminov's catalog (github.com/dronperminov/FastMatrixMultiplication), one index deleted and 2-reduced
+9x11x11_705_dyadic|kron_reduced/9x11x11_m705_Q.json.gz|from the <9x11x12:738> of Perminov's catalog (github.com/dronperminov/FastMatrixMultiplication), one index deleted and 2-reduced
+9x11x16_987_dyadic|kron_reduced/9x11x16_m987_Q.json.gz|from the <9x12x16:1035> of Perminov's catalog (github.com/dronperminov/FastMatrixMultiplication), one index deleted and 2-reduced
+11x13x16_1444_dyadic|kron_reduced/11x13x16_m1444_Q.json.gz|from the <12x13x16:1509> of Perminov's catalog (github.com/dronperminov/FastMatrixMultiplication), one index deleted and 2-reduced
+9x11x15_953_rational|kron_reduced/9x11x15_m953_Q.json.gz|from the <9x12x15:996> of Perminov's catalog (github.com/dronperminov/FastMatrixMultiplication), one index deleted and 2-reduced
+15x16x16_2200_rational|kron_reduced/15x16x16_m2200_Q.json.gz|from LITA's <16x16x16:2236> (github.com/khoruzhii/lita), one index deleted and 2-reduced

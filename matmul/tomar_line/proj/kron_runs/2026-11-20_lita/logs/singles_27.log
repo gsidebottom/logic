@@ -1,0 +1,6 @@
+27x27x27_m9233_Q.json: [27, 27, 27] with 9233 products (loaded in 0.2 s); 3 deletion sequences (I0;J0;K0), mode each, walk 100, restarts 4, 12 threads, seed 0
+J0: 26x27x27 J0: 9193 alive, d1:29dep:365gone -> 8828; catalog Q 9233 Z  ZT    <<< BELOW Q 9233 (350.3 s)
+I0: 26x27x27 I0: 9193 alive, d0:29dep:365gone -> 8828; catalog Q 9233 Z  ZT    <<< BELOW Q 9233 (753.6 s)
+K0: 26x27x27 K0: 9193 alive, d2:29dep:365gone -> 8828; catalog Q 9233 Z  ZT    <<< BELOW Q 9233 (809.1 s)
+  26x27x27: best 8828, worst 8828 over 3 sequences; catalog Some({"Q": 9233})
+done: 3 sequences, 3 below the catalog's Q rank, 809 s

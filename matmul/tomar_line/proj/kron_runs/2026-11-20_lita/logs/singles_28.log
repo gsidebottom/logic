@@ -1,0 +1,6 @@
+28x28x28_m9846_Q.json: [28, 28, 28] with 9846 products (loaded in 3.8 s); 3 deletion sequences (I0;J0;K0), mode each, walk 100, restarts 4, 12 threads, seed 0
+I0: 27x28x28 I0: 9846 alive, d2:28dep:57gone -> 9789; catalog Q 9846 Z  ZT    <<< BELOW Q 9846 (589.5 s)
+J0: 27x28x28 J0: 9846 alive, d0:28dep:58gone -> 9788; catalog Q 9846 Z  ZT    <<< BELOW Q 9846 (791.9 s)
+K0: 27x28x28 K0: 9846 alive, d1:28dep:57gone -> 9789; catalog Q 9846 Z  ZT    <<< BELOW Q 9846 (1034.4 s)
+  27x28x28: best 9788, worst 9789 over 3 sequences; catalog Some({"Q": 9846})
+done: 3 sequences, 3 below the catalog's Q rank, 1038 s

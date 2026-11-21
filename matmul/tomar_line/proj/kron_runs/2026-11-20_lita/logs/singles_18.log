@@ -1,0 +1,9 @@
+18x18x18_m3031_Q.json: [18, 18, 18] with 3031 products (loaded in 0.3 s); 6 deletion sequences (I0;J0;K0;I17;J17;K17), mode each, walk 100, restarts 4, 12 threads, seed 0
+K0: 17x18x18 K0: 3031 alive, d1:18dep:37gone -> 2994; catalog Q 3031 Z  ZT    <<< BELOW Q 3031 (9.6 s)
+I0: 17x18x18 I0: 3031 alive, d2:18dep:37gone -> 2994; catalog Q 3031 Z  ZT    <<< BELOW Q 3031 (15.1 s)
+J0: 17x18x18 J0: 3031 alive, d0:18dep:38gone -> 2993; catalog Q 3031 Z  ZT    <<< BELOW Q 3031 (20.5 s)
+I17: 17x18x18 I17: 3031 alive, d0:18dep:37gone -> 2994; catalog Q 3031 Z  ZT    <<< BELOW Q 3031 (22.7 s)
+K17: 17x18x18 K17: 3031 alive, d2:18dep:37gone -> 2994; catalog Q 3031 Z  ZT    <<< BELOW Q 3031 (26.3 s)
+J17: 17x18x18 J17: 3031 alive, d1:18dep:36gone, d0:1dep:2gone -> 2993; catalog Q 3031 Z  ZT    <<< BELOW Q 3031 (30.9 s)
+  17x18x18: best 2993, worst 2994 over 6 sequences; catalog Some({"Q": 3031})
+done: 6 sequences, 6 below the catalog's Q rank, 31 s

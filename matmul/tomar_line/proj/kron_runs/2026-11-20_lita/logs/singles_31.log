@@ -1,0 +1,12 @@
+31x31x31_m13433_Q.json: [31, 31, 31] with 13433 products (loaded in 0.5 s); 1 deletion sequences (I0), mode each, walk 100, restarts 4, 12 threads, seed 0
+I0: 30x31x31 I0: 13387 alive, d0:33dep:481gone -> 12906; catalog Q 13433 Z  ZT    <<< BELOW Q 13433 (694.1 s)
+  30x31x31: best 12906, worst 12906 over 1 sequences; catalog Some({"Q": 13433})
+done: 1 sequences, 1 below the catalog's Q rank, 695 s
+31x31x31_m13433_Q.json: [31, 31, 31] with 13433 products (loaded in 0.4 s); 1 deletion sequences (J0), mode each, walk 100, restarts 4, 12 threads, seed 0
+J0: 30x31x31 J0: 13387 alive, d1:33dep:481gone -> 12906; catalog Q 13433 Z  ZT    <<< BELOW Q 13433 (710.4 s)
+  30x31x31: best 12906, worst 12906 over 1 sequences; catalog Some({"Q": 13433})
+done: 1 sequences, 1 below the catalog's Q rank, 711 s
+31x31x31_m13433_Q.json: [31, 31, 31] with 13433 products (loaded in 0.5 s); 1 deletion sequences (K0), mode each, walk 100, restarts 4, 12 threads, seed 0
+K0: 30x31x31 K0: 13387 alive, d2:33dep:481gone -> 12906; catalog Q 13433 Z  ZT    <<< BELOW Q 13433 (763.7 s)
+  30x31x31: best 12906, worst 12906 over 1 sequences; catalog Some({"Q": 13433})
+done: 1 sequences, 1 below the catalog's Q rank, 764 s

@@ -1,0 +1,18 @@
+15x15x15_m1977_Q.json: 15 deletion sequences (I0;I1;I2;I3;I4;I5;I6;I7;I8;I9;I10;I11;I12;I13;I14), mode each, walk 400, restarts 4, 12 workers
+I1: 14x15x15 I1: 1956 alive, d0:17dep:113gone -> 1843; catalog Q 1842 Z 1892 ZT 1894 (47 s)
+I6: 14x15x15 I6: 1955 alive, d0:17dep:113gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (48 s)
+I8: 14x15x15 I8: 1961 alive, d0:22dep:118gone -> 1843; catalog Q 1842 Z 1892 ZT 1894 (48 s)
+I2: 14x15x15 I2: 1955 alive, d0:17dep:113gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (48 s)
+I5: 14x15x15 I5: 1955 alive, d0:17dep:113gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (48 s)
+I10: 14x15x15 I10: 1961 alive, d0:23dep:119gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (48 s)
+I0: 14x15x15 I0: 1955 alive, d0:17dep:113gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (49 s)
+I9: 14x15x15 I9: 1961 alive, d0:23dep:119gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (49 s)
+I3: 14x15x15 I3: 1955 alive, d0:17dep:113gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (49 s)
+I4: 14x15x15 I4: 1955 alive, d0:17dep:113gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (49 s)
+I11: 14x15x15 I11: 1961 alive, d0:23dep:119gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (49 s)
+I7: 14x15x15 I7: 1947 alive, d2:8dep:14gone, d1:1dep:1gone -> 1932; catalog Q 1842 Z 1892 ZT 1894 (62 s)
+I12: 14x15x15 I12: 1961 alive, d0:23dep:119gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (43 s)
+I13: 14x15x15 I13: 1961 alive, d0:23dep:119gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (42 s)
+I14: 14x15x15 I14: 1961 alive, d0:23dep:119gone -> 1842; catalog Q 1842 Z 1892 ZT 1894   (ties Q 1842) (42 s)
+  14x15x15: best 1842, worst 1932 over 15 sequences; catalog {'Z': 1892, 'Q': 1842, 'ZT': 1894}
+done: 15 sequences, 0 below the catalog's Q rank, 91 s

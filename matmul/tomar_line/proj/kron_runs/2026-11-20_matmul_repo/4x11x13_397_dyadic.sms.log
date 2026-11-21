@@ -1,0 +1,1 @@
+/Users/greg/projects/mat_mul/schemes/4x11x13_397_dyadic/4x11x13_397_dyadic_{L,R,P}.sms: <4x11x13:397>, nonzeros L 2511 R 5995 P 2529; wrong entries per trial [0, 0] -> ALL EXACT; changed P entry: 1 wrong -> REJECTED (0.1 s)

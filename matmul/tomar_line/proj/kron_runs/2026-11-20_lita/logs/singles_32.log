@@ -1,0 +1,12 @@
+32x32x32_m14196_Q.json: [32, 32, 32] with 14196 products (loaded in 5.6 s); 1 deletion sequences (I0), mode each, walk 100, restarts 4, 12 threads, seed 0
+I0: 31x32x32 I0: 14196 alive, d2:32dep:65gone -> 14131; catalog Q 14196 Z  ZT    <<< BELOW Q 14196 (887.0 s)
+  31x32x32: best 14131, worst 14131 over 1 sequences; catalog Some({"Q": 14196})
+done: 1 sequences, 1 below the catalog's Q rank, 893 s
+32x32x32_m14196_Q.json: [32, 32, 32] with 14196 products (loaded in 4.8 s); 1 deletion sequences (J0), mode each, walk 100, restarts 4, 12 threads, seed 0
+J0: 31x32x32 J0: 14196 alive, d0:32dep:66gone -> 14130; catalog Q 14196 Z  ZT    <<< BELOW Q 14196 (731.6 s)
+  31x32x32: best 14130, worst 14130 over 1 sequences; catalog Some({"Q": 14196})
+done: 1 sequences, 1 below the catalog's Q rank, 736 s
+32x32x32_m14196_Q.json: [32, 32, 32] with 14196 products (loaded in 4.4 s); 1 deletion sequences (K0), mode each, walk 100, restarts 4, 12 threads, seed 0
+K0: 31x32x32 K0: 14196 alive, d1:32dep:65gone -> 14131; catalog Q 14196 Z  ZT    <<< BELOW Q 14196 (824.5 s)
+  31x32x32: best 14131, worst 14131 over 1 sequences; catalog Some({"Q": 14196})
+done: 1 sequences, 1 below the catalog's Q rank, 829 s

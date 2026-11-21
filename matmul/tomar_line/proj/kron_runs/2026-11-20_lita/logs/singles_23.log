@@ -1,0 +1,9 @@
+23x23x23_m6009_Q.json: [23, 23, 23] with 6009 products (loaded in 0.1 s); 6 deletion sequences (I0;J0;K0;I22;J22;K22), mode each, walk 100, restarts 4, 12 threads, seed 0
+K22: 22x23x23 K22: 5985 alive, d2:35dep:275gone -> 5710; catalog Q 6009 Z  ZT    <<< BELOW Q 6009 (104.8 s)
+K0: 22x23x23 K0: 5975 alive, d2:25dep:265gone -> 5710; catalog Q 6009 Z  ZT    <<< BELOW Q 6009 (137.1 s)
+J22: 22x23x23 J22: 5985 alive, d1:35dep:275gone -> 5710; catalog Q 6009 Z  ZT    <<< BELOW Q 6009 (158.3 s)
+I0: 22x23x23 I0: 5975 alive, d0:25dep:265gone -> 5710; catalog Q 6009 Z  ZT    <<< BELOW Q 6009 (196.4 s)
+J0: 22x23x23 J0: 5975 alive, d1:25dep:265gone -> 5710; catalog Q 6009 Z  ZT    <<< BELOW Q 6009 (216.9 s)
+I22: 22x23x23 I22: 5985 alive, d0:35dep:275gone -> 5710; catalog Q 6009 Z  ZT    <<< BELOW Q 6009 (233.5 s)
+  22x23x23: best 5710, worst 5710 over 6 sequences; catalog Some({"Q": 6009})
+done: 6 sequences, 6 below the catalog's Q rank, 234 s

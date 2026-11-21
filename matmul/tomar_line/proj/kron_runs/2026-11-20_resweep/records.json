@@ -1,0 +1,112 @@
+{
+ "date": "2026-11-20",
+ "records": [
+  {
+   "shape": "13x14x14",
+   "rank": 1538,
+   "before_ours": 1561,
+   "catalog_Q": 1564,
+   "sedoglavic_2026-11-09": 1579,
+   "stored_as": [
+    13,
+    14,
+    14
+   ],
+   "source": "our 13x14x15 m1645",
+   "delete": "J0",
+   "steps": "d1: 15 dep, 90 gone",
+   "lineage": "LITA 15x15x15 m1977 -I14,I6-> 13x15x15 m1762 -K0-> 13x14x15 m1645 -J0-> 13x14x14 m1538",
+   "denominator_primes": [
+    2,
+    5,
+    17
+   ],
+   "max_denominator": 1088
+  },
+  {
+   "shape": "13x14x15",
+   "rank": 1645,
+   "before_ours": 1646,
+   "catalog_Q": 1681,
+   "sedoglavic_2026-11-09": 1681,
+   "stored_as": [
+    13,
+    15,
+    14
+   ],
+   "source": "our 13x15x15 m1762",
+   "delete": "K0",
+   "steps": "d2: 14 dep, 97 gone",
+   "lineage": "LITA 15x15x15 m1977 -I14,I6-> 13x15x15 m1762 -K0-> 13x14x15 m1645",
+   "denominator_primes": [
+    2,
+    5,
+    17
+   ],
+   "max_denominator": 1088
+  },
+  {
+   "shape": "13x13x15",
+   "rank": 1577,
+   "before_ours": null,
+   "catalog_Q": 1591,
+   "sedoglavic_2026-11-09": 1591,
+   "stored_as": [
+    13,
+    15,
+    13
+   ],
+   "source": "our 13x15x15 m1762",
+   "delete": "K10 then K2",
+   "steps": "d2: 19 dep, 102 gone; then d2: 14 dep, 27 gone, d0: 6 dep, 6 gone",
+   "lineage": "LITA 15x15x15 m1977 -I14,I6-> 13x15x15 m1762 -K10-> 13x14x15 m1645 -K2-> 13x13x15 m1577",
+   "denominator_primes": [
+    2,
+    5,
+    17
+   ],
+   "max_denominator": 1088
+  },
+  {
+   "shape": "13x13x14",
+   "rank": 1479,
+   "before_ours": null,
+   "catalog_Q": 1511,
+   "sedoglavic_2026-11-09": 1511,
+   "stored_as": [
+    13,
+    14,
+    13
+   ],
+   "source": "our 13x13x15 m1578",
+   "delete": "J14",
+   "steps": "d1: 19 dep, 88 gone",
+   "lineage": "LITA 15x15x15 m1977 -I0,I7-> 13x15x15 m1763 -K12-> 13x14x15 m1646 -K4-> 13x13x15 m1578 -J14-> 13x13x14 m1479",
+   "denominator_primes": [
+    2,
+    5,
+    17
+   ],
+   "max_denominator": 1088
+  }
+ ],
+ "verified_but_superseded": [
+  {
+   "shape": "13x14x14",
+   "rank": 1540,
+   "source": "our 13x14x15 m1646",
+   "delete": "J14"
+  },
+  {
+   "shape": "13x13x15",
+   "rank": 1578,
+   "source": "our 13x14x15 m1646",
+   "delete": "K4"
+  }
+ ],
+ "passes": {
+  "record-fed rounds": "3 rounds, 16 + 3 + 2 sources, every single deletion, walk 400 x 4; round 3 dry",
+  "alternates": "22 near-record single deletions (within 0.5% of the bar), one more deletion each: one record (13x13x15 1577)",
+  "catalog second deletion": "206 near-record single deletions of the catalog sweep (within 0.5% of the bar, 3 per shape), one more deletion each, 5,144 sequences: nothing below the bar"
+ }
+}

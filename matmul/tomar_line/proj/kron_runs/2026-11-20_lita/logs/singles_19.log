@@ -1,0 +1,9 @@
+19x19x19_m3633_Q.json: [19, 19, 19] with 3633 products (loaded in 0.1 s); 6 deletion sequences (I0;J0;K0;I18;J18;K18), mode each, walk 100, restarts 4, 12 threads, seed 0
+J0: 18x19x19 J0: 3605 alive, d1:21dep:181gone -> 3424; catalog Q 3633 Z  ZT    <<< BELOW Q 3633 (26.1 s)
+I18: 18x19x19 I18: 3613 alive, d0:29dep:189gone -> 3424; catalog Q 3633 Z  ZT    <<< BELOW Q 3633 (31.2 s)
+K0: 18x19x19 K0: 3605 alive, d2:21dep:181gone -> 3424; catalog Q 3633 Z  ZT    <<< BELOW Q 3633 (34.4 s)
+J18: 18x19x19 J18: 3613 alive, d1:29dep:189gone -> 3424; catalog Q 3633 Z  ZT    <<< BELOW Q 3633 (45.2 s)
+K18: 18x19x19 K18: 3613 alive, d2:29dep:189gone -> 3424; catalog Q 3633 Z  ZT    <<< BELOW Q 3633 (45.2 s)
+I0: 18x19x19 I0: 3605 alive, d0:21dep:181gone -> 3424; catalog Q 3633 Z  ZT    <<< BELOW Q 3633 (45.2 s)
+  18x19x19: best 3424, worst 3424 over 6 sequences; catalog Some({"Q": 3633})
+done: 6 sequences, 6 below the catalog's Q rank, 45 s

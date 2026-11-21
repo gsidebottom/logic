@@ -1,0 +1,1 @@
+VERIFIED r1 13x13x14 1477 from 13x13x15_m1577_Q J0: denominators: primes [2, 5, 17], max 1088 ranks [1477, 1477, 1477]

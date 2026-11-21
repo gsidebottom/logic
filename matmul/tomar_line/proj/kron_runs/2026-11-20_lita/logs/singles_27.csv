@@ -1,0 +1,4 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+27x27x27_m9233_Q.json,"J0",26x27x27,8828,0,"J0: 9193 alive, d1:29dep:365gone -> 8828",9233,,,350.3
+27x27x27_m9233_Q.json,"I0",26x27x27,8828,0,"I0: 9193 alive, d0:29dep:365gone -> 8828",9233,,,753.6
+27x27x27_m9233_Q.json,"K0",26x27x27,8828,0,"K0: 9193 alive, d2:29dep:365gone -> 8828",9233,,,809.1

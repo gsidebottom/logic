@@ -1,0 +1,9 @@
+24x24x24_m6488_Q.json: [24, 24, 24] with 6488 products (loaded in 0.9 s); 6 deletion sequences (I0;J0;K0;I23;J23;K23), mode each, walk 100, restarts 4, 12 threads, seed 0
+I23: 23x24x24 I23: 6488 alive, d0:24dep:49gone -> 6439; catalog Q 6488 Z  ZT    <<< BELOW Q 6488 (151.8 s)
+K0: 23x24x24 K0: 6488 alive, d1:24dep:49gone -> 6439; catalog Q 6488 Z  ZT    <<< BELOW Q 6488 (330.7 s)
+I0: 23x24x24 I0: 6488 alive, d2:24dep:49gone -> 6439; catalog Q 6488 Z  ZT    <<< BELOW Q 6488 (368.5 s)
+J23: 23x24x24 J23: 6488 alive, d0:24dep:48gone -> 6440; catalog Q 6488 Z  ZT    <<< BELOW Q 6488 (368.6 s)
+K23: 23x24x24 K23: 6488 alive, d2:24dep:49gone -> 6439; catalog Q 6488 Z  ZT    <<< BELOW Q 6488 (438.5 s)
+J0: 23x24x24 J0: 6488 alive, d0:24dep:50gone -> 6438; catalog Q 6488 Z  ZT    <<< BELOW Q 6488 (494.0 s)
+  23x24x24: best 6438, worst 6440 over 6 sequences; catalog Some({"Q": 6488})
+done: 6 sequences, 6 below the catalog's Q rank, 495 s

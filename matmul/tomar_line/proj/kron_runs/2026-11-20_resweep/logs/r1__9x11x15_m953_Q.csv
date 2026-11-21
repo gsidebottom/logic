@@ -1,0 +1,36 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+9x11x15_m953_Q.json,"I3",8x11x15,897,0,"I3: 945 alive, d2:34dep:48gone -> 897",848,850,850,0.8
+9x11x15_m953_Q.json,"J8",9x10x15,900,0,"J8: 932 alive, d1:24dep:32gone -> 900",861,863,863,0.8
+9x11x15_m953_Q.json,"J3",9x10x15,918,0,"J3: 951 alive, d1:25dep:33gone -> 918",861,863,863,0.8
+9x11x15_m953_Q.json,"J5",9x10x15,903,0,"J5: 939 alive, d1:27dep:36gone -> 903",861,863,863,0.8
+9x11x15_m953_Q.json,"I4",8x11x15,900,0,"I4: 951 alive, d2:33dep:51gone -> 900",848,850,850,0.9
+9x11x15_m953_Q.json,"J0",9x10x15,898,0,"J0: 939 alive, d0:16dep:31gone, d1:7dep:10gone -> 898",861,863,863,1.1
+9x11x15_m953_Q.json,"J1",9x10x15,904,0,"J1: 936 alive, d1:17dep:30gone, d0:2dep:2gone -> 904",861,863,863,1.2
+9x11x15_m953_Q.json,"I2",8x11x15,912,0,"I2: 948 alive, d0:18dep:34gone, d1:2dep:2gone -> 912",848,850,850,1.2
+9x11x15_m953_Q.json,"I0",8x11x15,910,0,"I0: 942 alive, d0:16dep:26gone, d2:4dep:4gone, d1:2dep:2gone -> 910",848,850,850,1.6
+9x11x15_m953_Q.json,"J9",9x10x15,915,0,"J9: 951 alive, d1:28dep:36gone -> 915",861,863,863,0.8
+9x11x15_m953_Q.json,"I8",8x11x15,910,0,"I8: 948 alive, d0:18dep:33gone, d2:3dep:3gone, d1:2dep:2gone -> 910",848,850,850,1.6
+9x11x15_m953_Q.json,"I6",8x11x15,910,0,"I6: 942 alive, d0:16dep:26gone, d2:4dep:4gone, d1:2dep:2gone -> 910",848,850,850,1.6
+9x11x15_m953_Q.json,"I5",8x11x15,900,0,"I5: 948 alive, d2:33dep:48gone -> 900",848,850,850,0.8
+9x11x15_m953_Q.json,"J6",9x10x15,915,0,"J6: 953 alive, d1:27dep:38gone -> 915",861,863,863,0.9
+9x11x15_m953_Q.json,"K6",9x11x14,924,0,"K6: 948 alive, d2:18dep:23gone, d1:1dep:1gone -> 924",882,889,900,1.1
+9x11x15_m953_Q.json,"K10",9x11x14,925,0,"K10: 953 alive, d1:20dep:28gone -> 925",882,889,900,0.9
+9x11x15_m953_Q.json,"J7",9x10x15,915,0,"J7: 953 alive, d1:27dep:38gone -> 915",861,863,863,0.7
+9x11x15_m953_Q.json,"K4",9x11x14,929,0,"K4: 953 alive, d1:22dep:24gone -> 929",882,889,900,1.0
+9x11x15_m953_Q.json,"K7",9x11x14,926,0,"K7: 949 alive, d1:12dep:23gone -> 926",882,889,900,0.8
+9x11x15_m953_Q.json,"K9",9x11x14,925,0,"K9: 953 alive, d1:20dep:28gone -> 925",882,889,900,0.3
+9x11x15_m953_Q.json,"K8",9x11x14,922,0,"K8: 948 alive, d1:12dep:24gone, d2:2dep:2gone -> 922",882,889,900,0.6
+9x11x15_m953_Q.json,"K13",9x11x14,921,0,"K13: 953 alive, d1:25dep:32gone -> 921",882,889,900,1.1
+9x11x15_m953_Q.json,"K1",9x11x14,927,0,"K1: 953 alive, d1:11dep:26gone -> 927",882,889,900,1.5
+9x11x15_m953_Q.json,"K0",9x11x14,930,0,"K0: 953 alive, d1:11dep:23gone -> 930",882,889,900,0.8
+9x11x15_m953_Q.json,"K14",9x11x14,921,0,"K14: 953 alive, d1:25dep:32gone -> 921",882,889,900,1.0
+9x11x15_m953_Q.json,"K5",9x11x14,929,0,"K5: 953 alive, d1:21dep:24gone -> 929",882,889,900,0.8
+9x11x15_m953_Q.json,"K2",9x11x14,921,0,"K2: 953 alive, d1:11dep:28gone, d2:4dep:4gone -> 921",882,889,900,1.4
+9x11x15_m953_Q.json,"K11",9x11x14,925,0,"K11: 953 alive, d1:20dep:28gone -> 925",882,889,900,1.4
+9x11x15_m953_Q.json,"K12",9x11x14,922,0,"K12: 953 alive, d1:25dep:31gone -> 922",882,889,900,2.0
+9x11x15_m953_Q.json,"I7",8x11x15,911,0,"I7: 949 alive, d0:19dep:33gone, d2:3dep:3gone, d1:2dep:2gone -> 911",848,850,850,1.8
+9x11x15_m953_Q.json,"K3",9x11x14,928,0,"K3: 953 alive, d1:23dep:25gone -> 928",882,889,900,1.9
+9x11x15_m953_Q.json,"J10",9x10x15,915,0,"J10: 949 alive, d1:26dep:34gone -> 915",861,863,863,1.9
+9x11x15_m953_Q.json,"J2",9x10x15,900,0,"J2: 936 alive, d1:24dep:32gone, d0:2dep:3gone, d2:1dep:1gone -> 900",861,863,863,2.4
+9x11x15_m953_Q.json,"J4",9x10x15,914,0,"J4: 949 alive, d1:24dep:32gone, d0:2dep:3gone -> 914",861,863,863,2.8
+9x11x15_m953_Q.json,"I1",8x11x15,911,0,"I1: 947 alive, d0:18dep:31gone, d2:3dep:3gone, d1:2dep:2gone -> 911",848,850,850,3.6

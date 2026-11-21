@@ -1,0 +1,4 @@
+corrupt_1593.json: [14, 14, 14] with 1593 products (loaded in 0.1 s); 1 deletion sequences (I8), mode each, walk 50, restarts 1, 12 threads, seed 0
+I8: 13x14x14 I8: 1593 alive, d0:14dep:29gone -> 1564; catalog Q  Z  ZT    BRENT FAILS modulo p (42 wrong entries) -- ignore and investigate (0.5 s)
+  13x14x14: best 1564, worst 1564 over 1 sequences; catalog None
+done: 1 sequences, 0 below the catalog's Q rank, 1 s

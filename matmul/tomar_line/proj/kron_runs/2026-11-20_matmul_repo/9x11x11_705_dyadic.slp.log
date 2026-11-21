@@ -1,0 +1,4 @@
+9x11x11_705_dyadic_L: 705 x 99; 1339 additions, 88 scalings; denominator primes of the program [] (matrix []); program = matrix, exactly
+9x11x11_705_dyadic_R: 705 x 121; 3533 additions, 2068 scalings; denominator primes of the program [2] (matrix [2]); program = matrix, exactly
+9x11x11_705_dyadic_P: 99 x 705; 2475 additions, 518 scalings; denominator primes of the program [2] (matrix [2]); program = matrix, exactly
+9x11x11_705_dyadic: total 7347 additions + 2674 scalings = 10021

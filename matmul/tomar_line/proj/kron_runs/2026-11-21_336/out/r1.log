@@ -1,0 +1,7 @@
+9x18x18_m1600_dps_dps.json: [9, 18, 18] with 1600 products (loaded in 0.2 s); 3 deletion sequences (I1;J0;K0), mode each, walk 100, restarts 1, 4 threads, seed 0
+J0: 9x17x18 J0: 1600 alive, d1:18dep:24gone -> 1576; catalog Q 1591 Z  ZT    <<< BELOW Q 1591 (7.6 s)
+I1: 8x18x18 I1: 1600 alive, d2:18dep:40gone -> 1560; catalog Q 1575 Z  ZT    <<< BELOW Q 1575 (9.9 s)
+K0: 9x17x18 K0: 1600 alive, d1:18dep:24gone -> 1576; catalog Q 1591 Z  ZT    <<< BELOW Q 1591 (10.6 s)
+  8x18x18: best 1560, worst 1560 over 1 sequences; catalog Some({"Q": 1575})
+  9x17x18: best 1576, worst 1576 over 2 sequences; catalog Some({"Q": 1591})
+done: 3 sequences, 3 below the catalog's Q rank, 11 s

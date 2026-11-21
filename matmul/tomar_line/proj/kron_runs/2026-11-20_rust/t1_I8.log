@@ -1,0 +1,4 @@
+14x14x14_m1593_Q.json: [14, 14, 14] with 1593 products (loaded in 0.1 s); 1 deletion sequences (I8), mode each, walk 400, restarts 4, 12 threads, seed 0
+I8: 13x14x14 I8: 1593 alive, d0:14dep:30gone -> 1563; catalog Q 1564 Z 1614 ZT 1614   <<< BELOW Q 1564 (0.7 s)
+  13x14x14: best 1563, worst 1563 over 1 sequences; catalog Some({"Z": 1614, "ZT": 1614, "Q": 1564})
+done: 1 sequences, 1 below the catalog's Q rank, 1 s

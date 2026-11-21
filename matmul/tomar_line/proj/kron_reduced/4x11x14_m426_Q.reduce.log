@@ -1,0 +1,44 @@
+start 08:18:56  /Users/greg/projects/logic/matmul/tomar_line/proj/kron_runs/2026-11-20_catalog/paths/4x11x14_m426_J3.path.json
+4x12x14_m455_ZT.json: 4x12x14 with 455 products; deleted I[] J[3] K[] -> 4x11x14 with 443 products; written /Users/greg/projects/logic/matmul/tomar_line/proj/kron_runs/2026-11-20_catalog/verify/4x11x14_J3/s0_proj.json
+s0_proj.json: shape (4, 11, 14), m = 443, direction 1 (Kronecker products of slots 0, 2)
+  [input] m = 443; common denominators [1, 1, 1]; bound B on every entry: 9 bits (below 2^53)
+  [input] slot-2 index convention ik: modular route: contraction 1 FAILS modulo 1048573 (0.0 s); direct route: float64 contraction FAILS (1188 entries differ) (0.0 s)
+  [input] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 1 + 1 primes (each product above 2 (B + DD), 10 bits) (0.0 s); direct route: float64 and int64 contractions EXACT MATCH (0.0 s)
+  Gram rank modulo 2147483647: 427 of 443; 16 dependencies; pivots [183, 321, 174, 161, 153, 169, 164, 65, 66, 160, 68, 155, 154, 315, 67, 314] (0.4 s)
+  prescribed pivots [297, 84, 295, 160, 363, 174, 275, 298, 335, 327, 264, 196, 357, 351, 320, 186]
+  supports [14, 16, 12, 14, 10, 3, 4, 13, 3, 3, 4, 3, 3, 4, 3, 3], union 84 products
+    prime 2147483629: 2 primes, modulus of 62 bits (0.0 s)
+  dependency with pivot 297: 14 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 2 distinct coefficients, largest numerator or denominator 1; products [65, 80, 290, 292, 297, 299, 301, 304, 375, 376, 380, 383, 386, 387]
+  dependency with pivot 84: 16 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 4 distinct coefficients, largest numerator or denominator 2; products [65, 66, 68, 69, 76, 77, 79, 82, 84, 85, 86, 87, 290, 292, 383, 386]
+  dependency with pivot 295: 12 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 1 distinct coefficients, largest numerator or denominator 1; products [68, 79, 80, 86, 291, 295, 301, 302, 375, 382, 384, 389]
+  dependency with pivot 160: 14 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 2 distinct coefficients, largest numerator or denominator 1; products [160, 162, 164, 167, 265, 269, 271, 273, 276, 278, 350, 354, 360, 361]
+  dependency with pivot 363: 10 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 2 distinct coefficients, largest numerator or denominator 1; products [153, 154, 158, 165, 271, 273, 278, 356, 358, 363]
+  dependency with pivot 174: 3 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 1 distinct coefficients, largest numerator or denominator 1; products [174, 176, 200]
+  dependency with pivot 275: 4 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 2 distinct coefficients, largest numerator or denominator 1; products [164, 275, 349, 360]
+  dependency with pivot 298: 13 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 2 distinct coefficients, largest numerator or denominator 1; products [65, 67, 68, 73, 79, 80, 83, 86, 290, 298, 301, 375, 377]
+  dependency with pivot 335: 3 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 1 distinct coefficients, largest numerator or denominator 1; products [321, 324, 335]
+  dependency with pivot 327: 3 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 1 distinct coefficients, largest numerator or denominator 1; products [315, 327, 332]
+  dependency with pivot 264: 4 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 2 distinct coefficients, largest numerator or denominator 1; products [153, 164, 264, 360]
+  dependency with pivot 196: 3 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 1 distinct coefficients, largest numerator or denominator 1; products [169, 190, 196]
+  dependency with pivot 357: 3 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 2 distinct coefficients, largest numerator or denominator 1; products [161, 272, 357]
+  dependency with pivot 351: 4 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 2 distinct coefficients, largest numerator or denominator 1; products [155, 266, 272, 351]
+  dependency with pivot 320: 3 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 1 distinct coefficients, largest numerator or denominator 1; products [314, 320, 328]
+  dependency with pivot 186: 3 products, lifted from 2 primes, EXACT over Q on the Kronecker products: True (0.0 s); common denominator of 1 bits; 1 distinct coefficients, largest numerator or denominator 1; products [183, 186, 192]
+  1 further products are left with a zero slot-1 factor and are removed: [301]
+  folded: 443 -> 426 products (16 by the dependencies, 1 left with a zero factor)
+  [output] m = 426; common denominators [1, 1, 1]; bound B on every entry: 9 bits (below 2^53)
+  [output] slot-2 index convention ki: modular route: both contractions EXACT MATCH modulo 1 + 1 primes (each product above 2 (B + DD), 10 bits) (0.0 s); direct route: float64 and int64 contractions EXACT MATCH (0.0 s)
+  [negative control: one entry of the output changed] m = 426; common denominators [1, 1, 1]; bound B on every entry: 9 bits (below 2^53)
+  [negative control: one entry of the output changed] slot-2 index convention ki: modular route: contraction 1 FAILS modulo 1048573 (0.0 s); direct route: float64 contraction FAILS (96 entries differ) (0.0 s)
+  RESULT: input verifies (ki); output with 426 products VERIFIES EXACTLY; corrupted copy REJECTED
+  written /Users/greg/projects/logic/matmul/tomar_line/proj/kron_runs/2026-11-20_catalog/verify/4x11x14_J3/s0_t0_m426_Q.json
+FINAL /Users/greg/projects/logic/matmul/tomar_line/proj/kron_runs/2026-11-20_catalog/verify/4x11x14_J3/s0_t0_m426_Q.json
+s0_t0_m426_Q.json: shape (4, 11, 14), 426 products; 2 random products with entries up to 1e9: wrong entries per trial [0, 0] -> ALL EXACT; one coefficient changed: 1 wrong entries -> REJECTED (0.1 s)
+s0_t0_m426_Q.json: <4x11x14:426> with 2x2-matrix entries: 0 wrong entries of C -> CORRECT over non-commuting entries; products in the wrong order: 56 wrong -> control fails as it must (0.2 s)
+s0_t0_m426_Q.json: shape 4x11x14, 426 products, Kronecker-span ranks [426, 426, 426] -> bound 426 (0.3 s)
+s0_t0_m426_Q.json: <4x11x14:426>; L 2424 nonzeros, 0 fractions (0 non-dyadic); R 5364 nonzeros, 0 fractions (0 non-dyadic); P 2855 nonzeros, 0 fractions (0 non-dyadic)
+    denominators: primes [], max 1 -> DYADIC
+    normalized (L, R integral): 0 fractional P entries; 0 of 56 output entries need one division (0 by a non-power of two); 0 distinct divisors, max 1, primes []
+<4x11x14:426> over F_p, 3 random pairs each: p=2: correct; p=3: correct; p=5: correct; p=7: correct; p=11: correct; p=13: correct; p=17: correct; p=19: correct
+<4x11x14:426> over F_p, 2 random pairs each: p=23: correct; p=65537: correct; p=1048573: correct; p=998244353: correct; p=2147483647: correct; p=18446744069414584321: correct
+end 08:18:59

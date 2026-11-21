@@ -1,0 +1,2 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+32x32x32_m14196_Q.json,"J0",31x32x32,14130,0,"J0: 14196 alive, d0:32dep:66gone -> 14130",14196,,,731.6

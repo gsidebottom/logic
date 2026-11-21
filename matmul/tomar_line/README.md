@@ -857,6 +857,9 @@ starts), so the comparison is by type.
     shape     LITA source      alive  ranks after the deletion  step                   rank  catalog Q  [S]
     13x14x14  14x14x14 m1594   1594   [1580, 1594, 1580]        d2: 14 dep,  29 gone   1565  1582       1579
     13x14x14  14x14x14 m1594   1594   row 7 deleted             d0: 14 dep,  30 gone   1564  1582       1579
+    13x14x14  14x14x14 m1593   1593   row 8 deleted             d0: 14 dep,  30 gone   1563  1564       1579
+    13x15x15  15x15x15 m1977   1961   rows 14, then 6           d0: 23 dep, 119 gone;  1762  1763       1776
+                                                                d0: 16 dep,  29 gone
     15x16x16  16x16x16 m2237   2237   [2221, 2237, 2221]        d2: 16 dep,  34 gone   2203  2223       2220
     15x16x16  16x16x16 m2237   2237   row 9 deleted             d0: 16 dep,  35 gone   2202  2223       2220
     14x15x15  15x15x15 m1977   1955   [1938, 1955, 1948]        d0: 17 dep, 113 gone   1842  1848       1848
@@ -907,7 +910,8 @@ starts), so the comparison is by type.
     and index 6 of each slot stops at 1340.  The catalog's 12x13x13 is
     1274 (from Sedoglavic's tensor file): one short.  Index 0 verified exactly over Q on 2026-11-11
     (kron_reduced/12x13x13_m1275_Q.*; 15 dependencies, 85 gone; denominator primes 2, 3, 13).  The deleted index
-    matters, the slot does not (the same pattern in I, J and K).
+    matters; on THIS square the slot does not (the same pattern in I, J and K) -- on
+    the 14x14x14 and 16x16x16 squares it does, see the 2026-11-20 catalog sweep below.
   * 15x15x15 m1977, sample single deletions: indices 0 and 14 of every
     slot give 1842, I1 gives 1843, the middle index 7 of each slot only
     1932 (8 dependencies and 14 gone, then 1 and 1).  Forcing the first
@@ -938,6 +942,229 @@ starts), so the comparison is by type.
   the 14x15x15 file); the direct
   reductions 13x14x14 m1580, 15x16x16 m2221 and 13x14x16 m1805 (ZT) are
   kept beside them.  Logs: proj/logs/kron_proj_records_2026-11-10.txt.
+  2026-11-19: LITA's 14x14x14 m1593 and 16x16x16 m2236 (catalog commit f70078c,
+  2026-11-16, which also lists four of our five records; 15x16x16 still 2223
+  there).  Single row deletions, kron_runs/2026-11-19/: walk 100 gives 1564 /
+  2203, walk 400 x 4 restarts 1563 (row 8 only) / 2202, walk 1000 x 8 the same.
+  13x14x14 m1563 (row 8 of m1593, d0: 14 dependencies, 30 gone) VERIFIED EXACTLY
+  over Q (both Brent routes, corrupted copy rejected, semantic check, F_p at 7,
+  11, 19, 23 and the five large primes, non-commutative 2x2 entries, Kronecker
+  ranks [1563, 1563, 1563]); denominators 2, 3, 5, 13, 17, one division per
+  entry of C; stored kron_reduced/13x14x14_m1563_Q.*.  The row (in the table
+  above) is the catalog row's record 1564; 2236 gives nothing below 2202.
+  Deeper rerun of the older sources (walk 400 x 4, 12 workers, kron_runs/2026-11-19/
+  deep4_*): no record anywhere.  12x13x13 1275 (catalog 1274); m1594 row 8 now
+  1563 too (31 gone); m2237 2202; 15x15x15 singles 1842 on most rows incl. the
+  middle ones; chains I0,* 1763 / 1715.  Profile of one deletion (32 s): modular
+  elimination 75% (null spaces 53%, a redundant rank pass 22%), the walk 20%.
+  RUST PORT (2026-11-20): src/bin/kronkill.rs (cargo build --release --bin kronkill), the
+  same interface as kron_proj_multi.py (SEQS = I3;J0,... | next:PREFIX | pairs | '.';
+  --walk --restarts --mode --status --bar --out --paths [--all-paths]; --threads,
+  default 12; --seed).  Null space by lazy-reduction elimination on the symmetric
+  Gram matrix, the walk updates only the support rows, restarts and the three
+  directions in parallel, final scheme checked on random matrices mod p.  One
+  deletion (m1593 row 8, walk 400 x 4) on ONE thread: 3.2 s vs Python 32.2 s; 14
+  deletions on 12 threads 8 s.  Checks (kron_runs/2026-11-20_rust/): same best and
+  worst as the Python on m1594 / m1593 singles, m2237 singles (2202 / 2205) and the
+  m1977 next:I0 chains (1763 / 1796, 1715 / 1804); a corrupted input fails the
+  Brent check; the Rust pivots for 1563 (paths/13x14x14_m1563_I8.path.json) replay
+  EXACTLY over Q with kron_project.py + kron_reduce.py --pivots (no re-search: the
+  product order is the exact projection's).
+  DEEP WALKS (2026-11-20, kronkill walk 2000 x 16, kron_runs/2026-11-20_deep/): all LITA
+  singles tie (12x13x13 still 1275); the 15x15x15 chain I14,I6 gives 13x15x15 1762
+  (one below our 1763): two stages (I14: 23 dependencies, 119 gone -> 1842; I6: 16
+  dependencies, 29 gone -> 1762), replayed stage by stage with kron_project.py +
+  kron_reduce.py --pivots (verify_1762/replay.zsh): VERIFIED EXACTLY over Q, corrupted
+  copy rejected, semantic check exact, non-commutative 2x2 entries correct, F_p correct
+  at 3, 7, 11, 13, 19 and the large primes (undefined at 2, 5, 17), Kronecker ranks
+  [1762, 1762, 1762]; denominators 2, 5, 17 (max 1088).  kron_reduced/13x15x15_m1762_Q.*.
+  WHOLE-CATALOG SWEEP (2026-11-20 08:16-10:05, kron_runs/2026-11-20_catalog/): every JSON
+  scheme of the catalog at f70078c except the addition-reduced re-encodings (2,625
+  files; 534 + ~80 reduced-format files skipped, they repeat schemes stored in
+  full), each reduced directly ('.') and after every single-index deletion in all
+  three slots (next:), walk 400 x 4: 72,826 sequences, no Brent failure.  The
+  direct pass finds a dependency in 14 files and no record; all 136 hits are
+  deletions.  TWELVE shapes below the catalog's Q rank and below Sedoglavic's
+  table of 2026-11-09 ([S]), each VERIFIED EXACTLY over Q by kron_verify_path.zsh
+  (exact projection, every step by kron_reduce.py --pivots with its corrupted-copy
+  control, semantic, non-commutative, Kronecker ranks full, F_p):
+
+    shape     rank  catalog Q  [S]   stored as  source (catalog f70078c), deleted index; steps; denominators
+    4x11x13    397        400   400  4x11x13    results/ZT/4x12x13_m423_ZT.json J0; d1: 17 dep, 21 gone; primes [2] max 2
+    4x11x14    426        429   429  4x11x14    results/ZT/4x12x14_m455_ZT.json J3; d1: 16 dep, 17 gone; primes [] max 1
+    4x11x16    477        480   480  4x11x16    results/ZT/4x12x16_m513_ZT.json J11; d1: 18 dep, 24 gone; primes [2] max 2
+    4x13x14    498        500   500  4x13x14    results/Q/4x13x15_m520_Q.json K2; d1: 17 dep, 22 gone; primes [2] max 8
+    8x11x13    749        750   750  8x11x13    results/Q/8x12x13_m785_Q.json J5; d1: 22 dep, 26 gone; primes [2] max 16
+    9x11x11    705        708   710  9x11x11    results/Q/9x11x12_m738_Q.json K7; d1: 20 dep, 23 gone; primes [2] max 8
+    9x11x15    953        956   956  9x11x15    results/Q/9x12x15_m996_Q.json J0; d0: 15 dep, 25 gone; d1: 5 dep, 6 gone; d2: 1 dep, 1 gone; primes [2, 3] max 432
+    9x11x16    987        996   996  9x11x16    results/Q/9x12x16_m1035_Q.json J2; d1: 11 dep, 19 gone; d0: 6 dep, 6 gone; primes [2] max 8
+    11x13x16  1444       1446  1446  11x13x16   results/Q/12x13x16_m1509_Q.json I1; d0: 19 dep, 22 gone; d2: 11 dep, 11 gone; d1: 2 dep, 2 gone; primes [2] max 8
+    13x14x14  1561       1564  1579  14x13x14   known/lita/14x14x14_m1593_Q.json J8; d1: 14 dep, 30 gone; d0: 1 dep, 2 gone; primes [2, 5, 17] max 4000
+    13x14x15  1646       1681  1681  13x15x14   known/gsidebottom/13x15x15_m1763_Q.json K12; d2: 19 dep, 102 gone; primes [2, 5, 17] max 1088
+    15x16x16  2200       2223  2220  16x15x16   known/lita/16x16x16_m2236_Q.json J9; d1: 16 dep, 34 gone; d0: 1 dep, 2 gone; primes [2, 3, 5, 7] max 1440
+
+  (catalog Q for 13x14x14 and 15x16x16 is what the catalog lists; our own earlier
+  1563 / 2202 are superseded.)  4x11x14 is an INTEGER scheme, 4x11x13, 4x11x16,
+  4x13x14, 8x11x13, 9x11x11, 9x11x16 and 11x13x16 are dyadic.  13x14x14 and
+  15x16x16 come from LITA's m1593 / m2236 by deleting an INNER index (J8, J9): a
+  second step in another direction drops 2 more.  THE SLOT MATTERS: the earlier
+  runs on those squares deleted rows of A only ("the slot does not" above is
+  wrong).  13x14x15 comes from our own 13x15x15 m1763 (in the catalog since
+  f70078c): records fed back as sources keep paying.  A file is stored in the
+  slot order of its source ("stored as"), named by the sorted shape.
+  All sequences: all_sequences.csv.gz; per-file logs logs.tgz; paths/ holds every
+  path below a record; verify/ the exact replays; records.json the table.
+  RE-SWEEP WITH THE RECORDS AS SOURCES (2026-11-20 12:47-13:42,
+  kron_runs/2026-11-20_resweep/): the stored records (the twelve above, 13x15x15
+  m1762, 13x14x14 m1563, 15x16x16 m2202, 12x13x13 m1275) as kronkill sources, every
+  single deletion in all three slots, walk 400 x 4; every shape below the bar
+  (Sedoglavic's 2026-11-09 table, the catalog f70078c, our stored files) replayed
+  exactly (kron_verify_path.zsh) and fed to the next round (resweep.zsh).  Round 1:
+  three records; round 2: two; round 3: none.  Four shapes, all VERIFIED EXACTLY
+  (exact replay, corrupted copy rejected, semantic and non-commutative checks,
+  Kronecker ranks full, F_p), all with denominator primes 2, 5, 17 (max 1088):
+
+    shape     ours  before          catalog Q  Sedogl.  stored as  source, deleted index, reduction
+    13x14x14  1538  1561 (morning)  1564       1579     13x14x14   our 13x14x15 m1645, J0; d1: 15 dep, 90 gone
+    13x14x15  1645  1646 (morning)  1681       1681     13x15x14   our 13x15x15 m1762, K0; d2: 14 dep, 97 gone
+    13x13x15  1577  --              1591       1591     13x15x13   our 13x15x15 m1762, K10 then K2 (alternates pass)
+    13x13x14  1479  --              1511       1511     13x14x13   our 13x13x15 m1578, J14; d1: 19 dep, 88 gone
+
+  Verified on the way and superseded: 13x14x14 m1540 (13x14x15 m1646, J14) and
+  13x13x15 m1578 (13x14x15 m1646, K4).  ALL of these descend from LITA's 15x15x15
+  m1977: 14x15x15 1842, 14x14x15 1715, 13x15x15 1762, 13x14x15 1645, 13x14x14 1538,
+  13x13x15 1577, 13x13x14 1479 are one family, and the family stops there at this
+  effort: 13x13x13 comes out at 1417 (LITA's square 1379), the 12-rows 44 to 83
+  above the tables (12x14x14 1493 vs 1449, 12x13x15 1525 vs 1442).  The other
+  thirteen sources gave nothing (closest: 4x10x16 ties 441, 11x13x13 1207 vs 1204).
+  Two wider passes, chain.zsh / alt.zsh (kronkill next:SEQ, both stages reduced):
+  (a) alternates: the 22 near-record single deletions of the rounds (within 0.5%
+  of the bar, 3 per source and shape), one more deletion each: one record, the
+  13x13x15 1577 above; (b) the same over the catalog sweep: its 206 near-record
+  single deletions (within 0.5% of the bar, 3 per shape, 175 result shapes), one
+  more deletion each, 5,144 sequences: NOTHING below the bar (the 15x15x15 family
+  ties itself by other routes: 14x14x15 m1715 K10,K2 -> 13x14x14 1538).
+  So at walk 400 x 4 the single-deletion closure of our records and the
+  two-deletion neighbourhood of the catalog's near-records are exhausted.
+  Stored kron_reduced/<sorted shape>_m<rank>_Q.*; records.json, verified.txt,
+  hits.txt in the run directory (large JSONs there are gzipped: gunzip
+  sources/rN/*.json.gz before replaying a path).
+  DEEP WALKS ON THE FAMILY (2026-11-20 16:05-16:20, kron_runs/2026-11-20_family/,
+  rounds.zsh): twelve sources (LITA 15x15x15 m1977, 14x15x15 m1842, 14x14x15 m1715,
+  13x15x15 m1762/m1763, 13x14x15 m1645/m1646, 13x14x14 m1538/m1540, 13x13x15
+  m1577/m1578, 13x13x14 m1479), every single deletion, walk 2000 x 64 (5 x the idle
+  budget, 16 x the restarts).  One record: 13x13x14 1477 (13x13x15 m1577, J0; d1:
+  14 dep, 83 gone; VERIFIED EXACTLY, kron_reduced/13x13x14_m1477_Q.*; tables 1511).
+  It is NOT a depth effect: m1577 was found after the shallow rounds had ended and
+  walk 400 x 4 on it gives the same 1477.  Every other source repeats its shallow
+  bests (13x13x13 1421-1422, 12x13x14 1432), round 2 on m1477 gives nothing.  So the
+  pivot search is saturated at walk 400 x 4; new SOURCES pay, walk effort does not.
+  PUBLIC REPO (2026-11-20): the fifteen records of the day are in
+  github.com/gsidebottom/mat_mul, split by coefficient ring (integer: 4x11x14 426;
+  Z[1/2]: seven; other denominators: seven), with programs by proj/ring_slp.py
+  (greedy pair elimination with primitive integer pairs, C side through the
+  transpose): PLinOpt's optimizer divides by constants the scheme does not need
+  (a 3 in a dyadic scheme, a halving in the integer one), ring_slp.py never does.
+  kron_runs/2026-11-20_matmul_repo/ has the build script and logs.  The repo's
+  checker reads the format from the folder name, so the four schemes stored here
+  in another ordering (13x14x13, 13x15x13, 13x15x14, 16x15x16) are rotated or
+  transposed to the sorted format there (proj/scheme_orient.py; exact re-check
+  kron_runs/2026-11-20_matmul_repo/sorted/verify.log).  Pushed as mat_mul 57e5aef.
+  SEDOGLAVIC'S TABLE, 2026-11-15 COPY (fetched 2026-11-20): fmm_sota.json now lives in
+  github.com/sedoglavic/fmm_digest (commit 8e6ad05, createdAt 2026-11-15T21:18:40); copies in
+  matmul/external/fmm_sota/ (fmm_sota_8e6ad05.json, fmm_sota_2026-11-09.json).  62 entries moved since 11-09:
+  our five of 11-11 are in (13x14x14 1565, 13x15x15 1763, 14x14x15 1715, 14x15x15 1842, 15x16x16 2202), Canli's
+  9x10x11 640 and 9x11x11 708, and consequences.  All fifteen records of 11-20 still stand; margins against the
+  new table: 4x11x13 3, 4x11x14 3, 4x11x16 3, 4x13x14 2, 8x11x13 1, 9x11x11 3 (table 708), 9x11x15 3, 9x11x16 9,
+  11x13x16 2, 13x13x14 34, 13x13x15 14, 13x14x14 27 (table 1565), 13x14x15 36, 13x15x15 1 (table 1763),
+  15x16x16 2 (table 2202).
+  TABLE CLOSURE (proj/table_closure.py; kron_runs/2026-11-20_table/): the table is closed under sub-format,
+  splitting one dimension and the Kronecker product (0 formats below it), and with our fifteen records added the
+  closure moves 34 more formats (ours.log; e.g. 18x22x32 6972 -> 6909, 13x14x30 3318 -> 3290).  Arithmetic only.
+  SHARED-FACTOR PRODUCT SCREEN (Perminov's "serendipitous product", arXiv:2606.02480; his builder
+  src/entities/serendipitous_product_builder.py): g products of s1 sharing a factor in one slot turn g R(a,b,c)
+  products of s1 (x) <a,b,c> into one scheme of <a,b,gc> / <ga,b,c> / <a,gb,c>.  proj/bud_groups.py lists the
+  groups of the catalog's 2,607 non-Z2 scheme files (2,546 have some; buds.json), proj/serendip_screen.py prices
+  every s1 (x) s2 up to 32 against the closed table (ranks only, greedy disjoint groups, one pass):
+  874 formats below the closed table, ALL with a dimension above 16 (320 with largest dimension 17-24, mean gain
+  22, max 139; 554 at 25-32, mean 29, max 243; serendip.log).  Zero at <= 16, where Perminov has applied the
+  method himself: the control passes.  ONE BUILT AND CHECKED: proj/serendip_build.py, <4,9,20> with 494 products
+  (table 500) = his base results/serendipitous_base/2x3x4_m20_1a73..._Z (x) <2,3,5:25> with two w-groups of 2
+  replaced by <2,6,5:47>; integer coefficients (up to 15 in absolute value), all 518,400 Brent equations exact,
+  one changed coefficient rejected (kron_runs/2026-11-20_table/4x9x20_m494.json.gz); kronkill finds no
+  2-reduction of it.  A second build (6x18x4 from the m22 base) checks exactly but lands at 348, not the
+  screen's 310: the builder only reads the catalog's integer JSON files, and the catalog has no <2,3,6:30> or
+  <3,3,6:40> JSON.  So the 874 are claims that need a constructor for every leaf (splits, products, rational
+  schemes) and an exact checker that scales.  The method and the base schemes are Perminov's.
+  LITA'S LARGER SQUARES, PROJECTED (2026-11-20 evening, kron_runs/2026-11-20_lita/; Greg OK'd the download).
+  The 16 npz files (12 MB, LITA commit 472a79f) are in matmul/external/lita/schemes; lita_npz2json.py (pure
+  Python, no NumPy, no pickle) converts them to the catalog layout with sparse rows (only W's index is
+  transposed), 1.1 GB in external/lita/json (git-ignored, regenerable).  The squares themselves do not reduce
+  (LITA applied the reduction), but ONE deletion does: 16x17x17 2553 (table 2706), 17x18x18 2993 (3031),
+  18x19x19 3424 (3633), 19x20x20 3952 (3994), 20x21x21 4471 (4723), 21x22x22 5095 (5141); odd squares lose
+  150-300 products, even ones about 40.  Second deletions keep going (15x17x17 2490 vs 2622, 16x16x17 2392 vs
+  2492, 18x18x19 3225 vs 3355, ...).  Every index of a slot gives the same count within one or two, except the
+  middle index of an odd square (17^3: index 8 gives 2672).  All of it is LITA's schemes and LITA's reduction;
+  ours is the deletion and the pivot search.
+  EXACT CERTIFICATES IN RUST: src/bin/kronexact.rs.  `replay` redoes a kronkill path over Q (kronkill now
+  writes the support of the dependencies into the path): null space of the Gram matrix modulo three primes
+  below 2^61 with the pivots as free columns, lift from two, compare with the third, fold in 64-bit rationals
+  with overflow panics.  `check` evaluates EVERY Brent equation in 128-bit integers after clearing the three
+  common denominators (with a proof that no partial sum overflows) and requires a copy with one changed
+  coefficient to fail; the check is the certificate, the replay need not be trusted.  Gates passed: LITA's
+  17^3 verifies; a scheme with a product removed and one with a changed entry are rejected; the replay of the
+  old 15x16x16 m2200 path gives a scheme IDENTICAL entry for entry to kron_reduce.py's verified output (same
+  common denominators 25200, 2880, 720); the Python semantic, non-commutative and F_p checks pass on the
+  certified 16x17x17.  Seconds where the Python pipeline took minutes (and would take hours at rank 14,000).
+  Drivers: singles.zsh / singles2.zsh (one deletion per slot of every square; one kronkill at a time from 29^3,
+  three in parallel hold 12 GB at 25^3), rounds.zsh / rounds2.zsh (every certified scheme below the table is a
+  source for the next deletions; lanes A 17-22, M 23-26, B 27-32), verify.zsh, seed.py, night.zsh, summary.py
+  (certified shapes against the table, marking those implied by a larger certified one).  Results: verified.txt,
+  exact/*.json.gz with the path and the log of each.
+  FINAL (2026-11-21 10:10, lanes A 02:37, M 06:25, B 10:10): 121 replays, all certified exactly; 107 formats
+  below the table (total gain 21,144), none implied by a larger one; 81 of them found on 11-21.  Up to seven
+  deletions deep.  Largest relative gain 7.68% (17x19x19 3354 vs 3633); lowest exponent 2.76222 (30x30x31
+  12395; the table's best is 2.75864 at 32^3, so nothing near an exponent record).  One format with all
+  dimensions <= 16: 15x16x16 2193 (17^3 by I0, J0, I15, K0), below the table's 2202 and our own 2200.  No
+  format in the final list starts from 18^3 or 20^3 (the odd square above gives a lower rank).  mat_mul
+  large/ rebuilt from it by matmul_repo.py (nine schemes of 12-17 MB reported without a file).
+  SHARED-FACTOR PRODUCTS, CONSTRUCTIVE (night of 2026-11-20/21, kron_runs/2026-11-21_serendip/; local,
+  unpublished).  The product is Smith's serendipitous Kronecker product as generalised by Sedoglavic and used
+  at scale by Perminov (arXiv:2606.02480; blocks with two non-unit dimensions are his Sect. 2.6.4); the base
+  schemes are Perminov's catalog, the reduction LITA's.  Ours: proj/serendip_plan.py (a screen in which every
+  rank is the rank of a scheme we hold or can build, one build plan per format) and `kronexact build PLAN OUT`
+  (executes a plan, certifies with the exact Brent check).  864 product schemes built, all certified exactly
+  and all passing scheme_modp_sparse.py (crosscheck.py); 746 formats below the bar, none with all dimensions
+  <= 16.  Grids (617 catalog schemes have one) add 13 formats and improve 24; subspace grids
+  (proj/subspace_grids.py, 62 of 1,290 schemes) improve 6: small.  Holding the rank-40 <3,3,6> files
+  (matmul/r346/schemes, w stored as i*n2+k: convert) as replacement blocks gave 154 new or improved formats
+  (largest 11x12x18 1400 vs 1476).  No product scheme 2-reduces as it stands, but one deletion + 2-reduction
+  does pay (delete_lane.zsh, verify_d.zsh; reduce/verified.txt, reduce/exact/): 628 hits from the 683
+  product schemes of rank <= 4000 (done 11:11), all 628 certified by replay, best relative gain 3.38%
+  (9x11x23 1371 vs 1419); that step is not in Perminov's paper.  Not searched: ranks above 4000 (181 schemes).
+  EXPONENT FROM <3,3,6:40> (Greg's ask 2026-11-21, kron_runs/2026-11-21_336/; NEGATIVE, don't redo).  No
+  rank-40 scheme we hold has two products sharing a factor or a subspace grid; the certified <9,18,18:1600>
+  products do not 2-reduce; deletions move the exponent away from 2.7743 (9x17x18 1576, 8x18x18 1560, 9x17x17
+  1542, 9x16x18 1537, 7x18x18 1424: all below the table, all certified, 2.7886 at best).
+  ALL TOGETHER (final_list.py, final_end.json): with everything held and the table closed, 1,857 formats
+  below the table by arithmetic (gain 102,342); certified files below the bar for 1,127 formats (gain
+  45,682), 1,014 of them not implied by our other files: LITA deletions 107, catalog projections 14, products
+  739, deletions from products 267.
+  IN GIT (2026-11-21): the run directories keep scripts, search paths, build plans, progress files and
+  summaries.  Scheme files are not tracked (8 GB; rebuild with `kronexact replay SOURCE PATH OUT` from a path or
+  `kronexact build PLAN OUT` from a plan; the LITA-derived ones are in mat_mul large/), nor are the downloads
+  without a licence (Sedoglavic's table, LITA's npz files: fetch the commits named above).  Directories of many
+  small files are one archive each: 2026-11-21_serendip/{plans,logs,crosscheck}.tgz, reduce/{dpaths,xlogs}.tgz,
+  2026-11-20_resweep/logs_cat2.tgz.  Rules and reasons in .gitignore.
+  (Before the download:) github.com/khoruzhii/lita holds 17^3 .. 32^3 (ranks 2723, 3031, 3633,
+  3994, 4723, 5141, 6009, 6488, 7507, 8051, 9233, 9846, 11203, 11889, 13433, 14196; npz, 12.7 MB).  In the table
+  every (k-1) x k x k for k = 18..32 has the SQUARE's rank (17x18x18 3031, 18x19x19 3633, ...), i.e. no
+  projection has been applied there, while 15^3 gave -135 and 16^3 -36 for one deletion.  kronkill's Gram
+  elimination is cubic in the rank (fine to about 22^3, needs a sparse or incremental null space above).
+  MERGE / EXTEND (asked 2026-11-20, not built): a merge of two schemes along one
+  dimension followed by the reduction gains nothing -- the parts are disjoint in
+  two slots, every direction's Gram matrix is block diagonal, so merge-then-reduce
+  is reduce-each-part.  Perminov's toolkit gains after a merge through flips.
   Open: the same two-deletion chains from LITA's 13x13x13, 14x14x14 and
   16x16x16 squares (running at this commit), pairs, more pivot-search effort at 12x13x13, and the whole catalog
   (391 files with m >= 1000; about 43 single-thread hours for every

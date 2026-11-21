@@ -1,0 +1,9 @@
+17x17x17_m2723_Q.json: [17, 17, 17] with 2723 products (loaded in 0.1 s); 6 deletion sequences (I0;J0;K0;I16;J16;K16), mode each, walk 100, restarts 4, 12 threads, seed 0
+K16: 16x17x17 K16: 2705 alive, d2:26dep:152gone -> 2553; catalog Q 2706 Z  ZT    <<< BELOW Q 2706 (7.0 s)
+K0: 16x17x17 K0: 2698 alive, d2:19dep:145gone -> 2553; catalog Q 2706 Z  ZT    <<< BELOW Q 2706 (13.4 s)
+J16: 16x17x17 J16: 2705 alive, d1:26dep:152gone -> 2553; catalog Q 2706 Z  ZT    <<< BELOW Q 2706 (13.4 s)
+I16: 16x17x17 I16: 2705 alive, d0:26dep:152gone -> 2553; catalog Q 2706 Z  ZT    <<< BELOW Q 2706 (15.3 s)
+J0: 16x17x17 J0: 2698 alive, d1:19dep:145gone -> 2553; catalog Q 2706 Z  ZT    <<< BELOW Q 2706 (17.2 s)
+I0: 16x17x17 I0: 2698 alive, d0:19dep:145gone -> 2553; catalog Q 2706 Z  ZT    <<< BELOW Q 2706 (18.4 s)
+  16x17x17: best 2553, worst 2553 over 6 sequences; catalog Some({"Q": 2706})
+done: 6 sequences, 6 below the catalog's Q rank, 18 s

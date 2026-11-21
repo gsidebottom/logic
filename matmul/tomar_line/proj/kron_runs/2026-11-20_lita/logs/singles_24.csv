@@ -1,0 +1,7 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+24x24x24_m6488_Q.json,"I23",23x24x24,6439,0,"I23: 6488 alive, d0:24dep:49gone -> 6439",6488,,,151.8
+24x24x24_m6488_Q.json,"K0",23x24x24,6439,0,"K0: 6488 alive, d1:24dep:49gone -> 6439",6488,,,330.7
+24x24x24_m6488_Q.json,"I0",23x24x24,6439,0,"I0: 6488 alive, d2:24dep:49gone -> 6439",6488,,,368.5
+24x24x24_m6488_Q.json,"J23",23x24x24,6440,0,"J23: 6488 alive, d0:24dep:48gone -> 6440",6488,,,368.6
+24x24x24_m6488_Q.json,"K23",23x24x24,6439,0,"K23: 6488 alive, d2:24dep:49gone -> 6439",6488,,,438.5
+24x24x24_m6488_Q.json,"J0",23x24x24,6438,0,"J0: 6488 alive, d0:24dep:50gone -> 6438",6488,,,494.0

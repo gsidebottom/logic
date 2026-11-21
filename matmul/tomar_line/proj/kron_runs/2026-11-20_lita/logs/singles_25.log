@@ -1,0 +1,6 @@
+25x25x25_m7507_Q.json: [25, 25, 25] with 7507 products (loaded in 0.3 s); 3 deletion sequences (I0;J0;K0), mode each, walk 100, restarts 4, 12 threads, seed 0
+I0: 24x25x25 I0: 7470 alive, d0:27dep:313gone -> 7157; catalog Q 7507 Z  ZT    <<< BELOW Q 7507 (177.6 s)
+K0: 24x25x25 K0: 7470 alive, d2:27dep:313gone -> 7157; catalog Q 7507 Z  ZT    <<< BELOW Q 7507 (273.2 s)
+J0: 24x25x25 J0: 7470 alive, d1:27dep:313gone -> 7157; catalog Q 7507 Z  ZT    <<< BELOW Q 7507 (337.3 s)
+  24x25x25: best 7157, worst 7157 over 3 sequences; catalog Some({"Q": 7507})
+done: 3 sequences, 3 below the catalog's Q rank, 338 s

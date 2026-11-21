@@ -1,0 +1,12 @@
+29x29x29_m11203_Q.json: [29, 29, 29] with 11203 products (loaded in 0.3 s); 1 deletion sequences (I0), mode each, walk 100, restarts 4, 12 threads, seed 0
+I0: 28x29x29 I0: 11160 alive, d0:31dep:421gone -> 10739; catalog Q 11203 Z  ZT    <<< BELOW Q 11203 (593.7 s)
+  28x29x29: best 10739, worst 10739 over 1 sequences; catalog Some({"Q": 11203})
+done: 1 sequences, 1 below the catalog's Q rank, 594 s
+29x29x29_m11203_Q.json: [29, 29, 29] with 11203 products (loaded in 0.4 s); 1 deletion sequences (J0), mode each, walk 100, restarts 4, 12 threads, seed 0
+J0: 28x29x29 J0: 11160 alive, d1:31dep:421gone -> 10739; catalog Q 11203 Z  ZT    <<< BELOW Q 11203 (477.5 s)
+  28x29x29: best 10739, worst 10739 over 1 sequences; catalog Some({"Q": 11203})
+done: 1 sequences, 1 below the catalog's Q rank, 478 s
+29x29x29_m11203_Q.json: [29, 29, 29] with 11203 products (loaded in 0.5 s); 1 deletion sequences (K0), mode each, walk 100, restarts 4, 12 threads, seed 0
+K0: 28x29x29 K0: 11160 alive, d2:31dep:421gone -> 10739; catalog Q 11203 Z  ZT    <<< BELOW Q 11203 (533.3 s)
+  28x29x29: best 10739, worst 10739 over 1 sequences; catalog Some({"Q": 11203})
+done: 1 sequences, 1 below the catalog's Q rank, 534 s

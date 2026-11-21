@@ -1,0 +1,1 @@
+r1 13x13x15_m1577_Q: J0: 13x13x14 J0: 1560 alive, d1:14dep:83gone -> 1477; catalog Q 1479 Z 1511 ZT 1511   <<< BELOW Q 1479 (9.2 s)

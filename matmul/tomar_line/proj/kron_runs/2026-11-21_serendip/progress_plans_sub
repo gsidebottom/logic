@@ -1,0 +1,8 @@
+10x21x26_m3266 exit 0 0 s:   RESULT: output with 3266 products VERIFIES EXACTLY; corrupted copy REJECTED; written built/10x21x26_m3266.json (0.1 s)
+10x26x28_m4237 exit 0 1 s:   RESULT: output with 4237 products VERIFIES EXACTLY; corrupted copy REJECTED; written built/10x26x28_m4237.json (0.2 s)
+14x20x26_m4229 exit 0 0 s:   RESULT: output with 4229 products VERIFIES EXACTLY; corrupted copy REJECTED; written built/14x20x26_m4229.json (0.2 s)
+14x25x27_m5492 exit 0 1 s:   RESULT: output with 5492 products VERIFIES EXACTLY; corrupted copy REJECTED; written built/14x25x27_m5492.json (0.2 s)
+21x26x30_m8831 exit 0 2 s:   RESULT: output with 8831 products VERIFIES EXACTLY; corrupted copy REJECTED; written built/21x26x30_m8831.json (0.7 s)
+4x10x32_m878 exit 0 0 s:   RESULT: output with 878 products VERIFIES EXACTLY; corrupted copy REJECTED; written built/4x10x32_m878.json (0.0 s)
+4x6x27_m468 exit 0 0 s:   RESULT: output with 468 products VERIFIES EXACTLY; corrupted copy REJECTED; written built/4x6x27_m468.json (0.0 s)
+ALL DONE Sat Nov 21 01:35:58 EST 2026

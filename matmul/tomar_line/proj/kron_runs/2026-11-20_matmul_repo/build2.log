@@ -1,0 +1,22 @@
+4x11x14_426_integer built 16:18:12: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 2655 additions + 10 scalings = 2665; SLPchecker SUCCESS SUCCESS SUCCESS 
+4x11x13_397_dyadic built 16:18:12: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 2602 additions + 72 scalings = 2674; SLPchecker SUCCESS SUCCESS SUCCESS 
+4x11x16_477_dyadic built 16:18:12: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 2702 additions + 6 scalings = 2708; SLPchecker SUCCESS SUCCESS SUCCESS 
+8x11x13_749_dyadic built 16:18:14: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 7502 additions + 1606 scalings = 9108; SLPchecker SUCCESS SUCCESS SUCCESS 
+9x11x11_705_dyadic built 16:18:15: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 7347 additions + 2674 scalings = 10021; SLPchecker SUCCESS SUCCESS SUCCESS 
+4x13x14_498_dyadic built 16:18:18: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 7631 additions + 4261 scalings = 11892; SLPchecker SUCCESS SUCCESS SUCCESS 
+11x13x16_1444_dyadic built 16:18:20: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 9988 additions + 457 scalings = 10445; SLPchecker SUCCESS SUCCESS SUCCESS 
+9x11x16_987_dyadic built 16:18:22: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 9985 additions + 3807 scalings = 13792; SLPchecker SUCCESS SUCCESS SUCCESS 
+9x11x15_953_rational built 16:18:22: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 10054 additions + 3403 scalings = 13457; SLPchecker SUCCESS SUCCESS SUCCESS 
+13x13x15_1577_rational built 16:20:02: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 14726 additions + 5254 scalings = 19980; SLPchecker SUCCESS SUCCESS SUCCESS 
+13x15x15_1762_rational built 16:20:02: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 16036 additions + 5424 scalings = 21460; SLPchecker SUCCESS SUCCESS SUCCESS 
+13x13x14_1477_rational built 16:20:03: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 14491 additions + 5339 scalings = 19830; SLPchecker SUCCESS SUCCESS SUCCESS 
+13x14x15_1645_rational built 16:20:04: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 15692 additions + 5623 scalings = 21315; SLPchecker SUCCESS SUCCESS SUCCESS 
+13x14x14_1538_rational built 16:20:04: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 15078 additions + 5447 scalings = 20525; SLPchecker SUCCESS SUCCESS SUCCESS 
+BUILD list2.txt DONE 16:20:05
+15x16x16_2200_rational built 16:20:53: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 43170 additions + 22100 scalings = 65270; SLPchecker SUCCESS SUCCESS SUCCESS 
+BUILD list1.txt DONE 16:20:53
+13x13x15_1577_rational built 16:31:26: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 14718 additions + 5044 scalings = 19762; SLPchecker SUCCESS SUCCESS SUCCESS 
+13x13x14_1477_rational built 16:31:28: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 14475 additions + 5231 scalings = 19706; SLPchecker SUCCESS SUCCESS SUCCESS 
+13x14x15_1645_rational built 16:31:28: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 15678 additions + 5594 scalings = 21272; SLPchecker SUCCESS SUCCESS SUCCESS 
+15x16x16_2200_rational built 16:33:30: ALL EXACT; changed P entry: 1 wrong -> REJECTED; 43330 additions + 22473 scalings = 65803; SLPchecker SUCCESS SUCCESS SUCCESS 
+BUILD list3.txt DONE 16:33:30

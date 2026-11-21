@@ -1,0 +1,32 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+9x11x11_m705_Q.json,"J10",9x10x11,671,0,"J10: 691 alive, d1:16dep:20gone -> 671",640,653,661,0.3
+9x11x11_m705_Q.json,"I2",8x11x11,670,0,"I2: 688 alive, d0:14dep:18gone -> 670",641,646,646,0.3
+9x11x11_m705_Q.json,"I1",8x11x11,671,0,"I1: 691 alive, d0:16dep:20gone -> 671",641,646,646,0.3
+9x11x11_m705_Q.json,"I3",8x11x11,671,0,"I3: 694 alive, d0:19dep:23gone -> 671",641,646,646,0.4
+9x11x11_m705_Q.json,"J6",9x10x11,670,0,"J6: 696 alive, d1:18dep:26gone -> 670",640,653,661,0.4
+9x11x11_m705_Q.json,"J5",9x10x11,670,0,"J5: 693 alive, d1:17dep:23gone -> 670",640,653,661,0.4
+9x11x11_m705_Q.json,"K3",9x10x11,678,0,"K3: 697 alive, d2:19dep:19gone -> 678",640,653,661,0.4
+9x11x11_m705_Q.json,"I7",8x11x11,680,0,"I7: 704 alive, d0:13dep:22gone, d1:2dep:2gone -> 680",641,646,646,0.6
+9x11x11_m705_Q.json,"K7",9x10x11,663,0,"K7: 680 alive, d1:14dep:17gone -> 663",640,653,661,0.3
+9x11x11_m705_Q.json,"I5",8x11x11,670,0,"I5: 691 alive, d0:17dep:21gone -> 670",641,646,646,0.3
+9x11x11_m705_Q.json,"K0",9x10x11,678,0,"K0: 697 alive, d2:19dep:19gone -> 678",640,653,661,0.4
+9x11x11_m705_Q.json,"I4",8x11x11,672,0,"I4: 693 alive, d0:18dep:21gone -> 672",641,646,646,0.4
+9x11x11_m705_Q.json,"K1",9x10x11,666,0,"K1: 693 alive, d1:27dep:27gone -> 666",640,653,661,0.4
+9x11x11_m705_Q.json,"J7",9x10x11,671,0,"J7: 699 alive, d1:20dep:28gone -> 671",640,653,661,0.4
+9x11x11_m705_Q.json,"K6",9x10x11,666,0,"K6: 685 alive, d1:14dep:19gone -> 666",640,653,661,0.4
+9x11x11_m705_Q.json,"K4",9x10x11,678,0,"K4: 697 alive, d1:15dep:19gone -> 678",640,653,661,0.5
+9x11x11_m705_Q.json,"J8",9x10x11,677,0,"J8: 701 alive, d1:16dep:23gone, d2:1dep:1gone -> 677",640,653,661,0.3
+9x11x11_m705_Q.json,"I6",8x11x11,680,0,"I6: 705 alive, d0:14dep:23gone, d1:2dep:2gone -> 680",641,646,646,0.4
+9x11x11_m705_Q.json,"I8",8x11x11,680,0,"I8: 704 alive, d0:13dep:22gone, d1:2dep:2gone -> 680",641,646,646,0.5
+9x11x11_m705_Q.json,"K10",9x10x11,668,0,"K10: 691 alive, d1:18dep:23gone -> 668",640,653,661,0.4
+9x11x11_m705_Q.json,"J1",9x10x11,685,0,"J1: 705 alive, d1:11dep:19gone, d2:1dep:1gone -> 685",640,653,661,0.4
+9x11x11_m705_Q.json,"I0",8x11x11,671,0,"I0: 692 alive, d0:17dep:21gone -> 671",641,646,646,1.2
+9x11x11_m705_Q.json,"J4",9x10x11,681,0,"J4: 705 alive, d0:9dep:21gone, d2:1dep:1gone, d1:2dep:2gone -> 681",640,653,661,1.2
+9x11x11_m705_Q.json,"J0",9x10x11,670,0,"J0: 695 alive, d1:19dep:25gone -> 670",640,653,661,0.5
+9x11x11_m705_Q.json,"K5",9x10x11,678,0,"K5: 697 alive, d2:19dep:19gone -> 678",640,653,661,0.8
+9x11x11_m705_Q.json,"J9",9x10x11,676,0,"J9: 703 alive, d1:15dep:26gone, d2:1dep:1gone -> 676",640,653,661,0.5
+9x11x11_m705_Q.json,"K8",9x10x11,669,0,"K8: 691 alive, d1:17dep:22gone -> 669",640,653,661,0.6
+9x11x11_m705_Q.json,"K9",9x10x11,670,0,"K9: 693 alive, d1:18dep:23gone -> 670",640,653,661,0.7
+9x11x11_m705_Q.json,"K2",9x10x11,678,0,"K2: 697 alive, d2:19dep:19gone -> 678",640,653,661,0.9
+9x11x11_m705_Q.json,"J3",9x10x11,678,0,"J3: 705 alive, d0:9dep:21gone, d1:6dep:6gone -> 678",640,653,661,1.4
+9x11x11_m705_Q.json,"J2",9x10x11,671,0,"J2: 705 alive, d0:9dep:29gone, d1:5dep:5gone -> 671",640,653,661,1.4

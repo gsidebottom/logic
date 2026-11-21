@@ -1,0 +1,4 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+28x28x28_m9846_Q.json,"I0",27x28x28,9789,0,"I0: 9846 alive, d2:28dep:57gone -> 9789",9846,,,589.5
+28x28x28_m9846_Q.json,"J0",27x28x28,9788,0,"J0: 9846 alive, d0:28dep:58gone -> 9788",9846,,,791.9
+28x28x28_m9846_Q.json,"K0",27x28x28,9789,0,"K0: 9846 alive, d1:28dep:57gone -> 9789",9846,,,1034.4

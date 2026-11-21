@@ -1,0 +1,36 @@
+source,sequence,shape,m_out,brent_wrong,stages,best_Q,best_Z,best_ZT,seconds
+9x11x16_m987_Q.json,"K11,J2",9x10x15,920,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J2: 957 alive, d1:27dep:37gone -> 920",861,863,863,1.8
+9x11x16_m987_Q.json,"K11,J3",9x10x15,920,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J3: 957 alive, d1:27dep:37gone -> 920",861,863,863,1.8
+9x11x16_m987_Q.json,"K11,J8",9x10x15,919,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J8: 952 alive, d1:25dep:33gone -> 919",861,863,863,1.8
+9x11x16_m987_Q.json,"K11,I6",8x11x15,906,0,"K11: 985 alive, d1:14dep:28gone -> 957 | I6: 944 alive, d2:30dep:38gone -> 906",848,850,850,1.8
+9x11x16_m987_Q.json,"K11,I0",8x11x15,908,0,"K11: 985 alive, d1:14dep:28gone -> 957 | I0: 949 alive, d2:32dep:41gone -> 908",848,850,850,1.8
+9x11x16_m987_Q.json,"K11,I2",8x11x15,902,0,"K11: 985 alive, d1:14dep:28gone -> 957 | I2: 949 alive, d2:35dep:47gone -> 902",848,850,850,1.8
+9x11x16_m987_Q.json,"K11,J5",9x10x15,936,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J5: 957 alive, d1:15dep:21gone -> 936",861,863,863,2.0
+9x11x16_m987_Q.json,"K11,I8",8x11x15,904,0,"K11: 985 alive, d1:14dep:28gone -> 957 | I8: 946 alive, d2:33dep:41gone, d1:1dep:1gone -> 904",848,850,850,2.1
+9x11x16_m987_Q.json,"K11,I3",8x11x15,914,0,"K11: 985 alive, d1:14dep:28gone -> 957 | I3: 950 alive, d0:20dep:32gone, d2:2dep:2gone, d1:2dep:2gone -> 914",848,850,850,2.8
+9x11x16_m987_Q.json,"K11,K10",9x11x14,924,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K10: 955 alive, d1:14dep:30gone, d2:1dep:1gone -> 924",882,889,900,1.4
+9x11x16_m987_Q.json,"K11,K2",9x11x14,928,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K2: 955 alive, d1:14dep:26gone, d2:1dep:1gone -> 928",882,889,900,0.9
+9x11x16_m987_Q.json,"K11,K7",9x11x14,930,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K7: 957 alive, d2:21dep:27gone -> 930",882,889,900,1.7
+9x11x16_m987_Q.json,"K11,K11",9x11x14,932,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K11: 957 alive, d1:20dep:25gone -> 932",882,889,900,1.6
+9x11x16_m987_Q.json,"K11,J9",9x10x15,918,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J9: 957 alive, d1:28dep:39gone -> 918",861,863,863,2.5
+9x11x16_m987_Q.json,"K11,K9",9x11x14,923,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K9: 951 alive, d2:21dep:28gone -> 923",882,889,900,2.3
+9x11x16_m987_Q.json,"K11,J0",9x10x15,909,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J0: 928 alive, d0:12dep:16gone, d1:3dep:3gone -> 909",861,863,863,2.5
+9x11x16_m987_Q.json,"K11,K14",9x11x14,927,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K14: 949 alive, d2:18dep:22gone -> 927",882,889,900,1.5
+9x11x16_m987_Q.json,"K11,K3",9x11x14,917,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K3: 955 alive, d1:14dep:31gone, d2:6dep:6gone, d0:1dep:1gone -> 917",882,889,900,2.9
+9x11x16_m987_Q.json,"K11,K13",9x11x14,929,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K13: 956 alive, d2:21dep:27gone -> 929",882,889,900,2.8
+9x11x16_m987_Q.json,"K11,K0",9x11x14,929,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K0: 955 alive, d2:19dep:26gone -> 929",882,889,900,2.3
+9x11x16_m987_Q.json,"K11,J10",9x10x15,904,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J10: 940 alive, d1:24dep:32gone, d0:3dep:3gone, d2:1dep:1gone -> 904",861,863,863,2.6
+9x11x16_m987_Q.json,"K11,K1",9x11x14,917,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K1: 955 alive, d1:14dep:32gone, d2:6dep:6gone -> 917",882,889,900,3.6
+9x11x16_m987_Q.json,"K11,K5",9x11x14,929,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K5: 957 alive, d1:20dep:28gone -> 929",882,889,900,3.0
+9x11x16_m987_Q.json,"K11,J7",9x10x15,916,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J7: 947 alive, d1:18dep:28gone, d0:2dep:2gone, d2:1dep:1gone -> 916",861,863,863,4.1
+9x11x16_m987_Q.json,"K11,K4",9x11x14,930,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K4: 957 alive, d1:20dep:27gone -> 930",882,889,900,3.6
+9x11x16_m987_Q.json,"K11,I4",8x11x15,917,0,"K11: 985 alive, d1:14dep:28gone -> 957 | I4: 952 alive, d0:21dep:32gone, d1:3dep:3gone -> 917",848,850,850,6.4
+9x11x16_m987_Q.json,"K11,K12",9x11x14,914,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K12: 950 alive, d1:28dep:35gone, d2:1dep:1gone -> 914",882,889,900,4.1
+9x11x16_m987_Q.json,"K11,K6",9x11x14,928,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K6: 957 alive, d2:21dep:28gone, d0:1dep:1gone -> 928",882,889,900,4.4
+9x11x16_m987_Q.json,"K11,K8",9x11x14,924,0,"K11: 985 alive, d1:14dep:28gone -> 957 | K8: 956 alive, d1:13dep:32gone -> 924",882,889,900,4.4
+9x11x16_m987_Q.json,"K11,J1",9x10x15,909,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J1: 930 alive, d0:12dep:16gone, d1:5dep:5gone -> 909",861,863,863,6.6
+9x11x16_m987_Q.json,"K11,I5",8x11x15,916,0,"K11: 985 alive, d1:14dep:28gone -> 957 | I5: 950 alive, d0:19dep:32gone, d1:2dep:2gone -> 916",848,850,850,6.7
+9x11x16_m987_Q.json,"K11,I7",8x11x15,907,0,"K11: 985 alive, d1:14dep:28gone -> 957 | I7: 945 alive, d2:29dep:38gone -> 907",848,850,850,5.3
+9x11x16_m987_Q.json,"K11,J4",9x10x15,910,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J4: 948 alive, d1:24dep:32gone, d2:6dep:6gone -> 910",861,863,863,5.3
+9x11x16_m987_Q.json,"K11,I1",8x11x15,908,0,"K11: 985 alive, d1:14dep:28gone -> 957 | I1: 949 alive, d2:32dep:41gone -> 908",848,850,850,5.4
+9x11x16_m987_Q.json,"K11,J6",9x10x15,935,0,"K11: 985 alive, d1:14dep:28gone -> 957 | J6: 957 alive, d1:15dep:22gone -> 935",861,863,863,5.4

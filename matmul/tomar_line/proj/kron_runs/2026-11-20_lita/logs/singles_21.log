@@ -1,0 +1,9 @@
+21x21x21_m4723_Q.json: [21, 21, 21] with 4723 products (loaded in 0.1 s); 6 deletion sequences (I0;J0;K0;I20;J20;K20), mode each, walk 100, restarts 4, 12 threads, seed 0
+I0: 20x21x21 I0: 4692 alive, d0:23dep:221gone -> 4471; catalog Q 4723 Z  ZT    <<< BELOW Q 4723 (44.5 s)
+K0: 20x21x21 K0: 4692 alive, d2:23dep:221gone -> 4471; catalog Q 4723 Z  ZT    <<< BELOW Q 4723 (70.1 s)
+K20: 20x21x21 K20: 4701 alive, d2:32dep:230gone -> 4471; catalog Q 4723 Z  ZT    <<< BELOW Q 4723 (78.2 s)
+J20: 20x21x21 J20: 4701 alive, d1:32dep:230gone -> 4471; catalog Q 4723 Z  ZT    <<< BELOW Q 4723 (80.6 s)
+I20: 20x21x21 I20: 4701 alive, d0:32dep:230gone -> 4471; catalog Q 4723 Z  ZT    <<< BELOW Q 4723 (97.4 s)
+J0: 20x21x21 J0: 4692 alive, d1:23dep:221gone -> 4471; catalog Q 4723 Z  ZT    <<< BELOW Q 4723 (105.7 s)
+  20x21x21: best 4471, worst 4471 over 6 sequences; catalog Some({"Q": 4723})
+done: 6 sequences, 6 below the catalog's Q rank, 106 s

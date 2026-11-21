@@ -1,0 +1,5 @@
+13x13x14_1477_rational|kron_reduced/13x13x14_m1477_Q.json.gz|projected from LITA's <15x15x15:1977> (github.com/khoruzhii/lita) and 2-reduced
+13x13x15_1577_rational|kron_reduced/13x13x15_m1577_Q.json.gz|projected from LITA's <15x15x15:1977> (github.com/khoruzhii/lita) and 2-reduced
+13x14x14_1538_rational|kron_reduced/13x14x14_m1538_Q.json.gz|projected from LITA's <15x15x15:1977> (github.com/khoruzhii/lita) and 2-reduced
+13x14x15_1645_rational|kron_reduced/13x14x15_m1645_Q.json.gz|projected from LITA's <15x15x15:1977> (github.com/khoruzhii/lita) and 2-reduced
+13x15x15_1762_rational|kron_reduced/13x15x15_m1762_Q.json.gz|projected from LITA's <15x15x15:1977> (github.com/khoruzhii/lita) and 2-reduced

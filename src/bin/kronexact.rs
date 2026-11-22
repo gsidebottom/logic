@@ -19,10 +19,13 @@
 //!   the replay has to be trusted.
 //!
 //! usage: kronexact check SCHEME.json[.gz]
-//!        kronexact replay SOURCE.json[.gz] PATH.json OUT.json [--check-input] [--dense]
-//!        kronexact build PLAN.json OUT.json [--dense]
-//! build: executes a plan of constructions (file, schoolbook, rotation / transpose, sub-format, direct sum,
+//!        kronexact replay SOURCE.json[.gz] PATH.json OUT.json [--check-input] [--dense] [--catalog DIR]
+//!        kronexact build PLAN.json OUT.json [--dense] [--catalog DIR]
+//! build: executes a plan of constructions (file, schoolbook, rotation / transposition, sub-format, direct sum,
 //!   Kronecker product, shared-factor product) and certifies the result with the same check.
+//!   A file node of a plan names its scheme by "path" (as given), by "here" (relative to the plan's own
+//!   directory) or by "catalog" (relative to the root of a scheme catalog, given with --catalog DIR).
+//! replay with a SOURCE whose name ends in plan.json builds that plan first and replays the path on the result.
 //! Layout as in the catalog: u on A (n0 x n1 row-major), v on B (n1 x n2), w on C^T (index k * n0 + i).
 
 use rayon::prelude::*;
@@ -999,6 +1002,8 @@ fn shared_product(s1: &Scheme, s2: &Scheme, blocks: &[Block]) -> Scheme {
 /// Executes a plan: {"defs": {name: node}, "out": node}.  Nodes:
 ///   {"op":"ref","name":S}  {"op":"file","path":P}  {"op":"trivial","n":[a,b,c]}
 ///   {"op":"orient","n":[a,b,c],"of":node}  {"op":"sub","n":[a,b,c],"of":node}
+///   {"op":"rotate","of":node}     <n0,n1,n2> -> <n1,n2,n0>, the products in the same order
+///   {"op":"transpose","of":node}  <n0,n1,n2> -> <n0,n2,n1>, the products in the same order
 ///   {"op":"sum","axis":i,"parts":[node,..]}  {"op":"prod","parts":[node,node]}
 ///   {"op":"shared","s1":node,"s2":node,"groups":[{"slot":s,"products":[..],"s3":node}
 ///                                              | {"type":[P,Q,R],"cells":[[product,i,j,k],..],"s3":node}
@@ -1007,6 +1012,23 @@ struct Builder<'a> {
     defs: &'a serde_json::Map<String, Value>,
     memo: std::collections::HashMap<String, std::rc::Rc<Scheme>>,
     open: Vec<String>,
+    /// directory of the plan file, for "here" file nodes
+    dir: std::path::PathBuf,
+    /// root of the scheme catalog, for "catalog" file nodes
+    catalog: Option<String>,
+}
+
+/// Executes the plan file at `path`; returns the scheme and the plan (for its max_rank and note).
+fn build_plan(path: &str, catalog: &Option<String>) -> (std::rc::Rc<Scheme>, Value) {
+    let plan: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"))).expect("plan JSON");
+    let empty = serde_json::Map::new();
+    let dir = std::path::Path::new(path).parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let mut b = Builder { defs: plan["defs"].as_object().unwrap_or(&empty), memo: Default::default(), open: vec![], dir, catalog: catalog.clone() };
+    let sc = b.node(&plan["out"]);
+    if let Some(mx) = plan["max_rank"].as_u64() {
+        assert!(sc.m() as u64 <= mx, "rank {} above the plan's {mx}", sc.m());
+    }
+    (sc, plan)
 }
 
 impl Builder<'_> {
@@ -1030,13 +1052,25 @@ impl Builder<'_> {
                 self.memo.insert(name, s.clone());
                 s
             }
-            "file" => Rc::new(load(v["path"].as_str().unwrap())),
+            "file" => {
+                let path = if let Some(p) = v["catalog"].as_str() {
+                    let root = self.catalog.as_ref().unwrap_or_else(|| panic!("the plan names the catalog file {p}: give the catalog's root with --catalog DIR"));
+                    std::path::Path::new(root).join(p)
+                } else if let Some(p) = v["here"].as_str() {
+                    self.dir.join(p)
+                } else {
+                    std::path::PathBuf::from(v["path"].as_str().expect("a file node needs path, here or catalog"))
+                };
+                Rc::new(load(path.to_str().expect("UTF-8 path")))
+            }
             "trivial" => Rc::new(trivial(dims(&v["n"]))),
             "orient" => {
                 let s = self.node(&v["of"]);
                 let n = dims(&v["n"]);
                 if s.n == n { s } else { Rc::new(orient(&s, n)) }
             }
+            "rotate" => Rc::new(rotate(&*self.node(&v["of"]))),
+            "transpose" => Rc::new(transpose(&*self.node(&v["of"]))),
             "sub" => {
                 let s = self.node(&v["of"]);
                 let n = dims(&v["n"]);
@@ -1106,6 +1140,12 @@ impl Builder<'_> {
 
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let catalog: Option<String> = args.iter().position(|a| a == "--catalog").map(|i| {
+        assert!(i + 1 < args.len(), "--catalog needs a directory");
+        let d = args.remove(i + 1);
+        args.remove(i);
+        d
+    });
     let mut flag = |key: &str| -> bool {
         match args.iter().position(|a| a == key) {
             Some(i) => {
@@ -1128,8 +1168,14 @@ fn main() {
         }
         Some("replay") if args.len() == 4 => {
             let pj: Value = serde_json::from_str(&std::fs::read_to_string(&args[2]).expect("path file")).expect("path JSON");
-            let mut sc = load(&args[1]);
-            println!("{}: <{}x{}x{}:{}> loaded ({:.1} s); path {} (sequence {:?})", args[1], sc.n[0], sc.n[1], sc.n[2], sc.m(), t0.elapsed().as_secs_f64(), args[2], pj["sequence"].as_str().unwrap_or(""));
+            let from_plan = args[1].ends_with("plan.json");
+            let mut sc = if from_plan {
+                let (s, _) = build_plan(&args[1], &catalog);
+                std::rc::Rc::try_unwrap(s).unwrap_or_else(|rc| Scheme { n: rc.n, x: rc.x.clone() })
+            } else {
+                load(&args[1])
+            };
+            println!("{}: <{}x{}x{}:{}> {} ({:.1} s); path {} (sequence {:?})", args[1], sc.n[0], sc.n[1], sc.n[2], sc.m(), if from_plan { "built" } else { "loaded" }, t0.elapsed().as_secs_f64(), args[2], pj["sequence"].as_str().unwrap_or(""));
             if check_input {
                 assert!(certify(&sc, "input"), "the input does not verify");
             }
@@ -1168,14 +1214,8 @@ fn main() {
             std::process::exit(if ok { 0 } else { 1 });
         }
         Some("build") if args.len() == 3 => {
-            let plan: Value = serde_json::from_str(&std::fs::read_to_string(&args[1]).expect("plan file")).expect("plan JSON");
-            let empty = serde_json::Map::new();
-            let mut b = Builder { defs: plan["defs"].as_object().unwrap_or(&empty), memo: Default::default(), open: vec![] };
-            let sc = b.node(&plan["out"]);
+            let (sc, plan) = build_plan(&args[1], &catalog);
             println!("{}: built <{}x{}x{}:{}> ({:.1} s)", args[1], sc.n[0], sc.n[1], sc.n[2], sc.m(), t0.elapsed().as_secs_f64());
-            if let Some(mx) = plan["max_rank"].as_u64() {
-                assert!(sc.m() as u64 <= mx, "rank {} above the plan's {mx}", sc.m());
-            }
             println!("  {}", stats(&sc));
             let ok = certify(&sc, "output");
             if ok {
@@ -1187,7 +1227,7 @@ fn main() {
             std::process::exit(if ok { 0 } else { 1 });
         }
         _ => {
-            eprintln!("usage: kronexact check SCHEME.json\n       kronexact replay SOURCE.json PATH.json OUT.json [--check-input] [--dense]\n       kronexact build PLAN.json OUT.json [--dense]");
+            eprintln!("usage: kronexact check SCHEME.json\n       kronexact replay SOURCE.json PATH.json OUT.json [--check-input] [--dense] [--catalog DIR]\n       kronexact build PLAN.json OUT.json [--dense] [--catalog DIR]");
             std::process::exit(2);
         }
     }

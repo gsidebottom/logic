@@ -1156,6 +1156,17 @@ starts), so the comparison is by type.
   without a licence (Sedoglavic's table, LITA's npz files: fetch the commits named above).  Directories of many
   small files are one archive each: 2026-11-21_serendip/{plans,logs,crosscheck}.tgz, reduce/{dpaths,xlogs}.tgz,
   2026-11-20_resweep/logs_cat2.tgz.  Rules and reasons in .gitignore.
+  PUBLISHED (2026-11-21, mat_mul d6cdc88, products/): the 910 product and deletion schemes that the table and our
+  other files do not imply (683 + 227), each stored with its dimensions sorted, with its plan (or source plan and
+  path) and certificate.  Made in 2026-11-21_serendip/ by products_repo.py stage (plans with public file names,
+  ending with the rotate / transpose steps that sort the result; deletion paths rewritten for the turned source),
+  products_build.zsh (kronexact build / replay inside each folder, so a scheme file is byte for byte the tool's
+  output from its folder), products_repo.py finish (909 equal the certified originals turned by separate Python
+  code; 14x28x28_6279 is in another, equivalent form because the builder changed after it was first built),
+  products_check.zsh (both checks, all 910 pass) and products_readme.py (the README sections).  kronexact gained
+  --catalog DIR, file nodes "catalog" / "here", plan steps rotate / transpose and replay from a source plan.  The
+  overlay itself (stage/) is not tracked.  Counts by plan content: rank-40 <3,3,6> block in 126 of the 683, grids
+  in 38, the subspace variant in 6.
   (Before the download:) github.com/khoruzhii/lita holds 17^3 .. 32^3 (ranks 2723, 3031, 3633,
   3994, 4723, 5141, 6009, 6488, 7507, 8051, 9233, 9846, 11203, 11889, 13433, 14196; npz, 12.7 MB).  In the table
   every (k-1) x k x k for k = 18..32 has the SQUARE's rank (17x18x18 3031, 18x19x19 3633, ...), i.e. no

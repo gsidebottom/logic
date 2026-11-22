@@ -196,6 +196,7 @@ matmul/tomar_line/proj/kron_runs/*/built/
 matmul/tomar_line/proj/kron_runs/*/sources/
 matmul/tomar_line/proj/kron_runs/*/sorted/
 matmul/tomar_line/proj/kron_runs/*/verify*/
+matmul/tomar_line/proj/kron_runs/*/stage/
 matmul/tomar_line/proj/kron_runs/*/reduce/src/
 matmul/tomar_line/proj/kron_runs/*/reduce/exact/
 # planner output of the screen variants (every candidate plan; regenerable with serendip_plan.py)

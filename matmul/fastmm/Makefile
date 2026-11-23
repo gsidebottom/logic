@@ -92,6 +92,17 @@ build/bench_fmm_winograd: bench_fmm.c bench_impl.h gemms_impl.h fmm.c fmm_impl.h
 build/winograd/kernels.h: gen_kernels.py
 	mkdir -p build/winograd && python3 gen_kernels.py $@ --sw winograd
 
+# the same with other points of the <2x2x2:7> orbit as the 2x2 level, as direct sums (sw_points.py): q3 is
+# DPS's optimum in Q(sqrt 3), constants rounded; dps7d the library's dyadic point as direct sums, the
+# control.  The A/B of results/sw_q3_2026-11-22.txt (run_sw_q3.sh)
+build/bench_fmm_sw_%: bench_fmm.c bench_impl.h gemms_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/sw_%/kernels.h
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/sw_$* bench_fmm.c -framework Accelerate -o $@
+
+build/sw_%/kernels.h: gen_kernels.py sw_points.py
+	python3 sw_points.py > /dev/null && mkdir -p build/sw_$* && python3 gen_kernels.py $@ --sw schemes/sw/$*
+
+.PRECIOUS: build/sw_%/kernels.h
+
 # the same with dps48's fused kernels from the original rational rank-48 scheme (315 operations)
 build/bench_fmm_orig: bench_fmm.c bench_impl.h gemms_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/orig/kernels.h
 	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/orig bench_fmm.c -framework Accelerate -o $@

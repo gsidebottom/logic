@@ -106,7 +106,8 @@ def sw_programs():
     return (os.path.basename(src),) + tuple(open(f"{src}_{s}.slp").read() for s in "LRP")
 
 
-LINE = re.compile(r"^(\w+):=(-?)(\w+)(?:([-+*/])(\w+))?;$")
+# the second operand may be a decimal constant (t3:=i1*0.8660254037844386;), for points whose constants round
+LINE = re.compile(r"^(\w+):=(-?)(\w+)(?:([-+*/])(\w+|\d+\.\d+))?;$")
 
 
 def parse(text):
@@ -366,6 +367,11 @@ def opbyop(name, text):
     """the program as block operations: (dst, kind, a, b) with kinds copy/add/sub/scale"""
     ni, no, ops = parse(text)
     rows = []
+    if any(neg or (b and b[0].isdigit() and not b.isdigit()) for _, neg, _, _, b in ops):
+        # a negation or a constant that is not an integer (sw_points.py's programs): the integer
+        # encoding below has no place for it, and nothing reads the 2x2 level's lists
+        return f"static const int {name}[1][4] = {{{{0, 0, 0, 0}}}};  /* not encodable: fused kernels only */\n" \
+               f"static const int {name}_len = 0;\n"
     for lhs, neg, a, op, b in ops:
         assert not neg
         kind = {None: 0, "+": 1, "-": 2, "*": 3, "/": 4}[op]

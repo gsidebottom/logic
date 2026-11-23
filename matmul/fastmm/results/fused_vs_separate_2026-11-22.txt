@@ -1,0 +1,48 @@
+# fused 2x2 levels against one-at-a-time Strassen-Winograd at equal depth; 2026-11-22 18:08; Apple M4 Pro; logic 8f7d2dd + working tree
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#    37.0  2342 02-18:44:23 /System/Library/PrivateFrameworks/XprotectFramework.framework/Versions/A/XPCServices/XprotectService.xpc/Contents/MacOS/XprotectService
+#    23.9   597 02-18:55:36 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+#    16.3 44582 01-04:48:39 /Users/greg/Library/Application Support/Claude/claude-code/2.1.330/4262a1273231/claude.app/Contents/MacOS/claude
+#     9.4 43836 01-06:44:25 /Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper
+#     5.4 22676       00:00 /bin/zsh
+## n=8192 f rounds=5  18:08
+classical  n=8192   f32  min   0.3292 s  med   0.3310 s   3321.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.346 P 0.000  plan G  pred 0.386 s (+16.6%)  perr 4.29e-06
+sw1        n=8192   f32  min   0.3160 s  med   0.3259 s   3373.3 GFLOP/s(2mkn)  speedup 1.015  relerr 5.42e-06  split L 0.005 R 0.005 gemm 0.311 P 0.004  plan SW/G  pred 0.355 s (+9.0%)  perr 4.49e-06
+gemms:1    n=8192   f32  min   0.3150 s  med   0.3330 s   3302.1 GFLOP/s(2mkn)  speedup 0.994  relerr 7.89e-06  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw2rec     n=8192   f32  min   0.2969 s  med   0.3037 s   3619.9 GFLOP/s(2mkn)  speedup 1.090  relerr 5.69e-06  split L 0.015 R 0.015 gemm 0.264 P 0.012  plan SW/SW/G  pred 0.350 s (+15.2%)  perr 1.03e-05
+gemms:2    n=8192   f32  min   0.3245 s  med   0.3285 s   3346.7 GFLOP/s(2mkn)  speedup 1.007  relerr 1.34e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw3rec     n=8192   f32  min   0.3559 s  med   0.3626 s   3032.4 GFLOP/s(2mkn)  speedup 0.913  relerr 6.59e-06  split L 0.032 R 0.034 gemm 0.270 P 0.024  plan SW/SW/SW/G  pred 0.392 s (+8.0%)  perr 2.36e-05
+gemms:3    n=8192   f32  min   0.4584 s  med   0.4731 s   2324.2 GFLOP/s(2mkn)  speedup 0.700  relerr 2.50e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+## n=8192 d rounds=5  18:08
+classical  n=8192   f64  min   1.2942 s  med   1.3676 s    804.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.392 P 0.000  plan G  pred 1.285 s (-6.1%)  perr 7.23e-15
+sw1        n=8192   f64  min   1.1985 s  med   1.2278 s    895.5 GFLOP/s(2mkn)  speedup 1.114  relerr 1.09e-14  split L 0.011 R 0.011 gemm 1.196 P 0.008  plan SW/G  pred 1.207 s (-1.7%)  perr 7.02e-15
+gemms:1    n=8192   f64  min   1.2131 s  med   1.2304 s    893.6 GFLOP/s(2mkn)  speedup 1.111  relerr 1.50e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw2rec     n=8192   f64  min   1.1161 s  med   1.1285 s    974.3 GFLOP/s(2mkn)  speedup 1.212  relerr 9.88e-15  split L 0.029 R 0.030 gemm 1.046 P 0.024  plan SW/SW/G  pred 1.254 s (+11.1%)  perr 1.04e-14
+gemms:2    n=8192   f64  min   1.1272 s  med   1.1363 s    967.7 GFLOP/s(2mkn)  speedup 1.204  relerr 2.33e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw3rec     n=8192   f64  min   1.0934 s  med   1.0962 s   1003.0 GFLOP/s(2mkn)  speedup 1.248  relerr 1.19e-14  split L 0.063 R 0.065 gemm 0.945 P 0.049  plan SW/SW/SW/G  pred 1.202 s (+9.6%)  perr 1.55e-14
+gemms:3    n=8192   f64  min   1.2158 s  med   1.2244 s    898.0 GFLOP/s(2mkn)  speedup 1.117  relerr 4.43e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+## n=13824 f rounds=3  18:09
+classical  n=13824  f32  min   1.5536 s  med   1.5587 s   3389.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.562 P 0.000  plan G  pred 1.661 s (+6.6%)  perr 5.57e-06
+sw1        n=13824  f32  min   1.4882 s  med   1.5470 s   3415.4 GFLOP/s(2mkn)  speedup 1.008  relerr 6.91e-06  split L 0.015 R 0.015 gemm 1.499 P 0.012  plan SW/G  pred 1.451 s (-6.2%)  perr 5.84e-06
+gemms:1    n=13824  f32  min   1.4845 s  med   1.5133 s   3491.4 GFLOP/s(2mkn)  speedup 1.030  relerr 1.14e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw2rec     n=13824  f32  min   1.3666 s  med   1.3909 s   3798.7 GFLOP/s(2mkn)  speedup 1.121  relerr 7.66e-06  split L 0.042 R 0.041 gemm 1.281 P 0.032  plan SW/SW/G  pred 1.345 s (-3.3%)  perr 1.34e-05
+gemms:2    n=13824  f32  min   1.3982 s  med   1.4001 s   3773.8 GFLOP/s(2mkn)  speedup 1.113  relerr 1.95e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw3rec     n=13824  f32  min   1.2627 s  med   1.2649 s   4177.2 GFLOP/s(2mkn)  speedup 1.232  relerr 9.17e-06  split L 0.087 R 0.089 gemm 1.018 P 0.070  plan SW/SW/SW/G  pred 1.225 s (-3.2%)  perr 3.06e-05
+gemms:3    n=13824  f32  min   1.3981 s  med   1.4079 s   3752.7 GFLOP/s(2mkn)  speedup 1.107  relerr 3.42e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+## n=13824 d rounds=3  18:10
+classical  n=13824  f64  min   6.4431 s  med   6.7273 s    785.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 6.908 P 0.000  plan G  pred 6.795 s (+1.0%)  perr 9.40e-15
+sw1        n=13824  f64  min   5.6469 s  med   5.7716 s    915.4 GFLOP/s(2mkn)  speedup 1.166  relerr 1.39e-14  split L 0.030 R 0.030 gemm 5.712 P 0.025  plan SW/G  pred 5.539 s (-4.0%)  perr 9.12e-15
+gemms:1    n=13824  f64  min   5.6599 s  med   5.7714 s    915.5 GFLOP/s(2mkn)  speedup 1.166  relerr 1.95e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw2rec     n=13824  f64  min   5.0299 s  med   5.1470 s   1026.6 GFLOP/s(2mkn)  speedup 1.307  relerr 1.46e-14  split L 0.083 R 0.083 gemm 4.909 P 0.067  plan SW/SW/G  pred 5.033 s (-2.2%)  perr 1.36e-14
+gemms:2    n=13824  f64  min   5.0822 s  med   5.1498 s   1026.0 GFLOP/s(2mkn)  speedup 1.306  relerr 3.60e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw3rec     n=13824  f64  min   4.6496 s  med   4.6892 s   1126.8 GFLOP/s(2mkn)  speedup 1.435  relerr 1.52e-14  split L 0.177 R 0.178 gemm 4.186 P 0.140  plan SW/SW/SW/G  pred 4.608 s (-1.7%)  perr 2.02e-14
+gemms:3    n=13824  f64  min   4.8118 s  med   4.8527 s   1088.8 GFLOP/s(2mkn)  speedup 1.386  relerr 6.02e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+# top CPU users after the run:
+#    %CPU   PID     ELAPSED COMM
+#    31.2   597 02-19:00:34 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+#    25.9  6320 02-11:17:22 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.80/Helpers/Google Chrome Helper (Aperitif).app/Contents/MacOS/Google Chrome Helper (Aperitif)
+#    15.5  6319 02-11:17:22 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.80/Helpers/Google Chrome Helper (Aperitif).app/Contents/MacOS/Google Chrome Helper (Aperitif)
+#    12.7   703 02-19:00:25 /System/Library/DriverExtensions/com.apple.DriverKit-AppleBCMWLAN.dext/com.apple.DriverKit-AppleBCMWLAN
+#    12.2 21380       31:25 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.80/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)
+# done 18:13

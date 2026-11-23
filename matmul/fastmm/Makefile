@@ -9,7 +9,7 @@ build/bench_fmm: bench_fmm.c bench_impl.h gemms_impl.h fmm.c fmm_impl.h fmm.h ne
 
 # the kernels: dps48 from DPS's 262-operation accurate program (4x4x4_48_accurate_262), op-by-op
 # lists from ours (201)
-build/kernels.h: gen_kernels.py schemes/opt/dps7_L.slp schemes/opt/dps7_R.slp schemes/opt/dps7_P.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp schemes/opt/r336_L.slp schemes/opt/r336_R.slp schemes/opt/r336_P.slp schemes/opt/r363_L.slp schemes/opt/r363_R.slp schemes/opt/r363_P.slp schemes/opt/r633_L.slp schemes/opt/r633_R.slp schemes/opt/r633_P.slp schemes/opt/t336_L.slp schemes/opt/t336_R.slp schemes/opt/t336_P.slp schemes/opt/t363_L.slp schemes/opt/t363_R.slp schemes/opt/t363_P.slp schemes/opt/t633_L.slp schemes/opt/t633_R.slp schemes/opt/t633_P.slp
+build/kernels.h: gen_kernels.py schemes/sw/q3_L.slp schemes/sw/q3_R.slp schemes/sw/q3_P.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_L.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_R.slp ../dps48/plinopt/data/4x4x4_48_accurate_262_P.slp ../dps48/cand48/p005_201n_L.slp ../dps48/cand48/p005_201n_R.slp ../dps48/cand48/p005_201n_P.slp schemes/opt/r336_L.slp schemes/opt/r336_R.slp schemes/opt/r336_P.slp schemes/opt/r363_L.slp schemes/opt/r363_R.slp schemes/opt/r363_P.slp schemes/opt/r633_L.slp schemes/opt/r633_R.slp schemes/opt/r633_P.slp schemes/opt/t336_L.slp schemes/opt/t336_R.slp schemes/opt/t336_P.slp schemes/opt/t363_L.slp schemes/opt/t363_R.slp schemes/opt/t363_P.slp schemes/opt/t633_L.slp schemes/opt/t633_R.slp schemes/opt/t633_P.slp
 	mkdir -p build && python3 gen_kernels.py $@
 
 # the same with the GPU as a second engine for a level's products (f32): leaves GM and GkM, and the K
@@ -83,9 +83,17 @@ build/libfmm.a: fmm.c fmm_impl.h fmm.h neon_gemm.h build/kernels.h
 build/test_fmm: test_fmm.c fmm.h build/libfmm.a
 	clang -O3 -mcpu=apple-m4 -Wall test_fmm.c build/libfmm.a -framework Accelerate -o $@
 
-# the same with the Strassen-Winograd programs for the 2x2 level (the default until 2026-11-02; since
-# then the level's programs are DPS's dyadic accurate point, schemes/opt/dps7_*): the A/B of
-# results/sw_dps7_2026-11-02.txt
+# the same with DPS's dyadic point for the 2x2 level (schemes/opt/dps7_*, the default from 2026-11-02
+# to 2026-11-22; since then the level runs their Q(sqrt 3) point, schemes/sw/q3_*): the binary that
+# reproduces the numbers measured in that period
+build/bench_fmm_dps7: bench_fmm.c bench_impl.h gemms_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/dps7/kernels.h
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/dps7 bench_fmm.c -framework Accelerate -o $@
+
+build/dps7/kernels.h: gen_kernels.py
+	mkdir -p build/dps7 && python3 gen_kernels.py $@ --sw schemes/opt/dps7
+
+# the same with the Strassen-Winograd programs for the 2x2 level (the default until 2026-11-02): the
+# A/B of results/sw_dps7_2026-11-02.txt
 build/bench_fmm_winograd: bench_fmm.c bench_impl.h gemms_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/winograd/kernels.h
 	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/winograd bench_fmm.c -framework Accelerate -o $@
 
@@ -102,6 +110,16 @@ build/sw_%/kernels.h: gen_kernels.py sw_points.py
 	python3 sw_points.py > /dev/null && mkdir -p build/sw_$* && python3 gen_kernels.py $@ --sw schemes/sw/$*
 
 .PRECIOUS: build/sw_%/kernels.h
+
+# the same with the R levels' programs from schemes/NAME/ (orbit_points.py: r363h and r363m, DPS's <3x6x3:40>
+# scheme at other points of its orbit).  The A/B of results/r363_points_2026-11-22.txt (run_r363_points.sh)
+build/bench_fmm_rs_%: bench_fmm.c bench_impl.h gemms_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/rs_%/kernels.h
+	clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild/rs_$* bench_fmm.c -framework Accelerate -o $@
+
+build/rs_%/kernels.h: gen_kernels.py orbit_points.py
+	python3 orbit_points.py > /dev/null && mkdir -p build/rs_$* && python3 gen_kernels.py $@ --rschemes schemes/$*
+
+.PRECIOUS: build/rs_%/kernels.h
 
 # the same with dps48's fused kernels from the original rational rank-48 scheme (315 operations)
 build/bench_fmm_orig: bench_fmm.c bench_impl.h gemms_impl.h fmm.c fmm_impl.h fmm.h neon_gemm.h build/orig/kernels.h

@@ -1183,8 +1183,72 @@ $10.8$) reaches the same floors, so the class carries them, not the point.
 Per $4\times4$-equivalent saving the floor is $2.17$ against the $4\times4$
 class's $2.83$, which is its orbit's minimum and, as far as continuous search
 from many starts can tell, a local minimum of the whole variety of rank-48
-decompositions.  A better exact point for the $3\times6\times3$ orientation is
-worth a dyadic search.
+decompositions.
+
+\paragraph{Other points without denser programs.}\label{par:mixed}
+A point of the orbit is the scheme run on transformed grids
+(Section~\ref{sec:intro}): with $A'=U^{-1}AV$ and $B'=V^{-1}BW$ it computes
+$C'=U^{-1}(AB)W$, and $C=UC'W^{-1}$.  So a level at another point needs no
+new programs: its blocks are mixed before the $L$ and $R$ programs and after
+the $P$ program, inside the same fused passes, however dense the transformed
+scheme is.  For the $3\times6\times3$ orientation the floor is where all nine
+outputs amplify alike; at DPS's point six are at $2.55$ and three at $1.44$.
+Two $3\times3$ rotations reach it, $U$ and $W$; the $6\times6$ side $V$ does
+not help, and diagonal rescalings gain nothing.  The rational reflection
+$\tfrac23J-I$ ($J$ the all-ones matrix) on both sides comes within $1.6\%$ of
+it: amplification ratio $2.28$ against DPS's $2.55$ and the floor's $2.24$,
+and $\ginf/g_2$ $4.22$ against $5.50$.  The programs grow from $383$
+operations to $491$ with the reflection and $668$ with the rotations
+(\path{orbit_points.py}); written out, the minimizer has $1{,}800$ nonzero
+coefficients where DPS's point has $960$.
+
+Measured as the level, in three binaries otherwise identical
+(Table~\ref{tab:r363pts}, file~\rf{r363pts}), the two points take the same
+time as DPS's ($0.98$--$1.01$) and divide the plans.  Where the level sits
+above another level, which is where the planner uses it at $6912$ and
+$13824$, the error is $0.83$--$0.97$ of that at DPS's point with the
+reflection and $0.82$--$0.92$ with the rotations.  Where it is the only level
+over the GEMM the error is no lower, and up to $15$--$18\%$ higher.  With
+the f32 passes computed in f64 the single-level penalty disappears ($1.00$
+and $1.02$ of DPS's point) and the two-level gain stays ($0.91$ and $0.90$;
+file~\rf{r363f64}): the penalty is the rounding of the mixing itself, and in
+a single level the amplified leaf error is not what bounds the error, so
+lowering the amplification gains nothing there.  The library keeps DPS's
+point; the mixed points would pay as a second form of the level, taken above
+another level.
+
+\begin{table}[!tbp]
+\centering\footnotesize
+\begin{tabular}{llrr}
+\toprule
+ & & reflection $\tfrac23J-I$ & a minimizer's rotations\\
+position of the level & plan & ($2.28$) & ($2.24$)\\
+\midrule
+alone & \lv{R363/G6}, $3456$ f32 & $1.15$ & $1.13$\\
+ & \lv{R363/G6}, $3456$ f64 & $1.00$ & $1.05$\\
+ & \lv{R363/G}, $6912$ f32 & $1.06$ & $1.05$\\
+ & \lv{R363/G}, $6912$ f64 & $1.07$ & $1.06$\\
+ & \lv{R363/G}, $13824$ f32 & $1.15$ & $1.07$\\
+ & \lv{R363/G}, $13824$ f64 & $1.08$ & $1.18$\\
+\midrule
+above another level & \lv{R363+4/R633/G6}, $6912$ f32 & $0.90$ & $0.89$\\
+ & \lv{R363+4/D48/G6}, $6912$ f32 & $0.86$ & $0.83$\\
+ & \lv{R363+2/R336/G6}, $6912$ f64 & $0.86$ & $0.88$\\
+ & \lv{R363+3/R633/G6}, $6912$ f64 & $0.97$ & $0.92$\\
+ & \lv{R363+3/R336/G6}, $13824$ f32 & $0.88$ & $0.82$\\
+ & \lv{R363+4/R363/G6}, $13824$ f32 & $0.83$ & $0.82$\\
+ & \lv{R363+4/R336/G3}, $13824$ f64 & $0.91$ & $0.91$\\
+\midrule
+below a $2\times2$ level & \lv{SW+4/R363/G6}, $3456$ f64 & $0.99$ & $0.92$\\
+\bottomrule
+\end{tabular}
+\caption{The $3\times6\times3$ level at two other points of its orbit, run
+as DPS's programs with the blocks mixed around them: the error against the
+exact product over the error at DPS's point (amplification ratio $2.55$),
+geometric means over four random instances (two at $13824$).  The times are
+within $2\%$ of each other on every plan.}
+\label{tab:r363pts}
+\end{table}
 
 \subsection{The error model and its validation}\label{sec:errmodel}
 
@@ -1266,9 +1330,9 @@ has coefficients in $\mathbb{Q}(\sqrt3)$ \cite{DPS24}: its amplification
 ratio is $1.87$ per level, $10\%$ below the dyadic point's $2.08$, and its
 $\ginf$ is $5.97$ against $6.05$.  (Table~\ref{tab:menu} shows the same gap
 as $3.86$ against $4.87$, because it raises both to a $4\times4$-equivalent
-saving, a power of $2.15$.)  The library runs the dyadic point because its
-scalings are exact, and every other number in this report was measured with
-it.  Run as the level, the $\mathbb{Q}(\sqrt3)$ point is the more accurate
+saving, a power of $2.15$.)  The dyadic point was taken for its exact
+scalings, and it is the point with which the numbers of the other sections
+were measured.  Run as the level, the $\mathbb{Q}(\sqrt3)$ point is the more accurate
 by about what the amplification ratios say (Table~\ref{tab:q3},
 file~\rf{swq3}): its error is $0.83$--$0.94$ of the dyadic point's at one
 level and $0.62$--$0.68$ at four, against $0.90$ and $0.66$ predicted, and
@@ -1282,6 +1346,21 @@ library's optimized programs, so the form of the program is not what
 separates the two points.  The irrational constants, which all round, cost
 nothing that shows, as in the rescaling test of Section~\ref{sec:disc}; DPS's
 own measurements order the two points the same way \cite[Figure~1]{DPS24}.
+
+The library has since been moved to the $\mathbb{Q}(\sqrt3)$ point
+(its programs are \path{schemes/sw/q3_{L,R,P}.slp}; the kernel generator's
+option \path{--sw schemes/opt/dps7} builds the dyadic kernels) and the campaign of
+Section~\ref{sec:results} repeated on it (file~\rf{final3}).  The
+calibration's factor for \lv{SW} falls from $1.05$ to $0.94$ in f32 and from
+$0.97$ to $0.96$ in f64; the plans with a $2\times2$ level have $0.85$--$0.95$
+of the errors that Section~\ref{sec:results} reports for them, and the plans
+without one have the same errors to the digits printed.  The times are within the
+run-to-run spread, and the recalibration moves the planner's picks among
+plans within $2\%$ of each other, as any recalibration does
+(Section~\ref{sec:planner}): at $3456$ f64 it now takes \lv{SW+4/R363/G6}
+($0.0714$~s, $0.69$ of the GEMM's error) where it took \lv{R363/G4}
+($0.0715$~s, $0.58$).  The tables of Section~\ref{sec:results} are the earlier
+campaign's.
 
 \begin{table}[!tbp]
 \centering\footnotesize
@@ -2399,7 +2478,11 @@ more hardware, and found the boundary rather than a level
 \item \emph{We did not find one.}  Around the known $\mm{3\times4\times6:54}$
   and $\mm{3\times3\times6:40}$ schemes: flip graphs \cite{KM22} over
   $\mathbb{F}_2$ and $\mathbb{F}_3$, with and without an imposed symmetry
-  \cite{MP25}; an exact search for $j$ products that can be rewritten with $j-1$, over $\mathbb{F}_2$ up to $j=9$ and in characteristic $0$ up to $j=8$ (for the rank-$40$ scheme a proof up to $j=5$, and for all but $0.07\%$ of the subsets up to $j=8$); and numerical descent on the variety of exact
+  \cite{MP25}; an exact search for a set of $j$ of a scheme's products whose
+  sum $j-1$ products can also compute, which would lower the rank by one,
+  for every size $j$ up to $9$ over $\mathbb{F}_2$ and up to $8$ in
+  characteristic $0$ (for the rank-$40$ scheme a proof up to $j=5$, and for
+  all but $0.07\%$ of the subsets of size up to $8$); and numerical descent on the variety of exact
   decompositions, on which $\mm{3\times3\times6:40}$ is an isolated point and
   $\mm{3\times4\times6:54}$ lies on an $8$-parameter family.  None found a
   scheme of lower rank.  These are searches near known schemes, not lower
@@ -2425,9 +2508,11 @@ more hardware, and found the boundary rather than a level
 What would move f64 on the machine is a rank record or more hardware;
 nothing else we measured does.
 
-What is next.  A dyadic point of the $3\times6\times3$ orientation closer to
-its class's amplification floor (DPS's is 14\% above it) would improve the
-plans that use it; the tools exist from the $4\times4$ search.  DPS's $\mathbb{Q}(\sqrt3)$ point of the $2\times2$ scheme measures 3--12\% less error than the dyadic point in the plans with a $2\times2$ level on top, in the same time (Section~\ref{sec:sw}); the library has not switched to it.  Fusing the $L$
+What is next.  The mixed points of the $3\times6\times3$ level
+(Section~\ref{sec:accuracy}) cut the error of the plans that have it above
+another level by 9--18\% at no cost in time; they should enter the menu as a
+second form of the level, which needs an error model that tells the two
+positions of a level apart.  DPS's $\mathbb{Q}(\sqrt3)$ point of the $2\times2$ scheme measures 3--12\% less error than the dyadic point in the plans with a $2\times2$ level on top, in the same time, and the library now runs it (Section~\ref{sec:sw}); the tables of Section~\ref{sec:results} should be regenerated from a campaign on it.  Fusing the $L$
 and $R$ passes into GEMM operand packing, the ``Strassen reloaded'' design,
 needs an open GEMM kernel; on the machine the vendor's SME kernels are
 closed, so it waits for another machine (x86-64 with BLIS, or the Apple GPU).
@@ -2439,8 +2524,6 @@ small, compute them in one read of each input, and perhaps become the
 default; a planner could also detect cross structure and fall back to the
 GEMM or to a block product.  The
 library takes $C=AB$ only: $\alpha$, $\beta$ and transposes are a day's work.
-And the Rust passes on small blocks should be brought to the C library's
-speed.
 
 \appendix
 
@@ -2511,9 +2594,19 @@ system indexing process; file~\rf{rustgpu}) Rust runs
 \lv{R363/G6M} at $3456$ in $0.0155$--$0.0160$~s against $0.0151$--$0.0188$ in
 C and at $6912$ in $0.087$--$0.099$ against $0.084$--$0.093$, and the
 pipelined \lv{R363+4/R336/G6M} at $13824$ 5--10\% slower, $0.611$--$0.628$
-against $0.559$--$0.580$.  The Rust passes on
-blocks under about $600$ are $1.2$--$2\times$ slower (dispatch and per-chunk
-allocation), which only shows when Rust calibrates for itself.  Two traps
+against $0.559$--$0.580$.  The Rust passes on small blocks were slower than the C library's until the
+way they start was changed.  They handed a pass's $64$ row chunks to a
+parallel iterator, which splits them in halves and wakes one sleeping thread
+of the pool per split, so that the pool came up over six rounds; a pass now
+spawns one task per chunk at once.  Measured as the Rust calibration measures
+a pass, against the C library's calibrated entries (three rounds,
+file~\rf{rustpass}), the passes took $1.27$, $1.13$ and $1.09$ times the C
+library's time in f32 on blocks of side up to $300$, $600$ and $1200$ ($1.12$,
+$1.04$ and $1.02$ in f64) and now take $1.08$, $1.00$ and $1.05$ ($1.01$,
+$0.96$ and $0.99$).  GCD's \texttt{dispatch\_apply}, which is how the C
+library starts a pass, was tried in its place and is slower there ($1.30$,
+$1.14$, $1.07$ in f32), because the work before and after a pass is on the
+pool.  The difference only shows when Rust calibrates for itself.  Two traps
 found on the way: a zeroed \texttt{Vec} gets its pages on first write, so
 timed buffers must be written first; and a lone multi-threaded GEMM issued
 right after GEMM streams on the rayon pool runs 15--25\% slower and stays so,
@@ -2829,7 +2922,11 @@ The result files cited in the text as F1, F2, \dots\ are in \path{matmul/fastmm/
 \rfitem{rustzva}{rust_zva_2026-11-15.txt}: the Rust port with the \texttt{DC~ZVA} passes;
 \rfitem{rustgpu}{rust_gpu_2026-11-16.txt}: the Rust GPU leaves against C;
 \rfitem{fused}{fused_vs_separate_2026-11-22.txt}: fused $2\times2$ levels against one-at-a-time Strassen--Winograd at equal depth (\path{run_fused_vs_separate.sh});
-\rfitem{swq3}{sw_q3_2026-11-22.txt}: the $2\times2$ level at the $\mathbb{Q}(\sqrt3)$ point against the dyadic point (\path{run_sw_q3.sh}; the programs by \path{sw_points.py}, the table by \path{summarize_sw_q3.py} in \path{sw_q3_2026-11-22_summary.txt}).
+\rfitem{swq3}{sw_q3_2026-11-22.txt}: the $2\times2$ level at the $\mathbb{Q}(\sqrt3)$ point against the dyadic point (\path{run_sw_q3.sh}; the programs by \path{sw_points.py}, the table by \path{summarize_sw_q3.py} in \path{sw_q3_2026-11-22_summary.txt});
+\rfitem{final3}{final_campaign_2026-11-22.txt}: the campaign repeated with the $2\times2$ level at the $\mathbb{Q}(\sqrt3)$ point (\path{run_final3.sh});
+\rfitem{rustpass}{rust_small_passes_2026-11-22.txt}: the Rust passes on small blocks against the C library's calibrated passes, by pass driver (\path{run_rust_small_passes.sh});
+\rfitem{r363pts}{r363_points_2026-11-22.txt}: the $3\times6\times3$ level at other points of its orbit (\path{run_r363_points.sh}; the table by \path{summarize_r363_points.py} in \path{r363_points_2026-11-22_summary.txt});
+\rfitem{r363f64}{r363_points_f64pass_2026-11-22.txt}: the same points with the f32 passes computed in f64.
 \end{description}
 
 

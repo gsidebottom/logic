@@ -333,9 +333,51 @@ pub fn product_chunks<'a, T: Real>(lv: Level, inp: &'a [T], bs: usize, t: Shape,
     }
 }
 
-/// run chunks on every thread of the pool
+/// how run_par hands a pass's chunks to threads (FMM_PASS_DISPATCH, read once)
+#[derive(Clone, Copy, PartialEq)]
+enum Dispatch {
+    /// one task per chunk on the library's pool, all spawned at once (the default)
+    Spawn,
+    /// a parallel iterator over the chunks on the library's pool (the driver until 2026-11-22)
+    Iter,
+    /// GCD's dispatch_apply on the system's threads, as the C library runs a pass
+    Gcd,
+}
+
+fn dispatch() -> Dispatch {
+    static D: std::sync::OnceLock<Dispatch> = std::sync::OnceLock::new();
+    *D.get_or_init(|| match std::env::var("FMM_PASS_DISPATCH").as_deref().map(str::trim) {
+        Ok("iter") => Dispatch::Iter,
+        Ok("gcd") => Dispatch::Gcd,
+        _ => Dispatch::Spawn,
+    })
+}
+
+/// Run the chunks of a pass and return when all are done: by default one task per chunk on the
+/// library's pool, spawned at once, so that every sleeping thread is woken at the start.  The
+/// parallel iterator used until 2026-11-22 (FMM_PASS_DISPATCH=iter) splits the chunks in halves,
+/// each split waking one thread, so the pool came up over six rounds of wake-ups, which made the
+/// passes on blocks under about 600 slower than the C library's; FMM_PASS_DISPATCH=gcd runs the
+/// chunks with GCD's dispatch_apply as the C library does, which is no faster here because the
+/// work before and after a pass is on the pool (results/rust_small_passes_2026-11-22.txt).
 pub fn run_par<T: Real>(chunks: Vec<Chunk<'_, T>>) {
-    chunks.into_par_iter().for_each(Chunk::run);
+    match dispatch() {
+        Dispatch::Spawn => rayon::scope(|sc| {
+            for c in chunks {
+                sc.spawn(move |_| c.run());
+            }
+        }),
+        Dispatch::Iter => chunks.into_par_iter().for_each(Chunk::run),
+        Dispatch::Gcd => {
+            let cells: Vec<Mutex<Option<Chunk<'_, T>>>> = chunks.into_iter().map(|c| Mutex::new(Some(c))).collect();
+            sys::apply(cells.len(), &|i| {
+                let c = cells[i].lock().unwrap_or_else(|e| e.into_inner()).take();
+                if let Some(c) = c {
+                    c.run();
+                }
+            });
+        }
+    }
 }
 
 // ---- products ------------------------------------------------------------------------------

@@ -1,19 +1,20 @@
 #!/bin/zsh
 # The 2x2 level at DPS's optimum in Q(sqrt 3) against the library's dyadic point (2026-11-22).  Three binaries,
-# otherwise identical: dps7 (build/bench_fmm: the dyadic point, PLinOpt-optimized programs, the library's),
+# otherwise identical: dps7 (build/bench_fmm_dps7: the dyadic point, PLinOpt-optimized programs, the library's
+# until 2026-11-22; the run of that day used build/bench_fmm, then the same kernels),
 # dps7d (build/bench_fmm_sw_dps7d: the dyadic point as direct sums, the control for the programs' form) and
 # q3 (build/bench_fmm_sw_q3: the Q(sqrt 3) point as direct sums, constants rounded to double; sw_points.py).
 # Errors against the exact product (FMM_EXACT: f32 the f64 product, f64 the compensated product), four random
 # instances (FMM_SEED).  Phase 1: the level alone and recursively.  Phase 2: the plans with a 2x2 level on top
 # of Table "tab:sw" of the report, by name (no calibration is read or written: FMM_CALIB_DIR is an empty
-# scratch directory).  Build first: make build/bench_fmm build/bench_fmm_sw_dps7d build/bench_fmm_sw_q3
+# scratch directory).  Build first: make build/bench_fmm_dps7 build/bench_fmm_sw_dps7d build/bench_fmm_sw_q3
 # Output: results/sw_q3_2026-11-22.txt
 cd "$(dirname "$0")" || exit 1
 SP=${SW_Q3_SCRATCH:?set SW_Q3_SCRATCH to a scratch directory for the reference cache}
 mkdir -p "$SP/ref" "$SP/calib"
 unset FMM_INPUT FMM_PRESCALE
 export FMM_EXACT=1 FMM_REFCACHE=$SP/ref FMM_CALIB_DIR=$SP/calib
-typeset -A BIN; BIN=(dps7 bench_fmm dps7d bench_fmm_sw_dps7d q3 bench_fmm_sw_q3)
+typeset -A BIN; BIN=(dps7 bench_fmm_dps7 dps7d bench_fmm_sw_dps7d q3 bench_fmm_sw_q3)
 echo "# the 2x2 level: dps7 (dyadic point, optimized programs) / dps7d (dyadic point, direct sums) / q3 (Q(sqrt 3) point, direct sums); $(date '+%Y-%m-%d %H:%M'); $(sysctl -n machdep.cpu.brand_string); logic $(git rev-parse --short HEAD) + working tree"
 echo "# top CPU users before the run:"; ps -axo pcpu,pid,etime,comm -r | head -6 | sed 's/^/#   /'
 run() {   # n precision rounds seed methods

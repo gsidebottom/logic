@@ -5,8 +5,8 @@ matrices, n x n or an m x k matrix A times a k x n matrix B, by fused levels of 
 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic (their 262-operation accurate program,
 PLinOpt's 4x4x4_48_accurate_262), of their accurate <3x3x6:40> scheme in its three orientations
 (rectangular levels: a plan tracks the shape of every level's products) and of a <2x2x2:7> level
-(DPS's dyadic accurate point of ISSAC 2024; Strassen-Winograd's programs with `gen_kernels.py --sw
-winograd`) over Accelerate's GEMM, with GEMM streams, pipelined passes and padding, as a
+(DPS's most accurate point, in Q(sqrt 3), of ISSAC 2024; Strassen-Winograd's programs with
+`gen_kernels.py --sw winograd`) over Accelerate's GEMM, with GEMM streams, pipelined passes and padding, as a
 calibrated planner picks for this machine, shape and precision.  On an M4 Pro, from n = 3000 to
 16384, it is 1.04-1.60x (f32) and 1.29-1.99x (f64) faster than Accelerate's GEMM, with the C
 library's plans, speed and results (bit for bit).
@@ -31,7 +31,7 @@ always correct.  `fmm::plan(n, f64, max_growth)` and `fmm::plan_mkn(m, k, n, f64
 tell which plan a call runs and its predicted time and error.  `max_growth` is the error budget on the plan's
 predicted error over the GEMM's: 0 the default of 1 (a plan predicted no less accurate than the
 GEMM it replaces; the plans with a 2x2 level on top qualify too since the level's programs are
-DPS's dyadic point, where Strassen-Winograd's needed a budget of 2), a positive value that budget,
+at an accurate point of DPS's, where Strassen-Winograd's needed a budget of 2), a positive value that budget,
 a negative value no budget (the fastest plan).  The model: the GEMM's
 own error against the exact product, one factor per level measured one level over the GEMM at
 2304, and a depth factor once per level after the first, all from the calibration.

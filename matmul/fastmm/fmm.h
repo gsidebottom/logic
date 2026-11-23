@@ -6,16 +6,16 @@
  * program, PLinOpt's 4x4x4_48_accurate_262), of their accurate <3x3x6:40> scheme in its three
  * orientations (R336, R363, R633: rectangular levels whose products are rectangular sub-problems,
  * so a plan tracks the shape (m x k)(k x n) of each level's products; the three orientations in
- * turn return to square blocks, dividing n by 54) and of a <2x2x2:7> level (SW: DPS's dyadic
- * accurate point, Eq. (38) of their ISSAC 2024 paper; Strassen-Winograd's programs with
- * gen_kernels.py --sw winograd), over Accelerate GEMMs, with GEMM streams and pipelined passes.
+ * turn return to square blocks, dividing n by 54) and of a <2x2x2:7> level (SW: DPS's most
+ * accurate point, in Q(sqrt 3), Eq. (36) of their ISSAC 2024 paper; their dyadic point with
+ * gen_kernels.py --sw schemes/opt/dps7, Strassen-Winograd's programs with --sw winograd), over Accelerate GEMMs, with GEMM streams and pipelined passes.
  * max_growth is the error budget: the plan's predicted error over the classical GEMM's on the
  * same problem, from per-level factors measured against the exact product at calibration (an
  * estimate, good to about 25%).  0 means the default budget of 1, a plan predicted no less
  * accurate than the GEMM it replaces (the accurate levels are more accurate, so the fast plans
  * qualify, and so do the plans with a 2x2 level on top, the fastest in deep f64, since the level's
- * programs are DPS's dyadic point: measured at 0.6-1.0 of the GEMM's error, where Strassen-Winograd's
- * programs needed a budget of 2); a positive value is that budget; a negative value means no budget,
+ * programs are at an accurate point of DPS's: measured at 0.6-1.0 of the GEMM's error, where
+ * Strassen-Winograd's programs needed a budget of 2); a positive value is that budget; a negative value means no budget,
  * the fastest plan whatever its error.
  *
  * The plans come from the calibration cache (FMM_CALIB_DIR, default ~/Library/Caches/fmm, one

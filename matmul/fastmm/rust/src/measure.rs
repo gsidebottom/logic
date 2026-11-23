@@ -125,6 +125,20 @@ fn time_level<T: Real>(lv: Level, t: Shape, streams: usize, gpu: bool, a: &[T], 
     (p, q)
 }
 
+/// The pass time of one fused level whose products have shape t, measured as the calibration
+/// measures it (time_level with a lone GEMM per product, on the library's pool), on matrices
+/// allocated here: for comparing the passes with the C library's calibrated entries
+/// (src/bin/passcal.rs).
+pub fn level_pass_time<T: Real>(lv: Level, t: Shape) -> f64 {
+    let s = lv.up(t);
+    let (bss, bst, bsm) = exec::block_strides(t);
+    let one = T::from_f64(0.5);
+    let (a, b) = (vec![one; s.m * s.k], vec![one; s.k * s.n]);
+    let mut c = vec![one; s.m * s.n];
+    let mut work = vec![one; lv.rank() * (bss + bst + bsm)];
+    crate::pool().install(|| time_level(lv, t, 0, false, &a, &b, &mut c, &mut work)).0
+}
+
 /// every sub-problem reads the same matrix
 struct Same<'a, T>(&'a [T]);
 impl<T: Sync> Blocks<T> for Same<'_, T> {

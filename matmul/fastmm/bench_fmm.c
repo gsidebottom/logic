@@ -3,7 +3,7 @@
  * Methods (row-major n x n, products on Accelerate's GEMM):
  *   classical  one GEMM
  *   blkG       classical as G^3 block GEMMs of size n/G (G = 2, 4, 8) accumulating into C
- *   sw1        the SW level (<2x2x2:7>: DPS's dyadic accurate point by default, Strassen-Winograd
+ *   sw1        the SW level (<2x2x2:7>: DPS's Q(sqrt 3) point by default, Strassen-Winograd
  *              with gen_kernels.py --sw winograd), one level (7 GEMMs of n/2), one fused pass per side
  *   sw2rec     two SW levels recursively (49 GEMMs of n/4), a pass per level
  *   sw3rec     three levels (343 GEMMs of n/8); sw4rec four levels (2,401 of n/16)

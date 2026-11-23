@@ -256,7 +256,9 @@ mod tests {
     }
 
     /// plans with the GPU's leaves compute what the same plans compute on the CPU, bit for bit:
-    /// a shared leaf, a pipeline over one, and the classical product in strips (against the GEMM)
+    /// a shared leaf, a pipeline over one, and the classical product in strips (against the GEMM).
+    /// Only with the feature gpu: without it no product goes to the GPU and the test has nothing to compare.
+    #[cfg(feature = "gpu")]
     #[test]
     fn plans_with_the_gpu_match_the_cpu_bit_for_bit() {
         use crate::exec::exec;

@@ -22,6 +22,15 @@ required-features = ["cbench"]
 name = "crosscheck"
 required-features = ["cbench"]
 
+[[bin]]
+name = "passsmall"
+required-features = ["cbench"]
+
+# compares the two libraries: needs the C library, as the bins above (without this, cargo test fails to link it)
+[[example]]
+name = "determinism"
+required-features = ["cbench"]
+
 # its own workspace, apart from the repository's crate
 [workspace]
 

@@ -38,8 +38,9 @@ Levels (a plan names its levels from the top to the leaf, e.g. `D48+4/D48/G6`):
 - `R336`, `R363`, `R633`: their accurate <3x3x6:40> scheme in its three orientations,
   rectangular levels whose products are rectangular sub-problems (the three in turn return to
   square blocks); `T336`, `T363`, `T633`: a ternary <3x3x6:42> scheme, a trial.
-- `SW`: a <2x2x2:7> level with DPS's dyadic accurate point (`schemes/opt/dps7_*`;
-  Strassen-Winograd's programs with `gen_kernels.py --sw winograd`); `SW2`: its Kronecker square,
+- `SW`: a <2x2x2:7> level at DPS's most accurate point, in Q(sqrt 3) (`schemes/sw/q3_*`, written
+  and checked by `sw_points.py`; their dyadic point with `gen_kernels.py --sw schemes/opt/dps7`,
+  Strassen-Winograd's programs with `--sw winograd`); `SW2`: its Kronecker square,
   one <4x4x4:49> level.
 - `G`: the leaf, Accelerate's GEMM; `Gk` runs the products in k single-threaded streams; `B2`,
   `B4`, `B8`: classical blocked GEMMs.  A level's `+p` suffix sets the pass threads of its

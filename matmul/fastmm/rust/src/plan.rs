@@ -1,6 +1,6 @@
 //! Plans: fused levels from the top, ending in a leaf.  Written as in the C library: G (one GEMM),
 //! Gk (a level's products as k single-threaded GEMM streams), B2 (classical blocked 2x2), SW
-//! (the <2x2x2:7> level: DPS's dyadic accurate point, or Strassen-Winograd with gen_kernels.py
+//! (the <2x2x2:7> level: DPS's Q(sqrt 3) point, or Strassen-Winograd with gen_kernels.py
 //! --sw winograd), D48 (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and
 //! Sedoglavic), R336 / R363 / R633 (their accurate <3x3x6:40> scheme in its three orientations,
 //! rectangular levels), and X+p (the level's sub-problems pipelined on p pass threads).  With the

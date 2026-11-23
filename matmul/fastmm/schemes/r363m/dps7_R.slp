@@ -1,0 +1,21 @@
+# The <2x2x2:7> level's right program (DPS's dyadic accurate point, see dps7_L.slp): 4 blocks of B
+# -> 7 right factors; i0 = B11, i1 = B12, i2 = B21, i3 = B22.  Cancellation-free, 8 additions and
+# 3 scalings by powers of two.
+t1:=i0-i3;
+t2:=i1/4;
+t3:=i2-t2;
+t4:=i1/2;
+t5:=t1/2;
+t6:=i0+t4;
+t7:=t4-i3;
+t8:=t5-t3;
+t9:=i3+t4;
+t10:=i0-t4;
+t11:=t3+t5;
+o0:=t1;
+o1:=t6;
+o2:=t7;
+o3:=t8;
+o4:=t9;
+o5:=t10;
+o6:=t11;

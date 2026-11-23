@@ -1,0 +1,21 @@
+# The <2x2x2:7> level's product program (DPS's dyadic accurate point, see dps7_L.slp): 7 products
+# -> 4 blocks of C; o0 = C11, o1 = C12, o2 = C21, o3 = C22.  Cancellation-free, 11 additions and
+# 3 scalings by powers of two.
+t1:=i2-i4;
+t2:=t1/2;
+t3:=i0-t2;
+t4:=i2+i4;
+t5:=t4/4;
+t6:=i1-i3;
+t7:=t6+i5;
+t8:=t7+i6;
+t9:=t8/2;
+t10:=t5+t9;
+t11:=i1-i5;
+t12:=t11+t3;
+t13:=i3+i6;
+t14:=t13+t3;
+o0:=t10;
+o1:=t12;
+o2:=t14;
+o3:=t4;

@@ -1,0 +1,23 @@
+# The <2x2x2:7> level's left program: DPS's dyadic accurate point, Eq. (38) of Dumas, Pernet and
+# Sedoglavic, "Strassen's algorithm is not optimally accurate", ISSAC 2024 (PLinOpt's
+# 2x2x2_7_DPS-evenpow-12.2034).  4 blocks of A -> 7 left factors; blocks row-major, i0 = A11,
+# i1 = A12, i2 = A21, i3 = A22.  Cancellation-free (PLinOpt optimizer -D), one operation per line as
+# gen_kernels.py's parser wants: 8 additions and 3 scalings by powers of two (exact).
+t1:=i2-i1;
+t2:=i3/4;
+t3:=i0-t2;
+t4:=i3/2;
+t5:=t1/2;
+t6:=t3-t5;
+t7:=i2-t4;
+t8:=i1-t4;
+t9:=i2+t4;
+t10:=t3+t5;
+t11:=i1+t4;
+o0:=t1;
+o1:=t6;
+o2:=t7;
+o3:=t8;
+o4:=t9;
+o5:=t10;
+o6:=t11;

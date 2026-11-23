@@ -1,8 +1,8 @@
 /* fmm.c: fast matrix multiplication on Apple silicon (fmm.h), and the core of bench_fmm.
  *
- * A plan is a sequence of fused levels from the top -- SW (the <2x2x2:7> level: DPS's dyadic
- * accurate point, Eq. (38) of their ISSAC 2024 paper, or Strassen-Winograd with gen_kernels.py
- * --sw winograd), D48 (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic, as their
+ * A plan is a sequence of fused levels from the top -- SW (the <2x2x2:7> level: DPS's most
+ * accurate point, in Q(sqrt 3), Eq. (36) of their ISSAC 2024 paper, or Strassen-Winograd with
+ * gen_kernels.py --sw winograd), D48 (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and Sedoglavic, as their
  * 262-operation accurate program; see gen_kernels.py), SW2 (the 2x2 level's Kronecker square) --
  * ending in a leaf: G (one GEMM, Accelerate), its products
  * as k single-threaded GEMM streams (Gk) or with NEON products (GkNj), or classical blocked
@@ -153,7 +153,7 @@ static void evict(void) {
 
 /* ---- plans: fused levels from the top, ending in a leaf -------------------------------- */
 /* leaves: G = one GEMM; B2, B4, B8 = classical as g^3 block GEMMs of n/g accumulating into C.
- * fused levels: SW = the <2x2x2:7> level (DPS's dyadic accurate point by default, Strassen-Winograd
+ * fused levels: SW = the <2x2x2:7> level (DPS's Q(sqrt 3) point by default, Strassen-Winograd
  * with gen_kernels.py --sw winograd), D48 = DPS's <4x4x4:48>, SW2 = the 2x2 level's Kronecker
  * square <4x4x4:49>.  NONE (calibration only) skips the products, leaving a level's passes.  A plan
  * entry is a level code; the G leaf below a fused level may add k << 8 (written Gk): the

@@ -21,6 +21,19 @@ unsafe extern "C" {
     fn pthread_set_qos_class_self_np(qos: u32, relative_priority: c_int) -> c_int;
 }
 
+/// a GCD queue (opaque)
+#[repr(C)]
+struct DispatchQueue {
+    _opaque: [u8; 0],
+}
+
+// Grand Central Dispatch (libSystem): the C library's pass driver
+unsafe extern "C" {
+    fn dispatch_get_global_queue(identifier: isize, flags: usize) -> *mut DispatchQueue;
+    fn dispatch_apply_f(iterations: usize, queue: *mut DispatchQueue, context: *mut std::ffi::c_void,
+                        work: extern "C" fn(*mut std::ffi::c_void, usize));
+}
+
 /// the extent of a rows x cols row-major matrix with leading dimension ld, in elements
 pub fn extent(rows: usize, cols: usize, ld: usize) -> usize {
     if rows == 0 || cols == 0 { 0 } else { (rows - 1) * ld + cols }
@@ -58,6 +71,28 @@ pub fn dgemm(s: Shape, a: &[f64], lda: usize, b: &[f64], ldb: usize, beta: f64, 
 pub fn set_single_threaded(single: bool) {
     // SAFETY: a thread-local setting, no memory involved
     unsafe { BLASSetThreading(if single { 1 } else { 0 }) };
+}
+
+/// f(0), ..., f(n - 1) on the system's worker threads at user-interactive priority, the calling
+/// thread taking part, returning when all are done: GCD's dispatch_apply on the global queue, which
+/// is how the C library runs a pass.  Its threads start working about 20 microseconds after the
+/// call where a sleeping rayon pool takes about 90 (results/rust_small_passes_2026-11-22.txt), which
+/// is most of a pass on blocks under about 300.  A panic in f aborts the process (it cannot unwind
+/// through the C frames).
+pub fn apply(n: usize, f: &(dyn Fn(usize) + Sync)) {
+    extern "C" fn call(ctx: *mut std::ffi::c_void, i: usize) {
+        // SAFETY: ctx is the address of `f` below, which outlives the dispatch_apply_f call
+        let f = unsafe { &*(ctx as *const &(dyn Fn(usize) + Sync)) };
+        f(i)
+    }
+    if n == 0 {
+        return;
+    }
+    let ctx = &f as *const &(dyn Fn(usize) + Sync) as *mut std::ffi::c_void;
+    // SAFETY: dispatch_apply_f returns only when every call(ctx, i) has returned, so the borrow of
+    // f is live throughout; f is Sync, so concurrent calls on several threads are allowed; the
+    // global queue is a process-wide object that is never released
+    unsafe { dispatch_apply_f(n, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE as isize, 0), ctx, call) };
 }
 
 /// the calling thread at user-interactive priority, as GCD runs the C library's work

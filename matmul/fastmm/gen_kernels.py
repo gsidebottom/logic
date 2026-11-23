@@ -11,12 +11,15 @@ memory reads every input block once and writes every output block once, intermed
 registers, and the program's operation count costs only arithmetic.  Also emitted, for the
 op-by-op comparison: the program as a list of block operations (one pass per operation).
 
-Schemes: sw (the <2x2x2:7> level: by default DPS's dyadic accurate point, Eq. (38) of Dumas, Pernet
-and Sedoglavic, "Strassen's algorithm is not optimally accurate", ISSAC 2024, from
-schemes/opt/dps7_{L,R,P}.slp, 27 additions and 9 scalings by powers of two, amplification 1.47 per
-level against Strassen-Winograd's 2.12 at the same pass cost; --sw winograd takes the
-Strassen-Winograd programs below, 15 additions, the default until 2026-11-02; --sw PREFIX any
-PREFIX_{L,R,P}.slp in the one-operation-per-line syntax of parse()), sw2 (the 2x2 scheme's Kronecker
+Schemes: sw (the <2x2x2:7> level: by default DPS's most accurate point, in Q(sqrt 3), Eq. (36) of
+Dumas, Pernet and Sedoglavic, "Strassen's algorithm is not optimally accurate", ISSAC 2024
+(PLinOpt's 2x2x2_7_DPS-accurate), from schemes/sw/q3_{L,R,P}.slp: direct sums written and checked
+exactly by sw_points.py, constants rounded to double, amplification 1.32 per level; measured at
+0.88-0.97 of the error of their dyadic point (Eq. (38), schemes/opt/dps7_*, amplification 1.47,
+the default from 2026-11-02 to 2026-11-22: --sw schemes/opt/dps7) in plans with a 2x2 level on
+top, at the same pass cost (results/sw_q3_2026-11-22.txt); --sw winograd takes the
+Strassen-Winograd programs below, 15 additions, amplification 2.12, the default until 2026-11-02;
+--sw PREFIX any PREFIX_{L,R,P}.slp in the one-operation-per-line syntax of parse()), sw2 (the 2x2 scheme's Kronecker
 square, one <4x4x4:49> scheme), dps48 (the rank-48 <4x4x4:48> scheme of Dumas, Pernet and
 Sedoglavic, arXiv:2506.13242; DPS = their initials).  dps48's fused kernels come from DPS's
 262-operation accurate program in PLinOpt's data (../dps48/plinopt/data/4x4x4_48_accurate_262):
@@ -48,8 +51,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CAND = os.path.join(HERE, "..", "dps48", "cand48")
 DPS48_FUSED = os.path.join(HERE, "..", "dps48", "plinopt", "data", "4x4x4_48_accurate_262")
 
-# the 2x2 level's default programs: DPS's dyadic accurate point (schemes/opt/dps7_{L,R,P}.slp)
-SW_DEFAULT = os.path.join(HERE, "schemes", "opt", "dps7")
+# the 2x2 level's default programs: DPS's Q(sqrt 3) point (schemes/sw/q3_{L,R,P}.slp, sw_points.py)
+SW_DEFAULT = os.path.join(HERE, "schemes", "sw", "q3")
 
 # Strassen-Winograd in PLinOpt's format (--sw winograd).  Blocks row-major: A0 = A11, A1 = A12, A2 = A21, A3 = A22.
 # S1 = A21 + A22, S2 = S1 - A11, S3 = A11 - A21, S4 = A12 - S2; products M1..M7 =
@@ -97,7 +100,7 @@ o3:=t7;
 
 
 def sw_programs():
-    """the <2x2x2:7> level's programs as (name, L, R, P): DPS's dyadic accurate point from
+    """the <2x2x2:7> level's programs as (name, L, R, P): DPS's Q(sqrt 3) point from
     SW_DEFAULT, Strassen-Winograd with --sw winograd, or any PREFIX_{L,R,P}.slp with --sw PREFIX
     (one operation per line, outputs as copies, as parse() reads)"""
     src = sys.argv[sys.argv.index("--sw") + 1] if "--sw" in sys.argv else SW_DEFAULT

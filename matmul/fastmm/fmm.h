@@ -10,8 +10,9 @@
  * accurate point, in Q(sqrt 3), Eq. (36) of their ISSAC 2024 paper; their dyadic point with
  * gen_kernels.py --sw schemes/opt/dps7, Strassen-Winograd's programs with --sw winograd), over Accelerate GEMMs, with GEMM streams and pipelined passes.
  * max_growth is the error budget: the plan's predicted error over the classical GEMM's on the
- * same problem, from per-level factors measured against the exact product at calibration (an
- * estimate, good to about 25%).  0 means the default budget of 1, a plan predicted no less
+ * same problem, by a model of the leaf's error amplified by every level and of each level's own
+ * rounding amplified by the levels above it, fitted against the exact product at calibration (an
+ * estimate: errors within 0.8-1.25, the ratio between two plans to about 10%).  0 means the default budget of 1, a plan predicted no less
  * accurate than the GEMM it replaces (the accurate levels are more accurate, so the fast plans
  * qualify, and so do the plans with a 2x2 level on top, the fastest in deep f64, since the level's
  * programs are at an accurate point of DPS's: measured at 0.6-1.0 of the GEMM's error, where
@@ -34,7 +35,7 @@
  *
  * Faster first, more accurate second: of the plans predicted within 3% of the fastest within the
  * budget (8% with the GPU, whose timings repeat less well), the planner takes one predicted at
- * least 25% more accurate, the error model's resolution.
+ * least 10% more accurate, the error model's resolution.
  *
  * The passes claim their output lines with DC ZVA before writing them, so that a store does not
  * first fetch from memory a line it is about to overwrite (FMM_ZVA=0 switches it off; the results

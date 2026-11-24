@@ -22,14 +22,31 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 pub const FORMAT: u32 = 5;
-/// the size of the error model's measurements: 16 (D48/D48), 3 and 6 (the R levels) divide it
+/// the size of the error model's measurements: 16 (D48/D48) and 36 (the R levels in pairs) divide it
 pub const N_E: usize = 2304;
-/// the error model's plans and their entry names
-/// the error model's plans at N_E, each measured against the exact product; the last, the
-/// classical GEMM alone (EG), is the model's base, and a cache without it has the old entries
-/// (measured against the GEMM) and re-measures all of them
-pub const ERR_PLANS: [&str; 7] = ["SW/G", "D48/G", "D48/D48/G", "R336/G", "R363/G", "R633/G", "G"];
-pub const ERR_NAMES: [&str; 7] = ["ESW", "ED48", "ED48D48", "ER336", "ER363", "ER633", "EG"];
+/// the error model's levels; its entries are the errors against the exact product, at N_E, of the
+/// GEMM alone (XG, entry 0), of each of these levels over the GEMM (XSW, ...; entry 1 + a) and of
+/// each ordered pair of them (XSW/D48: SW on top; entry 6 + 5 a + b): the root mean square over
+/// ERR_SEEDS random instances, since the max-norm error of one instance scatters 10-20%
+pub const ERR_LV: [Level; 5] = [Level::Sw, Level::D48, Level::R336, Level::R363, Level::R633];
+pub const NERR: usize = 1 + 5 + 25;
+pub const ERR_SEEDS: usize = 4;
+
+/// the fused levels of error entry i, top first
+pub fn err_levels(i: usize) -> Vec<Level> {
+    if i > 5 {
+        vec![ERR_LV[(i - 6) / 5], ERR_LV[(i - 6) % 5]]
+    } else if i > 0 {
+        vec![ERR_LV[i - 1]]
+    } else {
+        vec![]
+    }
+}
+
+pub fn err_name(i: usize) -> String {
+    let lv = err_levels(i);
+    if lv.is_empty() { "XG".to_string() } else { format!("X{}", lv.iter().map(|l| l.name()).collect::<Vec<_>>().join("/")) }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub enum Kind {
@@ -53,7 +70,7 @@ impl Kind {
             Kind::Pipe { level, streams, passes, over, gpu } => {
                 format!("P{}k{streams}p{passes}{}{}", level.name(), if gpu { "M" } else { "" }, if over { 'o' } else { 's' })
             }
-            Kind::Err(i) => ERR_NAMES[i as usize].to_string(),
+            Kind::Err(i) => err_name(i as usize),
         }
     }
 
@@ -61,8 +78,8 @@ impl Kind {
         if let Some(l) = Level::from_name(s) {
             return Some(if l.is_leaf() { Kind::Leaf(l) } else { Kind::Passes(l) });
         }
-        if let Some(i) = ERR_NAMES.iter().position(|e| *e == s) {
-            return Some(Kind::Err(i as u8));
+        if s.starts_with('X') {
+            return (0..NERR).find(|&i| err_name(i) == s).map(|i| Kind::Err(i as u8));
         }
         if let Some(rest) = s.strip_prefix('P') {
             let (name, rest) = rest.split_once('k')?;
@@ -194,7 +211,7 @@ pub fn need(s: Shape, gpu: bool) -> Vec<(Kind, Shape)> {
         use crate::plan::GPU_MINB;
         let minb = crate::plan::minb();
         if s.is_sq() && s.m >= N_E {
-            for i in 0..ERR_PLANS.len() {
+            for i in 0..NERR {
                 put(out, Kind::Err(i as u8), Shape::sq(N_E));
             }
         }
@@ -402,46 +419,168 @@ fn fmt_g9(t: f64) -> String {
     }
 }
 
-/// the error model: a plan's error (max-norm, relative, against the exact product on uniform
-/// random inputs) is the classical GEMM's own error times one factor per fused level, growing
-/// like the square root of the inner dimension; the GEMM's error and the factors (one level over
-/// the GEMM, divided by the GEMM alone) are the ERR_PLANS' measurements at N_E; a factor below 1
-/// is a level more accurate than the GEMM, because its leaves sum k/g2 products instead of k; a
-/// second level does not get that again, so the two-level plan D48/D48 measures the depth factor
-/// rho by which the product of the factors is multiplied once per fused level after the first
+/// The error model (the C library's, fmm.c "the accuracy budget", operation for operation).  A
+/// plan's error (max-norm, relative, against the exact product on uniform random inputs), for the
+/// fused levels X_1 (top) .. X_d over a GEMM leaf on a problem of inner dimension k:
+///
+/// ```text
+/// E^2 = (x + y / N^(3/4)) k_leaf A_d^2  +  sum_i z_{X_i} A_{i-1}^2,
+/// ```
+///
+/// with k_leaf = k / (g2 of every level), A_i = a_{X_1} .. a_{X_i} and N = nu_{X_1} .. nu_{X_d}.
+/// The first term is the leaf GEMM's error, growing like sqrt(k_leaf), times every level's
+/// amplification ratio a_X; its factor is the tail of the GEMM's error distribution, which an
+/// output averaging the errors of nu_X products per level loses (x: fully averaged, y: the excess
+/// of a single product).  The second is each level's own rounding z_X, which every level above it
+/// amplifies: this is what makes the order of the levels matter.  a_X and nu_X come from the
+/// scheme (kernels.rs); x, y and the z_X are fitted to the entries at N_E by a weighted linear
+/// least squares on the squared errors, negative unknowns set to zero.  The GEMM alone: E^2 = eg2 k.
 #[derive(Clone, Copy, Debug)]
 pub struct ErrModel {
-    pub base: f64,
-    pub rho: f64,
-    /// the factor of each fused level, by Level::ALL's order (1 for the others)
-    pub f: [f64; 10],
+    pub eg2: f64,
+    pub x: f64,
+    pub y: f64,
+    /// each level's own rounding, by Level::ALL's order (0 for the others)
+    pub z: [f64; 10],
+}
+
+/// the amplification ratio and the participation number of a fused level's scheme
+pub fn err_consts(lv: Level) -> (f64, f64) {
+    match lv {
+        Level::Sw => (kernels::SW_AMP, kernels::SW_NU),
+        Level::D48 => (kernels::DPS48_AMP, kernels::DPS48_NU),
+        Level::R336 => (kernels::R336_AMP, kernels::R336_NU),
+        Level::R363 => (kernels::R363_AMP, kernels::R363_NU),
+        Level::R633 => (kernels::R633_AMP, kernels::R633_NU),
+        _ => (1.0, 1.0),
+    }
+}
+
+/// the coefficients of x, y and of every level's z (by Level::ALL's order) in the squared error of
+/// a plan with these fused levels (top first) on a problem of inner dimension k
+pub fn err_row(levels: &[Level], k: usize) -> (f64, f64, [f64; 10]) {
+    let (mut kl, mut a2, mut nn) = (k as f64, 1.0f64, 1.0f64);
+    let mut cz = [0.0f64; 10];
+    for &lv in levels {
+        let (amp, nu) = err_consts(lv);
+        cz[Level::ALL.iter().position(|l| *l == lv).unwrap()] += a2;
+        a2 *= amp * amp;
+        kl /= lv.grid().1 as f64;
+        nn *= nu;
+    }
+    (kl * a2, kl * a2 / (nn.sqrt() * nn.sqrt().sqrt()), cz)
 }
 
 impl ErrModel {
-    pub fn factor(&self, lv: Level) -> f64 {
-        self.f[Level::ALL.iter().position(|l| *l == lv).unwrap_or(0)]
+    /// a plan's predicted squared error
+    pub fn err2(&self, levels: &[Level], k: usize) -> f64 {
+        if levels.is_empty() {
+            return self.eg2 * k as f64;
+        }
+        let (cx, cy, cz) = err_row(levels, k);
+        let mut q = self.x * cx + self.y * cy;
+        for i in 0..10 {
+            q += self.z[i] * cz[i];
+        }
+        q
     }
 }
 
 impl Calib {
     pub fn err_model(&self) -> Option<ErrModel> {
-        let mut v = [0.0; 7];
+        const NP: usize = 7;
+        let mut v = [0.0f64; NERR];
         for (i, x) in v.iter_mut().enumerate() {
             *x = self.get(Kind::Err(i as u8), Shape::sq(N_E))?;
             if *x <= 0.0 {
                 return None;
             }
         }
-        let base = v[6];                        /* the classical GEMM's own error at N_E */
-        let rho = v[2] * base / (v[1] * v[1]);  /* D48/D48 over the product of two D48 factors */
-        let mut f = [1.0; 10];
-        let set = |f: &mut [f64; 10], lv: Level, x: f64| f[Level::ALL.iter().position(|l| *l == lv).unwrap()] = x;
-        set(&mut f, Level::Sw, v[0] / base);
-        set(&mut f, Level::D48, v[1] / base);
-        set(&mut f, Level::R336, v[3] / base);
-        set(&mut f, Level::R363, v[4] / base);
-        set(&mut f, Level::R633, v[5] / base);
-        Some(ErrModel { base, rho, f })
+        let eg2 = v[0] * v[0] / N_E as f64;
+        let zi = |lv: Level| Level::ALL.iter().position(|l| *l == lv).unwrap();
+        // rows scaled by the measured squared errors, so that every plan counts by its relative error
+        let mut row = [[0.0f64; NP]; NERR];
+        for i in 1..NERR {
+            let (cx, cy, cz) = err_row(&err_levels(i), N_E);
+            let w = 1.0 / (v[i] * v[i]);
+            row[i][0] = cx * w;
+            row[i][1] = cy * w;
+            for j in 0..5 {
+                row[i][2 + j] = cz[zi(ERR_LV[j])] * w;
+            }
+        }
+        let mut on = [true; NP];
+        let mut p = [0.0f64; NP];
+        loop {
+            // the normal equations over the unknowns still in, by Gaussian elimination with partial pivoting
+            let idx: Vec<usize> = (0..NP).filter(|&a| on[a]).collect();
+            let n = idx.len();
+            let mut m = [[0.0f64; NP + 1]; NP];
+            for a in 0..n {
+                for i in 1..NERR {
+                    for b in 0..n {
+                        m[a][b] += row[i][idx[a]] * row[i][idx[b]];
+                    }
+                    m[a][n] += row[i][idx[a]];
+                }
+            }
+            for a in 0..n {
+                let mut piv = a;
+                for r in a + 1..n {
+                    if m[r][a].abs() > m[piv][a].abs() {
+                        piv = r;
+                    }
+                }
+                if m[piv][a] == 0.0 {
+                    return None;
+                }
+                m.swap(a, piv);
+                for r in a + 1..n {
+                    let f = m[r][a] / m[a][a];
+                    for b in a..=n {
+                        m[r][b] -= f * m[a][b];
+                    }
+                }
+            }
+            for a in (0..n).rev() {
+                let mut t = m[a][n];
+                for b in a + 1..n {
+                    t -= m[a][b] * p[idx[b]];
+                }
+                p[idx[a]] = t / m[a][a];
+            }
+            let mut neg = false;
+            for &a in &idx {
+                if p[a] < 0.0 {
+                    on[a] = false;
+                    neg = true;
+                }
+            }
+            if !neg {
+                break;
+            }
+        }
+        for a in 0..NP {
+            if !on[a] {
+                p[a] = 0.0;
+            }
+        }
+        let mut z = [0.0f64; 10];
+        for j in 0..5 {
+            z[zi(ERR_LV[j])] = p[2 + j];
+        }
+        if p[0] + p[1] > 0.0 { Some(ErrModel { eg2, x: p[0], y: p[1], z }) } else { None }
+    }
+
+    /// the fitted model in units of the precision's unit roundoff u, as the C library prints it
+    pub fn print_err_model(&self, u: f64) {
+        if let Some(e) = self.err_model() {
+            let zi = |lv: Level| Level::ALL.iter().position(|l| *l == lv).unwrap();
+            println!("# error model: GEMM {:.3} u sqrt(k); leaf {:.3} u sqrt(k_leaf), tail excess {:.2}; the levels' own rounding (u): SW {:.1}, D48 {:.1}, R336 {:.1}, R363 {:.1}, R633 {:.1}",
+                     e.eg2.sqrt() / u, e.x.sqrt() / u, if e.x > 0.0 { e.y / e.x } else { 0.0 }, e.z[zi(Level::Sw)].sqrt() / u,
+                     e.z[zi(Level::D48)].sqrt() / u, e.z[zi(Level::R336)].sqrt() / u, e.z[zi(Level::R363)].sqrt() / u,
+                     e.z[zi(Level::R633)].sqrt() / u);
+        }
     }
 }
 
@@ -468,14 +607,14 @@ mod tests {
         for (k, _) in need {
             assert_eq!(Kind::parse(&k.name()), Some(k), "{}", k.name());
         }
-        for s in ["G", "B2", "SW", "D48", "R336", "GSW", "G6D48", "G3R363", "PD48k6p2s", "PSWk3p4o", "PR633k6p4s", "ESW", "ED48D48", "ER633",
+        for s in ["G", "B2", "SW", "D48", "R336", "GSW", "G6D48", "G3R363", "PD48k6p2s", "PSWk3p4o", "PR633k6p4s", "XG", "XSW", "XD48/D48", "XR633/R336",
                   "GMR363", "G6MD48", "GMK32", "G6MK16", "PR363k6p4Ms", "PSWk6p3Mo", "K32"] {
             assert_eq!(Kind::parse(s).map(|k| k.name()), Some(s.to_string()));
         }
         for (s, gpu) in [("GMR363", true), ("PR363k6p4Ms", true), ("K64", true), ("PR363k6p4s", false), ("G6R363", false), ("R363", false)] {
             assert_eq!(Kind::parse(s).unwrap().is_gpu(), gpu, "{s}");
         }
-        for s in ["", "X", "GG", "G6", "PD48k6p2", "PD48k6p2x", "E", "R36", "GM", "G6M", "GMG", "PD48k6pMs"] {
+        for s in ["", "X", "GG", "G6", "PD48k6p2", "PD48k6p2x", "E", "ESW", "XSW/K16", "R36", "GM", "G6M", "GMG", "PD48k6pMs"] {
             assert_eq!(Kind::parse(s), None, "{s}");
         }
     }
@@ -514,7 +653,8 @@ mod tests {
         assert!(n.contains(&(Kind::Passes(Level::R336), Shape::new(2304, 2304, 1152))));
         assert!(n.contains(&(Kind::Gin(Level::R363, 6), Shape::new(2304, 1152, 2304))));
         assert!(n.contains(&(Kind::Pipe { level: Level::D48, streams: 3, passes: 2, over: false, gpu: false }, Shape::new(576, 576, 288))));
-        assert!(n.contains(&(Kind::Err(5), Shape::sq(N_E))));
+        assert!(n.contains(&(Kind::Err(30), Shape::sq(N_E))));
+        assert_eq!(Kind::parse("XR363/R336").map(|k| k.name()), Some("XR363/R336".to_string()));
         assert!(!n.iter().any(|(k, _)| k.is_gpu()));
         let g = need(Shape::sq(6912), true);
         assert!(g.contains(&(Kind::Ggpu(Level::R363, 6), Shape::new(2304, 1152, 2304))));

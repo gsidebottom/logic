@@ -10,7 +10,7 @@
 //! timing the leaves on the pool, as at first, overstated them and the planner passed over the
 //! classical GEMM at 2048 f32.
 
-use crate::calib::{self, Calib, Kind, ERR_PLANS, GSTREAMS, N_E, STREAMS};
+use crate::calib::{self, Calib, Kind, ERR_SEEDS, GSTREAMS, NERR, N_E, STREAMS};
 use crate::exec::{self, Blocks, BlocksMut, Real, Side};
 use crate::plan::{Entry, Level, Plan, Shape};
 use rayon::prelude::*;
@@ -220,51 +220,58 @@ fn dd_gemm(m: usize, kk: usize, n: usize, a: &[f64], b: &[f64], r: &mut [f64]) {
     let _ = m;
 }
 
-/// the error model's measurements: the ERR_PLANS at N_E on uniform random inputs (the C library's
-/// generator), each against the exact product (the f64 product of the f32 inputs, the compensated
-/// product of the f64 inputs), and the classical GEMM's own error (EG) against it
+/// the error model's measurements (calib::ErrModel): at N_E, on ERR_SEEDS uniform random instances
+/// (the C library's generator), the errors against the exact product (the f64 product of the f32
+/// inputs, the compensated product of the f64 inputs) of the GEMM alone, of every level of ERR_LV
+/// over the GEMM and of every ordered pair of them; each entry the root mean square over the instances
 fn calib_errors<T: Real>(c: &mut Calib) {
     let (n, nn) = (N_E, N_E * N_E);
-    let mut s: u64 = 0x2545f4914f6cdd1d;
+    let sq = Shape::sq(n);
+    let plans: Vec<Plan> = (0..NERR)
+        .map(|i| Plan::parse(&(calib::err_levels(i).iter().map(|l| l.name()).chain(["G"]).collect::<Vec<_>>().join("/"))).unwrap())
+        .collect();
+    let mut work = vec![T::default(); plans.iter().map(|p| p.work(sq)).max().unwrap().max(16)];
     let mut a = vec![T::default(); nn];
     let mut b = vec![T::default(); nn];
-    for i in 0..nn {
-        for x in [&mut a[i], &mut b[i]] {
-            s ^= s << 13;
-            s ^= s >> 7;
-            s ^= s << 17;
-            *x = T::from_f64((s >> 11) as f64 / 9007199254740992.0 * 2.0 - 1.0);
-        }
-    }
-    let sq = Shape::sq(n);
     let mut r = vec![T::default(); nn];
-    T::gemm(sq, &a, n, &b, n, 0.0, &mut r, n);
-    let a64: Vec<f64> = a.iter().map(|x| x.to_f64()).collect();
-    let b64: Vec<f64> = b.iter().map(|x| x.to_f64()).collect();
-    let mut r64 = vec![0.0f64; nn];
-    if T::F64 {
-        dd_gemm(n, n, n, &a64, &b64, &mut r64);
-    } else {
-        <f64 as Real>::gemm(sq, &a64, n, &b64, n, 0.0, &mut r64, n);
-    }
-    let rmax = r64.iter().fold(0.0f64, |m, x| m.max(x.abs()));
-    let plans: Vec<Plan> = ERR_PLANS[..ERR_PLANS.len() - 1].iter().map(|s| Plan::parse(s).unwrap()).collect();
-    let mut work = vec![T::default(); plans.iter().map(|p| p.work(sq)).max().unwrap()];
     let mut cm = vec![T::default(); nn];
-    let mut v = [0.0f64; 7];
-    for i in 0..ERR_PLANS.len() {
-        if i < plans.len() {
-            exec::exec(&plans[i].0, sq, &a, n, &b, n, &mut cm, n, &mut work);
+    let mut r64 = vec![0.0f64; nn];
+    let mut v = [0.0f64; NERR];
+    for seed in 0..ERR_SEEDS {
+        let mut s: u64 = 0x2545f4914f6cdd1du64.wrapping_add((seed as u64).wrapping_mul(0x9e3779b97f4a7c15));
+        for i in 0..nn {
+            for x in [&mut a[i], &mut b[i]] {
+                s ^= s << 13;
+                s ^= s >> 7;
+                s ^= s << 17;
+                *x = T::from_f64((s >> 11) as f64 / 9007199254740992.0 * 2.0 - 1.0);
+            }
         }
-        let x: &[T] = if i < plans.len() { &cm } else { &r };
-        let e = x.iter().zip(&r64).fold(0.0f64, |m, (p, q)| m.max((p.to_f64() - q).abs()));
-        v[i] = e / rmax;
-        c.put(Kind::Err(i as u8), sq, v[i]);
-        println!("#   {:<7} m={:<6} {} (error of {} against the exact product)", Kind::Err(i as u8).name(), N_E,
-                 calib::fmt_e(v[i], 3), ERR_PLANS[i]);
+        T::gemm(sq, &a, n, &b, n, 0.0, &mut r, n);
+        let a64: Vec<f64> = a.iter().map(|x| x.to_f64()).collect();
+        let b64: Vec<f64> = b.iter().map(|x| x.to_f64()).collect();
+        if T::F64 {
+            dd_gemm(n, n, n, &a64, &b64, &mut r64);
+        } else {
+            <f64 as Real>::gemm(sq, &a64, n, &b64, n, 0.0, &mut r64, n);
+        }
+        let rmax = r64.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+        for i in 0..NERR {
+            if i > 0 {
+                exec::exec(&plans[i].0, sq, &a, n, &b, n, &mut cm, n, &mut work);
+            }
+            let x: &[T] = if i > 0 { &cm } else { &r };
+            let e = x.iter().zip(&r64).fold(0.0f64, |m, (p, q)| m.max((p.to_f64() - q).abs()));
+            v[i] += (e / rmax) * (e / rmax);
+        }
     }
-    println!("#   factors over the GEMM: SW {:.3} D48 {:.3} R336 {:.3} R363 {:.3} R633 {:.3}; D48/D48 over D48^2 {:.3}",
-             v[0] / v[6], v[1] / v[6], v[3] / v[6], v[4] / v[6], v[5] / v[6], v[2] * v[6] / (v[1] * v[1]));
+    for i in 0..NERR {
+        v[i] = (v[i] / ERR_SEEDS as f64).sqrt();
+        c.put(Kind::Err(i as u8), sq, v[i]);
+        println!("#   {:<10} m={:<6} {} (error of {} against the exact product, rms of {} instances)", Kind::Err(i as u8).name(), N_E,
+                 calib::fmt_e(v[i], 3), plans[i].to_string(), ERR_SEEDS);
+    }
+    c.print_err_model(if T::F64 { 2f64.powi(-53) } else { 2f64.powi(-24) });
 }
 
 /// measure the entries the planner needs for the shape s0 that the calibration lacks, and save it;

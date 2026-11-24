@@ -1,0 +1,9 @@
+# reruns for the default plans of the position-aware error model; 2026-11-23 23:47
+23:47 start essl
+23:49 start prescale
+23:52 start gpu
+23:53 start rust_vs_c
+00:06 start crosscheck
+00:08 timed steps done; start essl scaled
+00:12 start scaled
+00:24 done

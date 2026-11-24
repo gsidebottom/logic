@@ -1,0 +1,25 @@
+# the GPU build's pick at 13824 f32; 2026-11-23 23:52; Apple M4 Pro; logic 9468e4b + working tree
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#    69.1  1226 04-00:38:46 /System/Applications/Utilities/Activity Monitor.app/Contents/MacOS/Activity Monitor
+#     3.3   746 04-00:39:32 /usr/libexec/sysmond
+#     2.9 45098 02-10:18:45 /Applications/RustRover.app/Contents/MacOS/rustrover
+#     1.6   597 04-00:39:44 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+## gpu n=13824 f round 1  23:52
+# auto n=13824  f32: plan R363/GM, predicted 0.543 s
+# auto:none n=13824  f32: plan R363+4/R336/G6M, predicted 0.530 s
+classical  n=13824  f32  min   1.5501 s  med   1.5601 s   3386.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.596 P 0.000  plan G  pred 1.643 s (+5.3%)  perr 5.23e-06  err64 6.40e-06  cw 4.14e-07
+auto       n=13824  f32  min   0.5871 s  med   0.6158 s   8579.5 GFLOP/s(2mkn)  speedup 2.533  relerr 6.70e-06  split L 0.015 R 0.015 gemm 0.549 P 0.027  plan R363/GM  pred 0.543 s (-11.8%)  perr 2.48e-06  err64 2.73e-06  cw 1.78e-07
+auto:none  n=13824  f32  min   0.4803 s  med   0.4998 s  10570.8 GFLOP/s(2mkn)  speedup 3.121  relerr 6.43e-06  split L 0.015 R 0.015 gemm 0.453 P 0.027  plan R363+4/R336/G6M  pred 0.530 s (+6.0%)  perr 2.97e-06  err64 3.53e-06  cw 2.30e-07
+plan=R363/GM n=13824  f32  min   0.5527 s  med   0.5634 s   9377.7 GFLOP/s(2mkn)  speedup 2.769  relerr 6.70e-06  split L 0.016 R 0.015 gemm 0.512 P 0.027  plan R363/GM  pred 0.543 s (-3.6%)  perr 2.48e-06  err64 2.73e-06  cw 1.78e-07
+plan=R363/G6M n=13824  f32  min   0.5101 s  med   0.5234 s  10095.7 GFLOP/s(2mkn)  speedup 2.981  relerr 6.70e-06  split L 0.015 R 0.015 gemm 0.476 P 0.027  plan R363/G6M  pred 0.559 s (+6.8%)  perr 2.48e-06  err64 2.73e-06  cw 1.78e-07
+plan=R363+4/R336/G6M n=13824  f32  min   0.4767 s  med   0.4869 s  10851.4 GFLOP/s(2mkn)  speedup 3.204  relerr 6.43e-06  split L 0.015 R 0.015 gemm 0.447 P 0.027  plan R363+4/R336/G6M  pred 0.530 s (+8.8%)  perr 2.97e-06  err64 3.53e-06  cw 2.30e-07
+## gpu n=13824 f round 2  23:53
+# auto n=13824  f32: plan R363/GM, predicted 0.543 s
+# auto:none n=13824  f32: plan R363+4/R336/G6M, predicted 0.530 s
+classical  n=13824  f32  min   1.5422 s  med   1.5492 s   3410.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.632 P 0.000  plan G  pred 1.643 s (+6.0%)  perr 5.23e-06  err64 6.40e-06  cw 4.14e-07
+auto       n=13824  f32  min   0.5854 s  med   0.5892 s   8967.1 GFLOP/s(2mkn)  speedup 2.629  relerr 6.70e-06  split L 0.016 R 0.015 gemm 0.531 P 0.028  plan R363/GM  pred 0.543 s (-7.8%)  perr 2.48e-06  err64 2.73e-06  cw 1.78e-07
+auto:none  n=13824  f32  min   0.4925 s  med   0.5042 s  10479.2 GFLOP/s(2mkn)  speedup 3.073  relerr 6.43e-06  split L 0.015 R 0.015 gemm 0.455 P 0.027  plan R363+4/R336/G6M  pred 0.530 s (+5.1%)  perr 2.97e-06  err64 3.53e-06  cw 2.30e-07
+plan=R363/GM n=13824  f32  min   0.5836 s  med   0.5873 s   8995.9 GFLOP/s(2mkn)  speedup 2.638  relerr 6.70e-06  split L 0.016 R 0.015 gemm 0.529 P 0.028  plan R363/GM  pred 0.543 s (-7.5%)  perr 2.48e-06  err64 2.73e-06  cw 1.78e-07
+plan=R363/G6M n=13824  f32  min   0.5072 s  med   0.5103 s  10353.2 GFLOP/s(2mkn)  speedup 3.036  relerr 6.70e-06  split L 0.016 R 0.015 gemm 0.468 P 0.026  plan R363/G6M  pred 0.559 s (+9.6%)  perr 2.48e-06  err64 2.73e-06  cw 1.78e-07
+plan=R363+4/R336/G6M n=13824  f32  min   0.4917 s  med   0.4973 s  10624.1 GFLOP/s(2mkn)  speedup 3.115  relerr 6.43e-06  split L 0.015 R 0.015 gemm 0.457 P 0.028  plan R363+4/R336/G6M  pred 0.530 s (+6.6%)  perr 2.97e-06  err64 3.53e-06  cw 2.30e-07

@@ -794,52 +794,57 @@ static void FN(exact_ref)(size_t n, const T *A, const T *B, double *R64) {
 #endif
 }
 
-/* the error model's measurements: the ERR_PLANS at N_E on uniform random inputs, each against
- * the exact product, and the classical GEMM's own error (EG) against it */
+/* the error model's measurements (fmm.c, "the accuracy budget"): at n = N_E, on ERR_SEEDS uniform random
+ * instances, the errors against the exact product of the GEMM alone, of every level of ERR_LV over the GEMM and of
+ * every ordered pair of them; each entry the root mean square over the instances */
 static void FN(calib_errors)(calib_t *c) {
     size_t n = N_E, nn = n * n;
     T *A = alloc_t(nn * sizeof(T)), *B = alloc_t(nn * sizeof(T)), *C = alloc_t(nn * sizeof(T)),
       *R = alloc_t(nn * sizeof(T));
-    uint64_t s = 0x2545f4914f6cdd1dull;
-    for (size_t i = 0; i < nn; i++) {
-        s ^= s << 13; s ^= s >> 7; s ^= s << 17;
-        A[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
-        s ^= s << 13; s ^= s >> 7; s ^= s << 17;
-        B[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
-    }
-    FN(gemm)(sq(n), A, n, B, n, R, n);
     double *R64 = malloc(nn * sizeof(double));
-    FN(exact_ref)(n, A, B, R64);
-    double rmax = 0;
-    for (size_t i = 0; i < nn; i++) rmax = fmax(rmax, fabs(R64[i]));
-    double v[NERR];
-    int plans[NERR][PLAN_MAX];
+    static int plans[NERR][PLAN_MAX];
     size_t wmax = 16;
-    for (int i = 0; i < NERR - 1; i++) {
-        if (!parse_plan(ERR_PLANS[i], sq(n), plans[i])) {
-            fprintf(stderr, "calib_errors: plan %s does not parse at %zu\n", ERR_PLANS[i], n);
-            exit(1);
-        }
+    for (int i = 1; i < NERR; i++) {
+        err_plan(i, plans[i]);
         size_t w = plan_work(plans[i], sq(n));
         if (w > wmax) wmax = w;
     }
     T *work = alloc_t(wmax * sizeof(T));
     memset(work, 0, wmax * sizeof(T));
-    for (int i = 0; i < NERR; i++) {
-        const T *X = R;                     /* EG: the classical GEMM's own result */
-        if (i < NERR - 1) {
-            FN(exec)(plans[i], sq(n), A, n, B, n, C, n, work, NULL);
-            X = C;
+    double v[NERR];
+    for (int i = 0; i < NERR; i++) v[i] = 0;
+    for (int seed = 0; seed < ERR_SEEDS; seed++) {
+        uint64_t s = 0x2545f4914f6cdd1dull + (uint64_t)seed * 0x9e3779b97f4a7c15ull;
+        for (size_t i = 0; i < nn; i++) {
+            s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+            A[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
+            s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+            B[i] = (T)((double)(s >> 11) / 9007199254740992.0 * 2 - 1);
         }
-        double e = 0;
-        for (size_t j = 0; j < nn; j++) e = fmax(e, fabs((double)X[j] - R64[j]));
-        v[i] = e / rmax;
-        calib_put(c, K_ERR + i, sq(N_E), v[i]);
-        printf("#   %-7s m=%-6d %.3e (error of %s against the exact product)\n", kind_name(K_ERR + i), N_E, v[i],
-               ERR_PLANS[i]);
+        FN(gemm)(sq(n), A, n, B, n, R, n);
+        FN(exact_ref)(n, A, B, R64);
+        double rmax = 0;
+        for (size_t i = 0; i < nn; i++) rmax = fmax(rmax, fabs(R64[i]));
+        for (int i = 0; i < NERR; i++) {
+            const T *X = R;                 /* XG: the classical GEMM's own result */
+            if (i > 0) {
+                FN(exec)(plans[i], sq(n), A, n, B, n, C, n, work, NULL);
+                X = C;
+            }
+            double e = 0;
+            for (size_t j = 0; j < nn; j++) e = fmax(e, fabs((double)X[j] - R64[j]));
+            v[i] += (e / rmax) * (e / rmax);
+        }
     }
-    printf("#   factors over the GEMM: SW %.3f D48 %.3f R336 %.3f R363 %.3f R633 %.3f; D48/D48 over D48^2 %.3f\n",
-           v[0] / v[6], v[1] / v[6], v[3] / v[6], v[4] / v[6], v[5] / v[6], v[2] * v[6] / (v[1] * v[1]));
+    for (int i = 0; i < NERR; i++) {
+        v[i] = sqrt(v[i] / ERR_SEEDS);
+        calib_put(c, K_ERR + i, sq(N_E), v[i]);
+        char buf[PLAN_MAX * 12];
+        plan_str(plans[i], buf, sizeof buf);
+        printf("#   %-10s m=%-6d %.3e (error of %s against the exact product, rms of %d instances)\n",
+               kind_name(K_ERR + i), N_E, v[i], i ? buf : "G", ERR_SEEDS);
+    }
+    print_errmodel(c, sizeof(T) == 4 ? 0x1p-24 : 0x1p-53);
     free(work);
     free(R64);
     free(A); free(B); free(C); free(R);

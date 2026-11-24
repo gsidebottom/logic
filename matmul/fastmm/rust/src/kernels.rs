@@ -2378,3 +2378,21 @@ pub const R_OPS: usize = 1110;
 /// the 2x2 level's programs and their operations (the calibration cache's kernels key)
 pub const SW_PROGRAM: &str = "q3";
 pub const SW_OPS: usize = 103;
+/// the error model's constants of each scheme, from its programs: the amplification ratio and the
+/// participation number at its worst output (gen_kernels.py, err_consts)
+pub const SW_AMP: f64 = 1.8708286933869707;
+pub const SW_NU: f64 = 3.18454132120888;
+pub const DPS48_AMP: f64 = 2.8284271247461903;
+pub const DPS48_NU: f64 = 16.0;
+pub const R336_AMP: f64 = 2.362907813126304;
+pub const R336_NU: f64 = 23.487246566383256;
+pub const R363_AMP: f64 = 2.5495097567963922;
+pub const R363_NU: f64 = 27.69191380413911;
+pub const R633_AMP: f64 = 2.362907813126304;
+pub const R633_NU: f64 = 23.487246566383256;
+pub const T336_AMP: f64 = 5.066228051190222;
+pub const T336_NU: f64 = 3.8776978417266186;
+pub const T363_AMP: f64 = 4.898979485566356;
+pub const T363_NU: f64 = 10.483316481294237;
+pub const T633_AMP: f64 = 6.191391873668904;
+pub const T633_NU: f64 = 17.287581699346404;

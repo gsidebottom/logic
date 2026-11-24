@@ -32,9 +32,11 @@ tell which plan a call runs and its predicted time and error.  `max_growth` is t
 predicted error over the GEMM's: 0 the default of 1 (a plan predicted no less accurate than the
 GEMM it replaces; the plans with a 2x2 level on top qualify too since the level's programs are
 at an accurate point of DPS's, where Strassen-Winograd's needed a budget of 2), a positive value that budget,
-a negative value no budget (the fastest plan).  The model: the GEMM's
-own error against the exact product, one factor per level measured one level over the GEMM at
-2304, and a depth factor once per level after the first, all from the calibration.
+a negative value no budget (the fastest plan).  The model (calib::ErrModel, the C
+library's): the leaf GEMM's error multiplied by every level's amplification ratio, plus each level's
+own rounding multiplied by the levels above it, so that the order of the levels counts; its
+constants are fitted to the errors of the levels alone and in ordered pairs, measured against the
+exact product at 2304 on four instances, all from the calibration.
 
 ## With the GPU (f32)
 

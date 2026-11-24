@@ -213,18 +213,23 @@ pub fn enumerate_with(v: View, s: Shape) -> Vec<(Plan, f64)> {
     out
 }
 
-/// the factor by which a plan's error exceeds the classical GEMM's: the levels' factors, times
-/// the depth factor once per fused level after the first (a K level's strips are the GEMM's own sums)
-pub fn growth(e: &ErrModel, plan: &Plan) -> f64 {
-    let levels: Vec<Level> =
-        plan.0.iter().take_while(|x| !x.level.is_leaf()).map(|x| x.level).filter(|l| !l.is_split()).collect();
-    let g: f64 = levels.iter().map(|lv| e.factor(*lv)).product();
-    g * e.rho.powi((levels.len() as i32 - 1).max(0))
+/// a plan's fused levels, top first (a K level's strips are the GEMM's own sums)
+fn fused_levels(plan: &Plan) -> Vec<Level> {
+    plan.0.iter().take_while(|x| !x.level.is_leaf()).map(|x| x.level).filter(|l| !l.is_split()).collect()
 }
 
-/// the predicted error of a plan on shape s: the classical scale grows with the inner dimension
+/// the predicted error of a plan on shape s (calib::ErrModel)
 pub fn predicted_error(e: &ErrModel, plan: &Plan, s: Shape) -> f64 {
-    e.base * (s.k as f64 / crate::calib::N_E as f64).sqrt() * growth(e, plan)
+    e.err2(&fused_levels(plan), s.k).sqrt()
+}
+
+/// the factor by which a plan's error exceeds the classical GEMM's on shape s
+pub fn growth(e: &ErrModel, plan: &Plan, s: Shape) -> f64 {
+    let levels = fused_levels(plan);
+    if levels.is_empty() {
+        return 1.0;
+    }
+    e.err2(&levels, s.k).sqrt() / (e.eg2 * s.k as f64).sqrt()
 }
 
 /// the budget a call's max_growth = 0 means: no less accurate than the GEMM
@@ -232,11 +237,14 @@ pub const DEFAULT_GROWTH: f64 = 1.0;
 
 /// plans predicted within 3% of the fastest are ties (2% until 2026-11-23, as in the C library) ...
 pub const PLAN_TIE: f64 = 0.03;
-/// ... which a plan predicted at least 25% more accurate wins (the error model is good to about
-/// 25%; smaller predicted gains picked the less accurate plan at 6912 in both precisions)
-pub const PLAN_TIE_GAIN: f64 = 0.25;
+/// ... which a plan predicted at least 10% more accurate wins (the error model resolves the ratio
+/// between two plans of one size to about 10%; it was 25% with the model before 2026-11-23)
+pub const PLAN_TIE_GAIN: f64 = 0.10;
 /// the window with the GPU, whose plans repeat to 10-20% only
 pub const PLAN_TIE_GPU: f64 = 0.08;
+/// ... and the gain asked for there, in proportion to the wider window (at 10% the rule took
+/// R363/GM at 13824 f32, predicted 2.5% slower than R363+4/R336/G6M and measured 16-20% slower)
+pub const PLAN_TIE_GAIN_GPU: f64 = 0.25;
 
 /// a call's max_growth: a positive value is that budget, 0 the default, a negative value no
 /// budget (the fastest plan whatever its error)
@@ -251,15 +259,15 @@ pub fn resolve_growth(g: f64) -> f64 {
 /// those, the fastest among equals
 fn pick(v: View, e: &ErrModel, s: Shape, gmax: f64, tie: bool) -> Option<(Plan, f64)> {
     let all = enumerate_with(v, s);
-    let i = all.iter().position(|(p, _)| growth(e, p) <= gmax * (1.0 + 1e-9))?;
+    let i = all.iter().position(|(p, _)| growth(e, p, s) <= gmax * (1.0 + 1e-9))?;
     let window = if v.gpu { PLAN_TIE_GPU } else { PLAN_TIE };
     let mut pick = i;
-    let mut gbest = growth(e, &all[i].0) * (1.0 - PLAN_TIE_GAIN);
+    let mut gbest = growth(e, &all[i].0, s) * (1.0 - if v.gpu { PLAN_TIE_GAIN_GPU } else { PLAN_TIE_GAIN });
     for j in i + 1..all.len() {
         if !tie || all[j].1 > all[i].1 * (1.0 + window) {
             break;
         }
-        let g = growth(e, &all[j].0);
+        let g = growth(e, &all[j].0, s);
         if g < gbest * (1.0 - 1e-9) {
             gbest = g;
             pick = j;
@@ -285,7 +293,7 @@ pub fn best_budget_with(v: View, s: Shape, gmax: f64) -> Option<(Plan, f64)> {
         // plan the same budget admits without it (this keeps the classical product in strips, as
         // accurate as the GEMM and no more, from replacing a more accurate level it merely ties)
         if let Some((p0, _)) = pick(View { gpu: false, ..v }, &e, s, gmax, false) {
-            gmax = gmax.min(growth(&e, &p0));
+            gmax = gmax.min(growth(&e, &p0, s));
         }
     }
     if let Some(p) = pick(v, &e, s, gmax, true) {

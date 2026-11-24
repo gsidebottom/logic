@@ -49,8 +49,11 @@ Levels (a plan names its levels from the top to the leaf, e.g. `D48+4/D48/G6`):
 The planner prices a plan as r times its sub-plan plus the words its passes move over the
 measured bandwidth, from a calibration measured once per machine and precision (cached in
 `~/Library/Caches/fmm/calib5_f32.txt` and `calib5_f64.txt`, or under `FMM_CALIB_DIR`).  Its error
-model has one factor per level and a depth factor, measured against the exact product at
-calibration, and the budget `max_growth` (default 1: no less accurate than the GEMM) bounds the
+model knows the order of the levels: the leaf GEMM's error multiplied by every level's
+amplification ratio (from the scheme), plus each level's own rounding multiplied by the levels above
+it, with three kinds of constants fitted at calibration to the errors of the levels alone and in
+ordered pairs against the exact product (fmm.c, "the accuracy budget"; a cache from before
+2026-11-23 lacks those entries and plans the classical GEMM until `fmm_calibrate` adds them), and the budget `max_growth` (default 1: no less accurate than the GEMM) bounds the
 predicted error.  Without a calibration covering a shape the classical GEMM runs, so results are
 always correct.
 
@@ -89,7 +92,7 @@ an R336 level differed from Rust's in the last bits (found 2026-11-16, when the 
 ran on the real cache at 6912 and 13824).
 
 The planner takes the fastest plan within the error budget and, of the plans predicted within 3%
-of it, one predicted at least 25% more accurate, the error model's resolution (faster first,
+of it, one predicted at least 10% more accurate, the error model's resolution (faster first,
 more accurate second; C and Rust alike).  The passes claim their
 output lines with `DC ZVA` before writing them (`FMM_ZVA=0` to switch it off): a store to a line
 that is not in the cache first reads it from memory, so a pass that writes 48 blocks and reads 16

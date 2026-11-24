@@ -334,22 +334,40 @@ static int parse_plan(const char *meth, shape_t n, int *plan) {
 #define K_GGPU 300  /* K_GGPU + 16 k + level: the same with the products shared with the GPU (GkM, k = 0: GM) */
 #define K_PIPE 1000 /* K_PIPE + ((16 k + p) 2 + part) 16 + level: pipelined sub-problems */
 #define K_PIPEG 5000 /* K_PIPEG + the same: pipelined sub-problems whose products are shared with the GPU */
-#define K_ERR 9000  /* K_ERR + i: the error of ERR_PLANS[i] against the exact product at n = N_E; the last,
-                     * EG, is the classical GEMM's own (a cache without it has the old entries, measured
-                     * against the GEMM, and re-measures all of them) */
-#define N_E 2304    /* divisible by 16 (D48/D48) and by 3 and 6 (the R levels); blocks of 384 and up */
-#define NERR 7
-static const char *ERR_PLANS[NERR] = {"sw1", "dps48", "dps48x2", "r336", "r363", "r633", "classical"};
-static const char *ERR_NAMES[NERR] = {"ESW", "ED48", "ED48D48", "ER336", "ER363", "ER633", "EG"};
+#define K_ERR 9000  /* K_ERR + i: the error against the exact product, at n = N_E, of the GEMM alone (XG, i = 0), of
+                     * each fused level of ERR_LV over the GEMM (XSW, ...; i = 1 + a) and of each ordered pair of
+                     * them (XSW/D48: SW on top; i = 1 + NERR_LV + NERR_LV a + b): the root mean square over
+                     * ERR_SEEDS random instances, since the max-norm error of one instance scatters 10-20% */
+#define N_E 2304    /* divisible by 16 (D48/D48) and by 36 (the R levels in pairs); leaves of 64 and up */
+#define NERR_LV 5
+static const int ERR_LV[NERR_LV] = {LV_SW, LV_D48, LV_R336, LV_R363, LV_R633};
+#define NERR (1 + NERR_LV + NERR_LV * NERR_LV)
+#define ERR_SEEDS 4
+/* the plan of error entry i */
+static void err_plan(int i, int *plan) {
+    memset(plan, 0, PLAN_MAX * sizeof *plan);       /* all leaves, LV_G */
+    if (i > NERR_LV) {
+        plan[0] = ERR_LV[(i - 1 - NERR_LV) / NERR_LV];
+        plan[1] = ERR_LV[(i - 1 - NERR_LV) % NERR_LV];
+    } else if (i > 0)
+        plan[0] = ERR_LV[i - 1];
+}
+static void err_name(int i, char *buf, size_t len) {
+    if (i > NERR_LV)
+        snprintf(buf, len, "X%s/%s", LV_NAME[ERR_LV[(i - 1 - NERR_LV) / NERR_LV]], LV_NAME[ERR_LV[(i - 1 - NERR_LV) % NERR_LV]]);
+    else
+        snprintf(buf, len, "X%s", i > 0 ? LV_NAME[ERR_LV[i - 1]] : "G");
+}
 #define FMM_DEFAULT_GROWTH 1.0  /* the budget max_growth = 0 means: no less accurate than the GEMM */
 #define PLAN_TIE 0.03           /* plans predicted within 3% of the fastest are ties (2% until 2026-11-23: at 3456 f64
                                  * a 2x2 plan predicted 2.1% faster, measured 1.3% faster, displaced a single level
                                  * with 0.84 of its error; results/tie3_picks_2026-11-23.txt) ... */
-#define PLAN_TIE_GAIN 0.25      /* ... which a plan predicted at least 25% more accurate wins: the error model
-                                 * is good to about 25%, and smaller predicted gains picked the less accurate
-                                 * plan at 6912 in both precisions (results/final_campaign_2026-11-15.txt);
-                                 * an order rule between plans predicted equal (the more accurate level on
-                                 * top) was dropped for the same reason: right at 13824 f64, wrong at 6912 f64 */
+#define PLAN_TIE_GAIN 0.10      /* ... which a plan predicted at least 10% more accurate wins: the error model
+                                 * resolves the ratio between two plans of one size to about 10% (it was 25%
+                                 * with the model of one factor per level, which was good to about that) */
+#define PLAN_TIE_GAIN_GPU 0.25  /* with the GPU the gain asked for is 25%, in proportion to its wider window: at 10% the
+                                 * rule took R363/GM at 13824 f32, predicted 2.5% slower than R363+4/R336/G6M and
+                                 * measured 16-20% slower (results/gpu_errmodel_2026-11-23.txt) */
 #define PLAN_TIE_GPU 0.08       /* the window with the GPU, whose plans repeat to 10-20% only (the same plan runs
                                  * slower right after CPU-only work than after another GPU plan): at 13824 the
                                  * two-level pipeline predicted 0.50 s and the single level predicted 0.53 ran
@@ -402,7 +420,10 @@ static const char *kind_name(int kind) {
     static int k;
     if (kind < K_GIN) return LV_NAME[kind];
     k = (k + 1) % 4;
-    if (kind >= K_ERR) return ERR_NAMES[kind - K_ERR];
+    if (kind >= K_ERR) {
+        err_name(kind - K_ERR, buf[k], sizeof buf[k]);
+        return buf[k];
+    }
     if (kind >= K_PIPE) {
         int g = kind >= K_PIPEG, x = kind - (g ? K_PIPEG : K_PIPE), lv = x % 16, over = (x / 16) % 2, sp = x / 32;
         snprintf(buf[k], sizeof buf[k], "P%sk%dp%d%s%c", LV_NAME[lv], sp / 16, sp % 16, g ? "M" : "", over ? 'o' : 's');
@@ -423,8 +444,12 @@ static const char *kind_name(int kind) {
 static int kind_parse(const char *s) {
     for (int v = 0; v < LV_N; v++)
         if (!strcmp(s, LV_NAME[v])) return v;
-    for (int i = 0; i < NERR; i++)
-        if (!strcmp(s, ERR_NAMES[i])) return K_ERR + i;
+    if (s[0] == 'X')
+        for (int i = 0; i < NERR; i++) {
+            char name[24];
+            err_name(i, name, sizeof name);
+            if (!strcmp(s, name)) return K_ERR + i;
+        }
     if (s[0] == 'P') {                      /* PD48k6p2s */
         const char *kp = strchr(s, 'k');
         if (!kp) return -1;
@@ -874,23 +899,61 @@ static int plan_enum(const calib_t *c, shape_t n, ranked_t *out, int max) {
 }
 
 /* ---- the accuracy budget ---------------------------------------------------------------- */
-/* a plan's error (max-norm, relative, against the exact product on uniform random inputs: the
- * f64 product of the f32 inputs, the compensated product of the f64 inputs) is the classical
- * GEMM's own error times one factor per fused level, and grows like sqrt(k) with the inner
- * dimension (measured: about 1.4x per doubling, the order of the levels immaterial: SW then D48
- * and D48 then SW within 2%); the GEMM's error and each level's factor are measured at n = N_E
- * (one level over the GEMM, divided by the GEMM alone).  A factor below 1 means more accurate
- * than the GEMM, which the accurate levels are, because their leaves sum k/g2 products instead
- * of k; a second level does not get that again, so the factors do not simply multiply: the
- * two-level plan D48/D48 measures the depth factor rho (1.5 in f64, 2.2 in f32 on this machine)
- * by which the product of the factors is multiplied once per fused level after the first.
- * Against the exact errors of forty plans at 3456-13824 this predicts the plans without a
- * Strassen level within 20% and over-predicts those with one by up to 1.6x (the safe side).
- * Streams and pipelines leave the arithmetic unchanged. */
+/* A plan's error (max-norm, relative, against the exact product on uniform random inputs: the f64 product of
+ * the f32 inputs, the compensated product of the f64 inputs) is modelled level by level.  For a plan with the
+ * fused levels X_1 (top) .. X_d over a GEMM leaf, on a problem of inner dimension k,
+ *
+ *     E^2 = (x + y / N^(3/4)) k_leaf A_d^2  +  sum_i z_{X_i} A_{i-1}^2,
+ *
+ * with k_leaf = k / (g2 of every level), A_i = a_{X_1} .. a_{X_i} and N = nu_{X_1} .. nu_{X_d}.
+ *   - The first term is the leaf GEMM's error, which grows like sqrt(k_leaf), multiplied by every level's
+ *     amplification ratio a_X (kernels.h, from the scheme: how a level's output error follows from the relative
+ *     error of its products).  The factor in front is the tail of the GEMM's error distribution: an output of
+ *     a level averages the errors of nu_X products (the scheme's participation number, kernels.h), which makes
+ *     the largest error of a block smaller against its typical error than it is in the GEMM alone; x is the
+ *     fully averaged constant, y the excess of a single product.
+ *   - The second is each level's own rounding in its three passes, z_X, a constant of its programs, which every
+ *     level above it amplifies.  This is what makes the order matter: a level with a large z (R336, whose P
+ *     program cancels) costs little on top and much at the bottom of a deep plan.
+ * x, y and the z_X are fitted, per machine and precision, to the errors of the levels alone and in ordered pairs
+ * measured at n = N_E: a weighted linear least squares on the squared errors (the equation is linear in them),
+ * with negative unknowns set to zero.  The GEMM alone is measured too and extrapolated as sqrt(k).  Fitted at
+ * 2304, the model predicts the plans' errors at 3456-13824, one to three levels deep, within 0.8-1.25, and the
+ * ratio between two plans of one size to about 10% (results/errmodel_data_2026-11-23.txt).  Streams, pipelines
+ * and the K levels leave the arithmetic unchanged. */
+static const double LV_AMP[LV_N] = {[LV_SW] = SW_AMP,     [LV_D48] = DPS48_AMP, [LV_R336] = R336_AMP, [LV_R363] = R363_AMP,
+                                    [LV_R633] = R633_AMP, [LV_T336] = T336_AMP, [LV_T363] = T363_AMP, [LV_T633] = T633_AMP};
+static const double LV_NU[LV_N] = {[LV_SW] = SW_NU,     [LV_D48] = DPS48_NU, [LV_R336] = R336_NU, [LV_R363] = R363_NU,
+                                   [LV_R633] = R633_NU, [LV_T336] = T336_NU, [LV_T363] = T363_NU, [LV_T633] = T633_NU};
+#define ERR_NP (2 + NERR_LV)
 typedef struct {
-    double base, rho, f[LV_N];
+    double eg2;             /* the GEMM alone: E^2 = eg2 k */
+    double x, y, z[LV_N];
     int ok;
 } errmod_t;
+
+/* the coefficients of x, y and of every level's z in a plan's squared error; the number of fused levels */
+static int err_row(const int *plan, shape_t s, double *cx, double *cy, double *cz) {
+    double kl = (double)s.k, a2 = 1, nn = 1;
+    int levels = 0;
+    for (int i = 0; i < LV_N; i++) cz[i] = 0;
+    for (int i = 0; i < PLAN_MAX && !lv_leaf(PLV(plan[i])); i++) {
+        int lv = PLV(plan[i]);
+        if (lv_split(lv)) continue;             /* a K level's strips are the GEMM's own sums */
+        int reps = lv == LV_SW2 ? 2 : 1;        /* two 2x2 levels in one */
+        if (lv == LV_SW2) lv = LV_SW;
+        for (int r = 0; r < reps; r++) {
+            cz[lv] += a2;
+            a2 *= LV_AMP[lv] * LV_AMP[lv];
+            kl /= LVDEF[lv].g2;
+            nn *= LV_NU[lv];
+            levels++;
+        }
+    }
+    *cx = kl * a2;
+    *cy = kl * a2 / (sqrt(nn) * sqrt(sqrt(nn)));    /* N^(3/4), in operations that round the same everywhere */
+    return levels;
+}
 
 static errmod_t err_model(const calib_t *c) {
     errmod_t e;
@@ -900,34 +963,90 @@ static errmod_t err_model(const calib_t *c) {
         v[i] = calib_get(c, K_ERR + i, sq(N_E));
         if (v[i] <= 0) return e;
     }
-    e.base = v[6];                      /* the classical GEMM's own error at N_E */
-    e.rho = v[2] * e.base / (v[1] * v[1]);   /* D48/D48 over the product of two D48 factors */
-    e.f[LV_D48] = v[1] / e.base;
-    e.f[LV_SW] = v[0] / e.base;
-    e.f[LV_SW2] = e.f[LV_SW] * e.f[LV_SW];
-    e.f[LV_R336] = v[3] / e.base;
-    e.f[LV_R363] = v[4] / e.base;
-    e.f[LV_R633] = v[5] / e.base;
-    e.ok = 1;
+    e.eg2 = v[0] * v[0] / N_E;
+    /* rows scaled by the measured squared errors, so that every plan counts by its relative error */
+    static double row[NERR][ERR_NP];
+    for (int i = 1; i < NERR; i++) {
+        int plan[PLAN_MAX];
+        double cx, cy, cz[LV_N], w = 1 / (v[i] * v[i]);
+        err_plan(i, plan);
+        err_row(plan, sq(N_E), &cx, &cy, cz);
+        row[i][0] = cx * w;
+        row[i][1] = cy * w;
+        for (int j = 0; j < NERR_LV; j++) row[i][2 + j] = cz[ERR_LV[j]] * w;
+    }
+    int on[ERR_NP];
+    double p[ERR_NP];
+    for (int a = 0; a < ERR_NP; a++) on[a] = 1;
+    for (;;) {
+        /* the normal equations over the unknowns still in, by Gaussian elimination with partial pivoting */
+        int idx[ERR_NP], n = 0;
+        for (int a = 0; a < ERR_NP; a++)
+            if (on[a]) idx[n++] = a;
+        double m[ERR_NP][ERR_NP + 1];
+        for (int a = 0; a < n; a++) {
+            for (int b = 0; b <= n; b++) m[a][b] = 0;
+            for (int i = 1; i < NERR; i++) {
+                for (int b = 0; b < n; b++) m[a][b] += row[i][idx[a]] * row[i][idx[b]];
+                m[a][n] += row[i][idx[a]];
+            }
+        }
+        for (int a = 0; a < n; a++) {
+            int piv = a;
+            for (int r = a + 1; r < n; r++)
+                if (fabs(m[r][a]) > fabs(m[piv][a])) piv = r;
+            if (m[piv][a] == 0) return e;
+            for (int b = 0; b <= n; b++) { double t = m[a][b]; m[a][b] = m[piv][b]; m[piv][b] = t; }
+            for (int r = a + 1; r < n; r++) {
+                double f = m[r][a] / m[a][a];
+                for (int b = a; b <= n; b++) m[r][b] -= f * m[a][b];
+            }
+        }
+        int neg = 0;
+        for (int a = n - 1; a >= 0; a--) {
+            double t = m[a][n];
+            for (int b = a + 1; b < n; b++) t -= m[a][b] * p[idx[b]];
+            p[idx[a]] = t / m[a][a];
+        }
+        for (int a = 0; a < n; a++)
+            if (p[idx[a]] < 0) { on[idx[a]] = 0; neg = 1; }
+        if (!neg) break;
+    }
+    for (int a = 0; a < ERR_NP; a++)
+        if (!on[a]) p[a] = 0;
+    e.x = p[0];
+    e.y = p[1];
+    for (int j = 0; j < NERR_LV; j++) e.z[ERR_LV[j]] = p[2 + j];
+    e.ok = e.x + e.y > 0;
     return e;
 }
 
-/* the factor by which a plan's error exceeds the classical GEMM's */
-static double plan_growth(const errmod_t *e, const int *plan) {
-    double g = 1;
-    int levels = 0;
-    for (int i = 0; i < PLAN_MAX && !lv_leaf(PLV(plan[i])); i++) {
-        if (lv_split(PLV(plan[i]))) continue;   /* a K level's strips are the GEMM's own sums */
-        g *= e->f[PLV(plan[i])];
-        levels++;
-        if (PLV(plan[i]) == LV_SW2) levels++;   /* two 2x2 levels in one */
-    }
-    for (int i = 1; i < levels; i++) g *= e->rho;
-    return g;
+/* the fitted model in units of the precision's unit roundoff u: the GEMM's constant c_G (its error is c_G u
+ * sqrt(k)), the fully averaged leaf constant c = sqrt(x) / u, the excess beta = y / x of a single product, and
+ * every level's own rounding pi = sqrt(z) / u */
+static void print_errmodel(const calib_t *c, double u) {
+    errmod_t e = err_model(c);
+    if (!e.ok) return;
+    printf("# error model: GEMM %.3f u sqrt(k); leaf %.3f u sqrt(k_leaf), tail excess %.2f; the levels' own rounding "
+           "(u): SW %.1f, D48 %.1f, R336 %.1f, R363 %.1f, R633 %.1f\n", sqrt(e.eg2) / u, sqrt(e.x) / u,
+           e.x > 0 ? e.y / e.x : 0.0, sqrt(e.z[LV_SW]) / u, sqrt(e.z[LV_D48]) / u, sqrt(e.z[LV_R336]) / u,
+           sqrt(e.z[LV_R363]) / u, sqrt(e.z[LV_R633]) / u);
 }
 
+/* a plan's predicted error on a problem of shape s */
 static double plan_err(const errmod_t *e, const int *plan, shape_t s) {
-    return e->base * sqrt((double)s.k / N_E) * plan_growth(e, plan);   /* the inner dimension sums k products */
+    double cx, cy, cz[LV_N];
+    if (!err_row(plan, s, &cx, &cy, cz)) return sqrt(e->eg2 * (double)s.k);    /* the GEMM alone */
+    double q = e->x * cx + e->y * cy;
+    for (int i = 0; i < LV_N; i++) q += e->z[i] * cz[i];
+    return sqrt(q);
+}
+
+/* the factor by which a plan's error exceeds the classical GEMM's on a problem of shape s */
+static double plan_growth(const errmod_t *e, const int *plan, shape_t s) {
+    double cx, cy, cz[LV_N];
+    if (!err_row(plan, s, &cx, &cy, cz)) return 1;
+    return plan_err(e, plan, s) / sqrt(e->eg2 * (double)s.k);
 }
 
 static double fmm_max_growth(void) {
@@ -942,7 +1061,7 @@ static double resolve_growth(double g) { return g == 0 ? FMM_DEFAULT_GROWTH : g;
 /* the cheapest plan with growth at most gmax (> 0), or with tie: faster first, more accurate
  * second -- of the admissible plans predicted within PLAN_TIE of the fastest (the predictions are
  * good to about that), one whose predicted error is at least PLAN_TIE_GAIN lower than the
- * fastest's (smaller differences are below what the error model resolves, about 25%), the most
+ * fastest's (smaller differences are below what the error model resolves, about 10%), the most
  * accurate of those, else the fastest; so near-ties no longer flip the choice between plans of
  * clearly different accuracy from one calibration to the next.
  * -1 if no plan is admissible. */
@@ -950,11 +1069,11 @@ static double plan_pick(const calib_t *c, const errmod_t *e, shape_t s, double g
     static ranked_t rk[8192];
     int cnt = plan_enum(c, s, rk, 8192);
     for (int i = 0; i < cnt; i++)
-        if (plan_growth(e, rk[i].plan) <= gmax * (1 + 1e-9)) {
+        if (plan_growth(e, rk[i].plan, s) <= gmax * (1 + 1e-9)) {
             int pick = i;
-            double gbest = plan_growth(e, rk[i].plan) * (1 - PLAN_TIE_GAIN);
+            double gbest = plan_growth(e, rk[i].plan, s) * (1 - (c->gpu ? PLAN_TIE_GAIN_GPU : PLAN_TIE_GAIN));
             for (int j = i + 1; tie && j < cnt && rk[j].t <= rk[i].t * (1 + (c->gpu ? PLAN_TIE_GPU : PLAN_TIE)); j++) {
-                double g = plan_growth(e, rk[j].plan);
+                double g = plan_growth(e, rk[j].plan, s);
                 if (g < gbest * (1 - 1e-9)) { gbest = g; pick = j; }
             }
             memcpy(plan, rk[pick].plan, sizeof rk[pick].plan);
@@ -980,7 +1099,7 @@ static double plan_best_budget(const calib_t *c, shape_t s, double gmax, int *pl
         cm->gpu = 0;
         double t0 = plan_pick(c, &e, s, gmax, 0, p0);
         cm->gpu = 1;
-        if (t0 >= 0 && plan_growth(&e, p0) < gmax) gmax = plan_growth(&e, p0);
+        if (t0 >= 0 && plan_growth(&e, p0, s) < gmax) gmax = plan_growth(&e, p0, s);
     }
     double t = plan_pick(c, &e, s, gmax, 1, plan);
     if (t >= 0) return t;

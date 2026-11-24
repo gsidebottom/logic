@@ -162,7 +162,7 @@ static void FN(plan_table)(size_t n) {
         printf("  (%d plans)\n", cnt);
         errmod_t e = err_model(cal);
         if (e.ok) {
-            printf("         error growth over classical: best %.1f (pred. error %.1e);", plan_growth(&e, plan),
+            printf("         error growth over classical: best %.2f (pred. error %.1e);", plan_growth(&e, plan, sq(sz)),
                    plan_err(&e, plan, sq(sz)));
             static const double BUDGET[] = {16, 8, 4, 2};
             for (int b = 0; b < 4; b++) {
@@ -176,11 +176,7 @@ static void FN(plan_table)(size_t n) {
         }
     }
     if (n >= N_E) {
-        errmod_t e = err_model(cal);
-        if (e.ok)
-            printf("# error model: classical scale %.2e at n = %d (x sqrt(n / %d)); factor per level SW %.2f, "
-                   "D48 %.2f, R336 %.2f, R363 %.2f, R633 %.2f\n", e.base, N_E, N_E, e.f[LV_SW], e.f[LV_D48],
-                   e.f[LV_R336], e.f[LV_R363], e.f[LV_R633]);
+        print_errmodel(cal, sizeof(T) == 4 ? 0x1p-24 : 0x1p-53);
     }
     free(cal);
     free(A); free(B); free(C);

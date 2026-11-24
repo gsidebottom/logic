@@ -353,8 +353,65 @@ def write_rust(path, dps48_src):
     parts.append(f"/// the 2x2 level's programs and their operations (the calibration cache's kernels key)")
     parts.append(f'pub const SW_PROGRAM: &str = "{sw_name}";')
     parts.append(f"pub const SW_OPS: usize = {sw_ops};")
+    parts.append("/// the error model's constants of each scheme, from its programs: the amplification ratio and the")
+    parts.append("/// participation number at its worst output (gen_kernels.py, err_consts)")
+    for name, amp, nu in err_const_table(dps48_src, rdir):
+        parts.append(f"pub const {name}_AMP: f64 = {amp!r};")
+        parts.append(f"pub const {name}_NU: f64 = {nu!r};")
     open(path, "w").write("\n".join(parts) + "\n")
     print(f"rust kernels: sw ({sw_name}, {sw_ops} operations), dps48 from {base}, r336/r363/r633 from {os.path.relpath(rdir, HERE)} -> {path}")
+
+
+class _Vec(list):
+    """a coefficient vector with the arithmetic a straight-line program needs"""
+    def __add__(self, o): return _Vec(a + b for a, b in zip(self, o))
+    def __sub__(self, o): return _Vec(a - b for a, b in zip(self, o))
+    def __neg__(self): return _Vec(-a for a in self)
+    def __mul__(self, c): return _Vec(a * c for a in self)
+    __rmul__ = __mul__
+    def __truediv__(self, c): return _Vec(a / c for a in self)
+
+
+def slp_matrix(text, nin, nout):
+    """the matrix a program computes (rows: its outputs o0..), by running it on the unit vectors"""
+    env = {f"i{k}": _Vec(float(j == k) for j in range(nin)) for k in range(nin)}
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith("#"):
+            continue
+        lhs, expr = ln.rstrip(";").split(":=", 1)
+        assert re.fullmatch(r"[\w+\-*/(). ]+", expr), expr
+        env[lhs.strip()] = eval(expr, {"__builtins__": {}}, env)
+    return [env[f"o{k}"] for k in range(nout)]
+
+
+def err_consts(l, r, p, g2):
+    """the error model's two constants of a scheme, from its programs (fmm.c, "the accuracy budget"): with
+    w_r = P_jr^2 |L_r|^2 |R_r|^2 for output j, the amplification ratio sqrt(sum_r w_r / g2), the factor by which the
+    level multiplies the relative error of its products, at the output where it is largest, and the participation
+    number (sum_r w_r)^2 / sum_r w_r^2 there, the number of products whose errors that output averages"""
+    nl = max(int(v) for v in re.findall(r"\bi(\d+)\b", l)) + 1
+    nr = max(int(v) for v in re.findall(r"\bi(\d+)\b", r)) + 1
+    rank = max(int(v) for v in re.findall(r"\bo(\d+)\b", l)) + 1
+    nc = max(int(v) for v in re.findall(r"\bo(\d+)\b", p)) + 1
+    L, R, P = slp_matrix(l, nl, rank), slp_matrix(r, nr, rank), slp_matrix(p, rank, nc)
+    n2 = [sum(x * x for x in L[q]) * sum(x * x for x in R[q]) for q in range(rank)]
+    best = (0.0, 0.0)
+    for j in range(nc):
+        w = [P[j][q] * P[j][q] * n2[q] for q in range(rank)]
+        s1, s2 = sum(w), sum(x * x for x in w)
+        best = max(best, ((s1 / g2) ** 0.5, s1 * s1 / s2))
+    return best
+
+
+def err_const_table(dps48_src, rdir):
+    """(name, amplification ratio, participation number) of every scheme the library has kernels for"""
+    _, sw_l, sw_r, sw_p = sw_programs()
+    out = [("SW",) + err_consts(sw_l, sw_r, sw_p, 2)]
+    out.append(("DPS48",) + err_consts(*(open(f"{dps48_src}_{s}.slp").read() for s in "LRP"), 4))
+    for name, g2 in (("r336", 3), ("r363", 6), ("r633", 3), ("t336", 3), ("t363", 6), ("t633", 3)):
+        out.append((name.upper(),) + err_consts(*(open(os.path.join(rdir, f"{name}_{s}.slp")).read() for s in "LRP"), g2))
+    return out
 
 
 def count_ops_expr(text):
@@ -458,6 +515,13 @@ def main():
         for side, t in zip("LRP", src):
             h.append(fused_expr(f"{name}_{side}_fd", t, "float", "double"))
         print(f"{name}: fused kernels from {os.path.relpath(rdir, HERE)}/{name}, {nin} blocks of A, rank {nout}, {nops} operations")
+    h.append("/* the error model's constants of each scheme, from its programs: the amplification ratio and the"
+             " participation number at its worst output (gen_kernels.py, err_consts) */")
+    for name, amp, nu in err_const_table(dps48_src, rdir):
+        h.append(f"#define {name}_AMP {amp!r}")
+        h.append(f"#define {name}_NU {nu!r}")
+        print(f"{name}: amplification ratio {amp:.4f}, participation number {nu:.2f}")
+    h.append("")
     open(out, "w").write("\n".join(h))
 
 

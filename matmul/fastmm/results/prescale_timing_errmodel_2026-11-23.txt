@@ -1,0 +1,63 @@
+# prescale timing, the sizes whose default plan changed; 2026-11-23 23:49; Apple M4 Pro; logic 9468e4b + working tree
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#     3.0     1 04-00:38:01 /sbin/launchd
+#     2.7 53007       00:05 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+#     2.7 53008       00:05 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+#     2.6 53003       00:06 /System/Library/Frameworks/Contacts.framework/Support/contactsd
+## n=6912 d prescale 0 round 1  23:49
+# auto n=6912   f64: plan R633+3/R363/G6, predicted 0.452 s
+classical  n=6912   f64  min   0.7727 s  med   0.7744 s    852.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.797 P 0.000  plan G  pred 0.773 s (-0.2%)  perr 6.68e-15
+auto       n=6912   f64  min   0.4478 s  med   0.4495 s   1469.2 GFLOP/s(2mkn)  speedup 1.723  relerr 8.13e-15  split L 0.007 R 0.013 gemm 0.422 P 0.007  plan R633+3/R363/G6  pred 0.452 s (+0.5%)  perr 4.03e-15
+## n=6912 d prescale 2 round 1  23:49
+# auto n=6912   f64: plan R633+3/R363/G6, predicted 0.452 s
+# prescaled by the library: separate passes
+classical  n=6912   f64  min   0.7710 s  med   0.7738 s    853.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.784 P 0.000  plan G  pred 0.773 s (-0.2%)  perr 6.68e-15
+auto       n=6912   f64  min   0.4698 s  med   0.4750 s   1390.4 GFLOP/s(2mkn)  speedup 1.629  relerr 8.13e-15  split L 0.007 R 0.013 gemm 0.426 P 0.007  plan R633+3/R363/G6  pred 0.452 s (-4.9%)  perr 4.03e-15
+## n=6912 d prescale 3 round 1  23:49
+# auto n=6912   f64: plan R633+3/R363/G6, predicted 0.452 s
+# prescaled by the library: folded into the top level
+classical  n=6912   f64  min   0.7694 s  med   0.7750 s    852.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.812 P 0.000  plan G  pred 0.773 s (-0.3%)  perr 6.68e-15
+auto       n=6912   f64  min   0.4574 s  med   0.4631 s   1426.3 GFLOP/s(2mkn)  speedup 1.674  relerr 8.13e-15  split L 0.007 R 0.012 gemm 0.424 P 0.008  plan R633+3/R363/G6  pred 0.452 s (-2.5%)  perr 4.03e-15
+## n=6912 d prescale 0 round 2  23:50
+# auto n=6912   f64: plan R633+3/R363/G6, predicted 0.452 s
+classical  n=6912   f64  min   0.7657 s  med   0.7696 s    858.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.769 P 0.000  plan G  pred 0.773 s (+0.4%)  perr 6.68e-15
+auto       n=6912   f64  min   0.4473 s  med   0.4478 s   1474.9 GFLOP/s(2mkn)  speedup 1.719  relerr 8.13e-15  split L 0.007 R 0.013 gemm 0.420 P 0.007  plan R633+3/R363/G6  pred 0.452 s (+0.8%)  perr 4.03e-15
+## n=6912 d prescale 2 round 2  23:50
+# auto n=6912   f64: plan R633+3/R363/G6, predicted 0.452 s
+# prescaled by the library: separate passes
+classical  n=6912   f64  min   0.7585 s  med   0.7701 s    857.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.785 P 0.000  plan G  pred 0.773 s (+0.3%)  perr 6.68e-15
+auto       n=6912   f64  min   0.4664 s  med   0.4701 s   1405.0 GFLOP/s(2mkn)  speedup 1.638  relerr 8.13e-15  split L 0.007 R 0.013 gemm 0.421 P 0.007  plan R633+3/R363/G6  pred 0.452 s (-3.9%)  perr 4.03e-15
+## n=6912 d prescale 3 round 2  23:50
+# auto n=6912   f64: plan R633+3/R363/G6, predicted 0.452 s
+# prescaled by the library: folded into the top level
+classical  n=6912   f64  min   0.7800 s  med   0.7829 s    843.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.791 P 0.000  plan G  pred 0.773 s (-1.3%)  perr 6.68e-15
+auto       n=6912   f64  min   0.4562 s  med   0.4587 s   1440.0 GFLOP/s(2mkn)  speedup 1.707  relerr 8.13e-15  split L 0.007 R 0.012 gemm 0.421 P 0.008  plan R633+3/R363/G6  pred 0.452 s (-1.5%)  perr 4.03e-15
+## n=13824 f prescale 0 round 1  23:50
+# auto n=13824  f32: plan R363+4/R363/G6, predicted 0.909 s
+classical  n=13824  f32  min   1.5491 s  med   1.5496 s   3409.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.600 P 0.000  plan G  pred 1.643 s (+6.0%)  perr 5.23e-06
+auto       n=13824  f32  min   0.9030 s  med   0.9035 s   5848.1 GFLOP/s(2mkn)  speedup 1.715  relerr 6.57e-06  split L 0.015 R 0.015 gemm 0.847 P 0.027  plan R363+4/R363/G6  pred 0.909 s (+0.6%)  perr 2.17e-06
+## n=13824 f prescale 2 round 1  23:51
+# auto n=13824  f32: plan R363+4/R363/G6, predicted 0.909 s
+# prescaled by the library: separate passes
+classical  n=13824  f32  min   1.5500 s  med   1.7951 s   2943.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.713 P 0.000  plan G  pred 1.643 s (-8.5%)  perr 5.23e-06
+auto       n=13824  f32  min   0.9534 s  med   0.9560 s   5526.7 GFLOP/s(2mkn)  speedup 1.878  relerr 6.57e-06  split L 0.015 R 0.015 gemm 0.849 P 0.029  plan R363+4/R363/G6  pred 0.909 s (-4.9%)  perr 2.17e-06
+## n=13824 f prescale 3 round 1  23:51
+# auto n=13824  f32: plan R363+4/R363/G6, predicted 0.909 s
+# prescaled by the library: folded into the top level
+classical  n=13824  f32  min   1.5439 s  med   1.5470 s   3415.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.547 P 0.000  plan G  pred 1.643 s (+6.2%)  perr 5.23e-06
+auto       n=13824  f32  min   0.9289 s  med   0.9295 s   5684.3 GFLOP/s(2mkn)  speedup 1.664  relerr 6.57e-06  split L 0.014 R 0.014 gemm 0.846 P 0.027  plan R363+4/R363/G6  pred 0.909 s (-2.2%)  perr 2.17e-06
+## n=13824 f prescale 0 round 2  23:51
+# auto n=13824  f32: plan R363+4/R363/G6, predicted 0.909 s
+classical  n=13824  f32  min   1.5492 s  med   1.6907 s   3125.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.686 P 0.000  plan G  pred 1.643 s (-2.8%)  perr 5.23e-06
+auto       n=13824  f32  min   0.9008 s  med   0.9043 s   5842.9 GFLOP/s(2mkn)  speedup 1.870  relerr 6.57e-06  split L 0.015 R 0.015 gemm 0.846 P 0.028  plan R363+4/R363/G6  pred 0.909 s (+0.5%)  perr 2.17e-06
+## n=13824 f prescale 2 round 2  23:51
+# auto n=13824  f32: plan R363+4/R363/G6, predicted 0.909 s
+# prescaled by the library: separate passes
+classical  n=13824  f32  min   1.5530 s  med   1.6072 s   3287.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.651 P 0.000  plan G  pred 1.643 s (+2.2%)  perr 5.23e-06
+auto       n=13824  f32  min   0.9453 s  med   0.9475 s   5576.2 GFLOP/s(2mkn)  speedup 1.696  relerr 6.57e-06  split L 0.015 R 0.015 gemm 0.840 P 0.028  plan R363+4/R363/G6  pred 0.909 s (-4.1%)  perr 2.17e-06
+## n=13824 f prescale 3 round 2  23:52
+# auto n=13824  f32: plan R363+4/R363/G6, predicted 0.909 s
+# prescaled by the library: folded into the top level
+classical  n=13824  f32  min   1.5466 s  med   1.5477 s   3413.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.549 P 0.000  plan G  pred 1.643 s (+6.2%)  perr 5.23e-06
+auto       n=13824  f32  min   0.9229 s  med   0.9240 s   5718.4 GFLOP/s(2mkn)  speedup 1.675  relerr 6.57e-06  split L 0.014 R 0.014 gemm 0.841 P 0.026  plan R363+4/R363/G6  pred 0.909 s (-1.6%)  perr 2.17e-06

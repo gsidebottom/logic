@@ -1,0 +1,63 @@
+     Running unittests src/lib.rs (target/release/deps/fmm-6065dcc31112d595)
+running 9 tests
+test calib::tests::interpolation ... ok
+test calib::tests::g9_matches_c ... ok
+test gpu::tests::a_batch_matches_accelerate_bit_for_bit ... ok
+test gpu::tests::pinned_starts_on_a_page ... ok
+test plan::tests::work_and_divisibility ... ok
+test plan::tests::names_round_trip ... ok
+test sys::tests::claim_lines_zeroes_only_whole_lines_inside_the_slice ... ok
+test calib::tests::kind_names_round_trip ... ok
+test calib::tests::needs_include_rectangular_products ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/bin/fmmbench.rs (target/release/deps/fmmbench-c6c74d8608c39e92)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/bin/fmmcal.rs (target/release/deps/fmmcal-19c4f6ff6cf00b36)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/bin/passcal.rs (target/release/deps/passcal-e426af9ed1d751f5)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/exec.rs (target/release/deps/exec-cd22e70e30c31fc9)
+running 4 tests
+test entry_points ... ok
+test leading_dimensions_and_padding ... ok
+test plans_f32 ... ok
+test plans_f64 ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.64s
+   Doc-tests fmm
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/release/deps/fmm-28d9cf5096c83d83)
+running 10 tests
+test calib::tests::interpolation ... ok
+test plan::tests::names_round_trip ... ok
+test plan::tests::work_and_divisibility ... ok
+test sys::tests::claim_lines_zeroes_only_whole_lines_inside_the_slice ... ok
+test calib::tests::g9_matches_c ... ok
+test calib::tests::kind_names_round_trip ... ok
+test calib::tests::needs_include_rectangular_products ... ok
+test gpu::tests::pinned_starts_on_a_page ... ok
+test gpu::tests::a_batch_matches_accelerate_bit_for_bit ... ok
+test gpu::tests::plans_with_the_gpu_match_the_cpu_bit_for_bit ... ok
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+     Running unittests src/bin/fmmbench.rs (target/release/deps/fmmbench-b370c032da85b3ca)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/bin/fmmcal.rs (target/release/deps/fmmcal-6275ed4292923ba8)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/bin/passcal.rs (target/release/deps/passcal-1c067ba05af0710c)
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/exec.rs (target/release/deps/exec-02374f21d7810cf3)
+running 4 tests
+test entry_points ... ok
+test leading_dimensions_and_padding ... ok
+test plans_f32 ... ok
+test plans_f64 ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.36s
+   Doc-tests fmm
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

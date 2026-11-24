@@ -1,0 +1,16 @@
+# reruns on the switched library; 2026-11-23 20:46; logic 51c0856 + working tree
+20:46 start essl_gemms
+21:01 end essl_gemms (exit 0)
+21:01 start fused_vs_separate
+21:06 end fused_vs_separate (exit 0)
+21:06 start prescale_timing
+21:14 end prescale_timing (exit 0)
+21:14 start rust_vs_c
+21:26 end rust_vs_c (exit 0)
+21:26 start crosscheck
+21:30 end crosscheck (exit 0)
+21:30 start rust_tests
+21:30 end rust_tests (exit 0)
+21:30 start scaled_inputs
+22:19 end scaled_inputs (exit 0)
+22:19 done

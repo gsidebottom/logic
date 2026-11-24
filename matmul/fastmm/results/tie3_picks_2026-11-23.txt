@@ -1,0 +1,84 @@
+# the tie window at 3%; 2026-11-23 22:39; Apple M4 Pro; logic 51c0856 + working tree
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#    22.6  2342 03-23:15:19 /System/Library/PrivateFrameworks/XprotectFramework.framework/Versions/A/XPCServices/XprotectService.xpc/Contents/MacOS/XprotectService
+#    19.1 43849 02-11:15:21 /Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer)
+#    18.8   597 03-23:26:32 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+#    17.7 44582 02-09:19:35 /Users/greg/Library/Application Support/Claude/claude-code/2.1.330/4262a1273231/claude.app/Contents/MacOS/claude
+## picks
+# auto n=1728   f32: plan G, predicted 0.003 s
+# auto:none n=1728   f32: plan G, predicted 0.003 s
+# auto n=3456   f32: plan R363/G6, predicted 0.020 s
+# auto:none n=3456   f32: plan R363/G6, predicted 0.020 s
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# auto:none n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+# auto:none n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+# auto n=1728   f64: plan R363/G6, predicted 0.010 s
+# auto:none n=1728   f64: plan R363/G6, predicted 0.010 s
+# auto n=3456   f64: plan R363/G4, predicted 0.071 s
+# auto:none n=3456   f64: plan SW+4/R363/G6, predicted 0.070 s
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# auto:none n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# auto:none n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# auto n=3456   f32: plan R363/G6M, predicted 0.013 s  (GPU build)
+# auto n=6912   f32: plan R363/G6M, predicted 0.075 s  (GPU build)
+# auto n=13824  f32: plan R363+4/R336/G6M, predicted 0.530 s  (GPU build)
+## 3456 f64 round 1  22:39
+# auto n=3456   f64: plan R363/G4, predicted 0.071 s
+# auto:none n=3456   f64: plan SW+4/R363/G6, predicted 0.070 s
+# compensated f64 reference in 1.5 s
+classical  n=3456   f64  min   0.0964 s  med   0.0966 s    854.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.097 P 0.000  plan G  pred 0.097 s (+0.3%)  perr 4.70e-15  err64 4.75e-15  cw 5.73e-16
+auto       n=3456   f64  min   0.0703 s  med   0.0706 s   1169.3 GFLOP/s(2mkn)  speedup 1.369  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.064 P 0.003  plan R363/G4  pred 0.071 s (+1.2%)  perr 2.22e-15  err64 2.76e-15  cw 3.31e-16
+auto:none  n=3456   f64  min   0.0706 s  med   0.0714 s   1156.4 GFLOP/s(2mkn)  speedup 1.354  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.066 P 0.001  plan SW+4/R363/G6  pred 0.070 s (-2.1%)  perr 3.27e-15  err64 3.29e-15  cw 3.97e-16
+plan=R363/G4 n=3456   f64  min   0.0703 s  med   0.0705 s   1171.7 GFLOP/s(2mkn)  speedup 1.372  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.064 P 0.003  plan R363/G4  pred 0.071 s (+1.4%)  perr 2.22e-15  err64 2.76e-15  cw 3.31e-16
+plan=R363/G3 n=3456   f64  min   0.0704 s  med   0.0705 s   1171.3 GFLOP/s(2mkn)  speedup 1.371  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.064 P 0.003  plan R363/G3  pred 0.071 s (+1.4%)  perr 2.22e-15  err64 2.76e-15  cw 3.31e-16
+plan=SW+4/R363/G6 n=3456   f64  min   0.0705 s  med   0.0713 s   1157.3 GFLOP/s(2mkn)  speedup 1.355  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.066 P 0.001  plan SW+4/R363/G6  pred 0.070 s (-2.0%)  perr 3.27e-15  err64 3.29e-15  cw 3.97e-16
+plan=SW+3/R363/G6 n=3456   f64  min   0.0707 s  med   0.0715 s   1155.4 GFLOP/s(2mkn)  speedup 1.352  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.067 P 0.001  plan SW+3/R363/G6  pred 0.072 s (+0.6%)  perr 3.27e-15  err64 3.29e-15  cw 3.97e-16
+## 3456 f64 round 2  22:39
+# auto n=3456   f64: plan R363/G4, predicted 0.071 s
+# auto:none n=3456   f64: plan SW+4/R363/G6, predicted 0.070 s
+classical  n=3456   f64  min   0.0963 s  med   0.0968 s    852.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.097 P 0.000  plan G  pred 0.097 s (+0.1%)  perr 4.70e-15  err64 4.75e-15  cw 5.73e-16
+auto       n=3456   f64  min   0.0703 s  med   0.0705 s   1170.5 GFLOP/s(2mkn)  speedup 1.373  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.064 P 0.003  plan R363/G4  pred 0.071 s (+1.3%)  perr 2.22e-15  err64 2.76e-15  cw 3.31e-16
+auto:none  n=3456   f64  min   0.0695 s  med   0.0710 s   1162.1 GFLOP/s(2mkn)  speedup 1.363  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.066 P 0.001  plan SW+4/R363/G6  pred 0.070 s (-1.6%)  perr 3.27e-15  err64 3.29e-15  cw 3.97e-16
+plan=R363/G4 n=3456   f64  min   0.0704 s  med   0.0705 s   1171.0 GFLOP/s(2mkn)  speedup 1.373  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.064 P 0.003  plan R363/G4  pred 0.071 s (+1.3%)  perr 2.22e-15  err64 2.76e-15  cw 3.31e-16
+plan=R363/G3 n=3456   f64  min   0.0705 s  med   0.0706 s   1170.1 GFLOP/s(2mkn)  speedup 1.372  relerr 4.89e-15  split L 0.002 R 0.002 gemm 0.064 P 0.003  plan R363/G3  pred 0.071 s (+1.3%)  perr 2.22e-15  err64 2.76e-15  cw 3.31e-16
+plan=SW+4/R363/G6 n=3456   f64  min   0.0688 s  med   0.0716 s   1153.1 GFLOP/s(2mkn)  speedup 1.352  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.066 P 0.001  plan SW+4/R363/G6  pred 0.070 s (-2.4%)  perr 3.27e-15  err64 3.29e-15  cw 3.97e-16
+plan=SW+3/R363/G6 n=3456   f64  min   0.0709 s  med   0.0723 s   1142.2 GFLOP/s(2mkn)  speedup 1.340  relerr 5.30e-15  split L 0.002 R 0.002 gemm 0.067 P 0.001  plan SW+3/R363/G6  pred 0.072 s (-0.6%)  perr 3.27e-15  err64 3.29e-15  cw 3.97e-16
+## test_fmm  22:40
+f32 n=1000  ld=1000  budget 0    plan G                              fmm   0.0008 s  Accelerate   0.0008 s  speedup  0.97  rel. difference 0.00e+00  ok
+f32 n=2048  ld=2048  budget 0    plan G                              fmm   0.0053 s  Accelerate   0.0053 s  speedup  1.00  rel. difference 0.00e+00  ok
+f32 n=3000  ld=3000  budget 0    plan D48/G6                         fmm   0.0147 s  Accelerate   0.0163 s  speedup  1.11  rel. difference 2.92e-06  ok
+f32 n=4096  ld=4096  budget 0    plan D48/G6                         fmm   0.0351 s  Accelerate   0.0418 s  speedup  1.19  rel. difference 3.39e-06  ok
+f32 n=5000  ld=5000  budget 0    plan D48/G4                         fmm   0.0609 s  Accelerate   0.0765 s  speedup  1.25  rel. difference 3.64e-06  ok
+f32 n=8192  ld=8192  budget 0    plan D48+4/D48/G6                   fmm   0.2294 s  Accelerate   0.3260 s  speedup  1.42  rel. difference 5.47e-06  ok
+f32 n=9000  ld=9000  budget 0    plan D48+4/D48/G6 padded to 9008    fmm   0.3138 s  Accelerate   0.4417 s  speedup  1.41  rel. difference 5.12e-06  ok
+f32 n=4096  ld=4160  budget 0    plan D48/G6                         fmm   0.0344 s  Accelerate   0.0400 s  speedup  1.16  rel. difference 3.76e-06  ok
+f32 n=8192  ld=8192  budget 4    plan D48+4/D48/G6                   fmm   0.2304 s  Accelerate   0.3267 s  speedup  1.42  rel. difference 4.96e-06  ok
+f32 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0111 s  Accelerate   0.0120 s  speedup  1.08  rel. difference 2.50e-06  ok  (predicted 0.0114 s, calibrated for this shape; planning 0.008 s)
+f32 1000x3000x2000       budget 0    plan G                              fmm   0.0036 s  Accelerate   0.0036 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0033 s, estimated; planning 0.008 s)
+f32 2048x4096x1024       budget 0    plan G                              fmm   0.0051 s  Accelerate   0.0051 s  speedup  1.00  rel. difference 0.00e+00  ok  (predicted 0.0048 s, estimated; planning 0.008 s)
+f32 6912x6912x3456       budget 0    plan D48/G4                         fmm   0.0739 s  Accelerate   0.0994 s  speedup  1.34  rel. difference 4.08e-06  ok  (predicted 0.0805 s, estimated; planning 0.009 s)
+f64 n=1000  ld=1000  budget 0    plan G                              fmm   0.0020 s  Accelerate   0.0020 s  speedup  1.00  rel. difference 0.00e+00  ok
+f64 n=2048  ld=2048  budget 0    plan D48/G6                         fmm   0.0173 s  Accelerate   0.0208 s  speedup  1.21  rel. difference 4.92e-15  ok
+f64 n=3000  ld=3000  budget 0    plan D48/G3                         fmm   0.0481 s  Accelerate   0.0626 s  speedup  1.30  rel. difference 5.21e-15  ok
+f64 n=4096  ld=4096  budget 0    plan D48/G3                         fmm   0.1260 s  Accelerate   0.1618 s  speedup  1.28  rel. difference 5.50e-15  ok
+f64 n=5000  ld=5000  budget 0    plan D48/G4                         fmm   0.2327 s  Accelerate   0.2926 s  speedup  1.26  rel. difference 7.29e-15  ok
+f64 n=8192  ld=8192  budget 0    plan D48+2/D48/G6                   fmm   0.8001 s  Accelerate   1.2905 s  speedup  1.61  rel. difference 9.28e-15  ok
+f64 n=9000  ld=9000  budget 0    plan D48+2/D48/G3 padded to 9008    fmm   1.0931 s  Accelerate   1.7036 s  speedup  1.56  rel. difference 9.50e-15  ok
+f64 n=4096  ld=4160  budget 0    plan D48/G3                         fmm   0.1277 s  Accelerate   0.1586 s  speedup  1.24  rel. difference 6.46e-15  ok
+f64 n=8192  ld=8192  budget 4    plan D48+2/D48/G6                   fmm   0.8055 s  Accelerate   1.3700 s  speedup  1.70  rel. difference 9.51e-15  ok
+f64 3456x3456x1728       budget 0    plan R363/G6                        fmm   0.0358 s  Accelerate   0.0476 s  speedup  1.33  rel. difference 5.02e-15  ok  (predicted 0.0358 s, calibrated for this shape; planning 0.008 s)
+f64 1000x3000x2000       budget 0    plan SW/G4                          fmm   0.0138 s  Accelerate   0.0143 s  speedup  1.04  rel. difference 6.68e-15  ok  (predicted 0.0134 s, estimated; planning 0.008 s)
+f64 2048x4096x1024       budget 0    plan D48/G6                         fmm   0.0171 s  Accelerate   0.0193 s  speedup  1.13  rel. difference 5.42e-15  ok  (predicted 0.0173 s, estimated; planning 0.008 s)
+f64 6912x6912x3456       budget 0    plan D48+3/R363/G6                  fmm   0.2515 s  Accelerate   0.3851 s  speedup  1.53  rel. difference 7.39e-15  ok  (predicted 0.2538 s, estimated; planning 0.010 s)
+all ok
+## crosscheck  22:40
+# crosscheck, both builds; 2026-11-23 22:40; Apple M4 Pro; logic 51c0856 + working tree; FMM_CALIB_DIR=/Users/greg/projects/logic/matmul/fastmm/results
+## the default build  22:40
+all identical
+## with the GPU  22:41
+all identical
+# done 22:42
+# done 22:42

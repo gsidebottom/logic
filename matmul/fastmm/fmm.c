@@ -342,7 +342,9 @@ static int parse_plan(const char *meth, shape_t n, int *plan) {
 static const char *ERR_PLANS[NERR] = {"sw1", "dps48", "dps48x2", "r336", "r363", "r633", "classical"};
 static const char *ERR_NAMES[NERR] = {"ESW", "ED48", "ED48D48", "ER336", "ER363", "ER633", "EG"};
 #define FMM_DEFAULT_GROWTH 1.0  /* the budget max_growth = 0 means: no less accurate than the GEMM */
-#define PLAN_TIE 0.02           /* plans predicted within 2% of the fastest are ties ... */
+#define PLAN_TIE 0.03           /* plans predicted within 3% of the fastest are ties (2% until 2026-11-23: at 3456 f64
+                                 * a 2x2 plan predicted 2.1% faster, measured 1.3% faster, displaced a single level
+                                 * with 0.84 of its error; results/tie3_picks_2026-11-23.txt) ... */
 #define PLAN_TIE_GAIN 0.25      /* ... which a plan predicted at least 25% more accurate wins: the error model
                                  * is good to about 25%, and smaller predicted gains picked the less accurate
                                  * plan at 6912 in both precisions (results/final_campaign_2026-11-15.txt);

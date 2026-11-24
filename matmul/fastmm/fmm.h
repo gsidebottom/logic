@@ -32,9 +32,9 @@
  * (minutes).  Calls are serialized: each uses the whole machine.  The workspace (up to about
  * 10 n^2 elements) is kept between calls until fmm_release.
  *
- * Faster first, more accurate second: of the plans predicted within 2% of the fastest within the
+ * Faster first, more accurate second: of the plans predicted within 3% of the fastest within the
  * budget (8% with the GPU, whose timings repeat less well), the planner takes one predicted at
- * least 10% more accurate, or of equal prediction with the more accurate level on top.
+ * least 25% more accurate, the error model's resolution.
  *
  * The passes claim their output lines with DC ZVA before writing them, so that a store does not
  * first fetch from memory a line it is about to overwrite (FMM_ZVA=0 switches it off; the results

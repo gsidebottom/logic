@@ -35,6 +35,11 @@ build/gpu_share: gpu_share.m
 build/probe_nt: probe_nt.c
 	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall probe_nt.c -framework Accelerate -o $@
 
+# a plain pass by where its arrays live (level-1 cache, level-2 cache, memory): the bandwidths of the report's
+# machine figure; results/probe_cache_2026-11-23.txt
+build/probe_cache: probe_cache.c
+	mkdir -p build && clang -O3 -mcpu=apple-m4 -Wall probe_cache.c -o $@
+
 build/probe_strip: probe_strip.c build/kernels.h
 	mkdir -p build && clang -O3 -mcpu=apple-m4 -ffp-contract=off -Wall -Wno-unused-function -Ibuild probe_strip.c -o $@
 

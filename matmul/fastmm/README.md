@@ -88,7 +88,7 @@ statement `v + X*5` has a non-dyadic factor, rounded once where Rust rounds twic
 an R336 level differed from Rust's in the last bits (found 2026-11-16, when the crosscheck first
 ran on the real cache at 6912 and 13824).
 
-The planner takes the fastest plan within the error budget and, of the plans predicted within 2%
+The planner takes the fastest plan within the error budget and, of the plans predicted within 3%
 of it, one predicted at least 25% more accurate, the error model's resolution (faster first,
 more accurate second; C and Rust alike).  The passes claim their
 output lines with `DC ZVA` before writing them (`FMM_ZVA=0` to switch it off): a store to a line

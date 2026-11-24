@@ -1,0 +1,745 @@
+# scaled inputs; 2026-11-23 21:30; Apple M4 Pro; logic 51c0856 + working tree
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#   265.6 46910       02:39 ./build/bench_fmm
+#     9.7 43849 02-10:06:26 /Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer)
+#     7.3 47202       00:00 /bin/zsh
+#     6.6 44582 02-08:10:40 /Users/greg/Library/Application Support/Claude/claude-code/2.1.330/4262a1273231/claude.app/Contents/MacOS/claude
+#     5.8 43836 02-10:06:26 /Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper
+## n=6912 f input uniform prescale 0  21:30
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.9203 s  med   0.9203 s    717.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.920 P 0.000  plan G  pred 0.197 s (-78.6%)  perr 3.94e-06  err64 3.85e-06  cw 3.74e-07
+auto       n=6912   f32  min   0.2989 s  med   0.2989 s   2209.4 GFLOP/s(2mkn)  speedup 3.079  relerr 4.14e-06  split L 0.005 R 0.004 gemm 0.281 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-54.6%)  perr 2.32e-06  err64 2.20e-06  cw 2.18e-07
+plan=SW/G  n=6912   f32  min   0.8772 s  med   0.8772 s    752.9 GFLOP/s(2mkn)  speedup 1.049  relerr 4.32e-06  split L 0.004 R 0.004 gemm 0.865 P 0.004  plan SW/G  pred 0.194 s (-77.9%)  perr 3.72e-06  err64 4.08e-06  cw 3.92e-07
+plan=D48/G n=6912   f32  min   1.1124 s  med   1.1124 s    593.7 GFLOP/s(2mkn)  speedup 0.827  relerr 4.18e-06  split L 0.006 R 0.006 gemm 1.095 P 0.005  plan D48/G  pred 0.155 s (-86.1%)  perr 2.44e-06  err64 2.81e-06  cw 2.79e-07
+plan=R336/G n=6912   f32  min   0.6922 s  med   0.6922 s    954.2 GFLOP/s(2mkn)  speedup 1.330  relerr 3.91e-06  split L 0.007 R 0.005 gemm 0.675 P 0.005  plan R336/G  pred 0.168 s (-75.8%)  perr 2.16e-06  err64 2.27e-06  cw 2.20e-07
+plan=R363/G n=6912   f32  min   1.2191 s  med   1.2191 s    541.8 GFLOP/s(2mkn)  speedup 0.755  relerr 4.18e-06  split L 0.005 R 0.005 gemm 1.186 P 0.024  plan R363/G  pred 0.149 s (-87.8%)  perr 1.76e-06  err64 1.76e-06  cw 1.71e-07
+plan=R633/G n=6912   f32  min   0.7327 s  med   0.7327 s    901.4 GFLOP/s(2mkn)  speedup 1.256  relerr 3.91e-06  split L 0.005 R 0.008 gemm 0.715 P 0.005  plan R633/G  pred 0.162 s (-77.9%)  perr 2.37e-06  err64 2.27e-06  cw 2.20e-07
+plan=D48/D48/G n=6912   f32  min   0.8899 s  med   0.8899 s    742.2 GFLOP/s(2mkn)  speedup 1.034  relerr 4.32e-06  split L 0.030 R 0.029 gemm 0.803 P 0.028  plan D48/D48/G  pred 0.352 s (-60.4%)  perr 3.29e-06  err64 2.94e-06  cw 2.86e-07
+plan=R363/R336/G n=6912   f32  min   0.7153 s  med   0.7153 s    923.3 GFLOP/s(2mkn)  speedup 1.287  relerr 3.82e-06  split L 0.026 R 0.023 gemm 0.627 P 0.040  plan R363/R336/G  pred 0.217 s (-69.6%)  perr 2.11e-06  err64 2.77e-06  cw 2.70e-07
+## n=6912 f input uniform prescale 1  21:30
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.5478 s  med   0.5478 s   1205.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.548 P 0.000  plan G  pred 0.197 s (-64.1%)  perr 3.94e-06  err64 3.85e-06  cw 3.74e-07
+auto       n=6912   f32  min   0.1944 s  med   0.1944 s   3398.1 GFLOP/s(2mkn)  speedup 2.818  relerr 4.14e-06  split L 0.004 R 0.004 gemm 0.178 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-30.2%)  perr 2.32e-06  err64 3.02e-06  cw 2.96e-07
+plan=SW/G  n=6912   f32  min   0.3550 s  med   0.3550 s   1860.5 GFLOP/s(2mkn)  speedup 1.543  relerr 4.32e-06  split L 0.004 R 0.004 gemm 0.343 P 0.003  plan SW/G  pred 0.194 s (-45.5%)  perr 3.72e-06  err64 4.08e-06  cw 3.92e-07
+plan=D48/G n=6912   f32  min   0.3089 s  med   0.3089 s   2138.0 GFLOP/s(2mkn)  speedup 1.773  relerr 4.18e-06  split L 0.005 R 0.005 gemm 0.293 P 0.006  plan D48/G  pred 0.155 s (-49.9%)  perr 2.44e-06  err64 2.81e-06  cw 2.79e-07
+plan=R336/G n=6912   f32  min   0.4123 s  med   0.4123 s   1601.7 GFLOP/s(2mkn)  speedup 1.328  relerr 3.91e-06  split L 0.006 R 0.004 gemm 0.397 P 0.005  plan R336/G  pred 0.168 s (-59.3%)  perr 2.16e-06  err64 3.04e-06  cw 2.94e-07
+plan=R363/G n=6912   f32  min   0.3083 s  med   0.3083 s   2142.1 GFLOP/s(2mkn)  speedup 1.777  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.291 P 0.009  plan R363/G  pred 0.149 s (-51.6%)  perr 1.76e-06  err64 1.83e-06  cw 1.80e-07
+plan=R633/G n=6912   f32  min   0.3457 s  med   0.3457 s   1910.2 GFLOP/s(2mkn)  speedup 1.584  relerr 3.91e-06  split L 0.004 R 0.008 gemm 0.330 P 0.005  plan R633/G  pred 0.162 s (-53.1%)  perr 2.37e-06  err64 2.62e-06  cw 2.52e-07
+plan=D48/D48/G n=6912   f32  min   0.6118 s  med   0.6118 s   1079.6 GFLOP/s(2mkn)  speedup 0.895  relerr 4.50e-06  split L 0.027 R 0.025 gemm 0.535 P 0.026  plan D48/D48/G  pred 0.352 s (-42.4%)  perr 3.29e-06  err64 4.13e-06  cw 3.99e-07
+plan=R363/R336/G n=6912   f32  min   0.5780 s  med   0.5780 s   1142.7 GFLOP/s(2mkn)  speedup 0.948  relerr 3.82e-06  split L 0.023 R 0.019 gemm 0.500 P 0.036  plan R363/R336/G  pred 0.217 s (-62.4%)  perr 2.11e-06  err64 3.14e-06  cw 3.00e-07
+## n=6912 f input nonneg prescale 0  21:30
+# inputs nonneg
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.4176 s  med   0.4176 s   1581.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.418 P 0.000  plan G  pred 0.197 s (-52.9%)  perr 3.94e-06  err64 6.23e-06  cw 6.63e-06
+auto       n=6912   f32  min   0.2653 s  med   0.2653 s   2489.3 GFLOP/s(2mkn)  speedup 1.574  relerr 7.21e-06  split L 0.004 R 0.005 gemm 0.248 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-48.9%)  perr 2.32e-06  err64 4.37e-06  cw 4.63e-06
+plan=SW/G  n=6912   f32  min   0.3690 s  med   0.3690 s   1789.8 GFLOP/s(2mkn)  speedup 1.132  relerr 8.68e-06  split L 0.004 R 0.004 gemm 0.357 P 0.003  plan SW/G  pred 0.194 s (-47.5%)  perr 3.72e-06  err64 6.24e-06  cw 6.66e-06
+plan=D48/G n=6912   f32  min   0.3819 s  med   0.3819 s   1729.6 GFLOP/s(2mkn)  speedup 1.094  relerr 1.02e-05  split L 0.005 R 0.005 gemm 0.366 P 0.006  plan D48/G  pred 0.155 s (-59.5%)  perr 2.44e-06  err64 7.07e-06  cw 7.54e-06
+plan=R336/G n=6912   f32  min   0.4623 s  med   0.4623 s   1428.5 GFLOP/s(2mkn)  speedup 0.903  relerr 1.05e-05  split L 0.007 R 0.005 gemm 0.446 P 0.005  plan R336/G  pred 0.168 s (-63.7%)  perr 2.16e-06  err64 8.81e-06  cw 9.37e-06
+plan=R363/G n=6912   f32  min   0.2758 s  med   0.2758 s   2394.2 GFLOP/s(2mkn)  speedup 1.514  relerr 6.95e-06  split L 0.004 R 0.005 gemm 0.260 P 0.007  plan R363/G  pred 0.149 s (-45.9%)  perr 1.76e-06  err64 3.94e-06  cw 4.20e-06
+plan=R633/G n=6912   f32  min   0.3845 s  med   0.3845 s   1717.5 GFLOP/s(2mkn)  speedup 1.086  relerr 1.03e-05  split L 0.005 R 0.007 gemm 0.368 P 0.005  plan R633/G  pred 0.162 s (-57.9%)  perr 2.37e-06  err64 8.20e-06  cw 8.44e-06
+plan=D48/D48/G n=6912   f32  min   0.6499 s  med   0.6499 s   1016.2 GFLOP/s(2mkn)  speedup 0.643  relerr 9.08e-06  split L 0.027 R 0.026 gemm 0.571 P 0.026  plan D48/D48/G  pred 0.352 s (-45.8%)  perr 3.29e-06  err64 7.21e-06  cw 7.65e-06
+plan=R363/R336/G n=6912   f32  min   0.5023 s  med   0.5023 s   1314.9 GFLOP/s(2mkn)  speedup 0.831  relerr 9.82e-06  split L 0.022 R 0.018 gemm 0.433 P 0.030  plan R363/R336/G  pred 0.217 s (-56.7%)  perr 2.11e-06  err64 8.12e-06  cw 8.67e-06
+## n=6912 f input nonneg prescale 1  21:31
+# inputs nonneg
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.3155 s  med   0.3155 s   2093.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.316 P 0.000  plan G  pred 0.197 s (-37.7%)  perr 3.94e-06  err64 6.23e-06  cw 6.63e-06
+auto       n=6912   f32  min   0.1984 s  med   0.1984 s   3329.5 GFLOP/s(2mkn)  speedup 1.591  relerr 7.21e-06  split L 0.004 R 0.004 gemm 0.183 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-31.6%)  perr 2.32e-06  err64 5.60e-06  cw 5.94e-06
+plan=SW/G  n=6912   f32  min   0.3505 s  med   0.3505 s   1884.4 GFLOP/s(2mkn)  speedup 0.900  relerr 8.75e-06  split L 0.004 R 0.004 gemm 0.339 P 0.003  plan SW/G  pred 0.194 s (-44.8%)  perr 3.72e-06  err64 8.24e-06  cw 8.69e-06
+plan=D48/G n=6912   f32  min   0.3587 s  med   0.3587 s   1841.2 GFLOP/s(2mkn)  speedup 0.880  relerr 1.02e-05  split L 0.005 R 0.005 gemm 0.341 P 0.007  plan D48/G  pred 0.155 s (-56.9%)  perr 2.44e-06  err64 9.28e-06  cw 9.74e-06
+plan=R336/G n=6912   f32  min   0.3521 s  med   0.3521 s   1875.5 GFLOP/s(2mkn)  speedup 0.896  relerr 1.25e-05  split L 0.007 R 0.004 gemm 0.335 P 0.006  plan R336/G  pred 0.168 s (-52.4%)  perr 2.16e-06  err64 1.15e-05  cw 1.20e-05
+plan=R363/G n=6912   f32  min   0.4567 s  med   0.4567 s   1446.1 GFLOP/s(2mkn)  speedup 0.691  relerr 6.95e-06  split L 0.004 R 0.005 gemm 0.441 P 0.007  plan R363/G  pred 0.149 s (-67.3%)  perr 1.76e-06  err64 3.94e-06  cw 4.20e-06
+plan=R633/G n=6912   f32  min   0.4401 s  med   0.4401 s   1500.7 GFLOP/s(2mkn)  speedup 0.717  relerr 1.03e-05  split L 0.004 R 0.008 gemm 0.423 P 0.005  plan R633/G  pred 0.162 s (-63.2%)  perr 2.37e-06  err64 1.02e-05  cw 1.08e-05
+plan=D48/D48/G n=6912   f32  min   0.6828 s  med   0.6828 s    967.3 GFLOP/s(2mkn)  speedup 0.462  relerr 9.62e-06  split L 0.027 R 0.025 gemm 0.604 P 0.026  plan D48/D48/G  pred 0.352 s (-48.4%)  perr 3.29e-06  err64 9.27e-06  cw 9.86e-06
+plan=R363/R336/G n=6912   f32  min   0.4943 s  med   0.4943 s   1336.0 GFLOP/s(2mkn)  speedup 0.638  relerr 1.12e-05  split L 0.022 R 0.019 gemm 0.422 P 0.031  plan R363/R336/G  pred 0.217 s (-56.0%)  perr 2.11e-06  err64 9.83e-06  cw 1.04e-05
+## n=6912 f input outer:3 prescale 0  21:31
+# inputs outer:3
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.4333 s  med   0.4333 s   1524.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.433 P 0.000  plan G  pred 0.197 s (-54.6%)  perr 3.94e-06  err64 2.69e-06  cw 3.56e-07
+auto       n=6912   f32  min   0.1913 s  med   0.1913 s   3453.3 GFLOP/s(2mkn)  speedup 2.266  relerr 2.78e-06  split L 0.004 R 0.005 gemm 0.175 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-29.1%)  perr 2.32e-06  err64 3.22e-07  cw 3.16e-03
+plan=SW/G  n=6912   f32  min   0.3894 s  med   0.3894 s   1695.9 GFLOP/s(2mkn)  speedup 1.113  relerr 3.68e-06  split L 0.004 R 0.004 gemm 0.378 P 0.003  plan SW/G  pred 0.194 s (-50.3%)  perr 3.72e-06  err64 1.71e-06  cw 2.44e-04
+plan=D48/G n=6912   f32  min   0.4089 s  med   0.4089 s   1615.2 GFLOP/s(2mkn)  speedup 1.060  relerr 3.30e-06  split L 0.005 R 0.006 gemm 0.393 P 0.005  plan D48/G  pred 0.155 s (-62.2%)  perr 2.44e-06  err64 9.89e-07  cw 2.73e-03
+plan=R336/G n=6912   f32  min   0.4839 s  med   0.4839 s   1364.9 GFLOP/s(2mkn)  speedup 0.896  relerr 2.71e-06  split L 0.006 R 0.004 gemm 0.469 P 0.005  plan R336/G  pred 0.168 s (-65.3%)  perr 2.16e-06  err64 7.87e-07  cw 1.79e-03
+plan=R363/G n=6912   f32  min   0.3681 s  med   0.3681 s   1794.4 GFLOP/s(2mkn)  speedup 1.177  relerr 2.78e-06  split L 0.005 R 0.004 gemm 0.352 P 0.007  plan R363/G  pred 0.149 s (-59.5%)  perr 1.76e-06  err64 6.57e-07  cw 3.80e-04
+plan=R633/G n=6912   f32  min   0.3897 s  med   0.3897 s   1694.6 GFLOP/s(2mkn)  speedup 1.112  relerr 2.85e-06  split L 0.004 R 0.007 gemm 0.374 P 0.005  plan R633/G  pred 0.162 s (-58.4%)  perr 2.37e-06  err64 7.92e-07  cw 1.89e-03
+plan=D48/D48/G n=6912   f32  min   0.7108 s  med   0.7108 s    929.1 GFLOP/s(2mkn)  speedup 0.610  relerr 2.78e-06  split L 0.027 R 0.026 gemm 0.633 P 0.024  plan D48/D48/G  pred 0.352 s (-50.4%)  perr 3.29e-06  err64 5.76e-07  cw 1.14e-02
+plan=R363/R336/G n=6912   f32  min   0.5166 s  med   0.5166 s   1278.5 GFLOP/s(2mkn)  speedup 0.839  relerr 2.71e-06  split L 0.022 R 0.019 gemm 0.446 P 0.030  plan R363/R336/G  pred 0.217 s (-57.9%)  perr 2.11e-06  err64 4.01e-07  cw 2.78e-03
+## n=6912 f input outer:3 prescale 1  21:31
+# inputs outer:3
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.3121 s  med   0.3121 s   2115.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.312 P 0.000  plan G  pred 0.197 s (-37.0%)  perr 3.94e-06  err64 2.69e-06  cw 3.56e-07
+auto       n=6912   f32  min   0.1588 s  med   0.1588 s   4160.1 GFLOP/s(2mkn)  speedup 1.966  relerr 3.41e-06  split L 0.004 R 0.004 gemm 0.143 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-14.6%)  perr 2.32e-06  err64 1.57e-06  cw 3.39e-07
+plan=SW/G  n=6912   f32  min   0.2463 s  med   0.2463 s   2681.2 GFLOP/s(2mkn)  speedup 1.267  relerr 3.30e-06  split L 0.004 R 0.004 gemm 0.235 P 0.003  plan SW/G  pred 0.194 s (-21.4%)  perr 3.72e-06  err64 2.87e-06  cw 4.23e-07
+plan=D48/G n=6912   f32  min   0.2765 s  med   0.2765 s   2389.0 GFLOP/s(2mkn)  speedup 1.129  relerr 2.85e-06  split L 0.005 R 0.005 gemm 0.261 P 0.006  plan D48/G  pred 0.155 s (-44.1%)  perr 2.44e-06  err64 1.95e-06  cw 3.45e-07
+plan=R336/G n=6912   f32  min   0.3054 s  med   0.3054 s   2162.8 GFLOP/s(2mkn)  speedup 1.022  relerr 2.57e-06  split L 0.007 R 0.004 gemm 0.289 P 0.005  plan R336/G  pred 0.168 s (-45.1%)  perr 2.16e-06  err64 1.73e-06  cw 4.32e-07
+plan=R363/G n=6912   f32  min   0.2576 s  med   0.2576 s   2563.7 GFLOP/s(2mkn)  speedup 1.212  relerr 2.85e-06  split L 0.004 R 0.004 gemm 0.242 P 0.008  plan R363/G  pred 0.149 s (-42.1%)  perr 1.76e-06  err64 1.29e-06  cw 2.42e-07
+plan=R633/G n=6912   f32  min   0.2794 s  med   0.2794 s   2363.4 GFLOP/s(2mkn)  speedup 1.117  relerr 3.16e-06  split L 0.004 R 0.007 gemm 0.264 P 0.005  plan R633/G  pred 0.162 s (-42.0%)  perr 2.37e-06  err64 1.61e-06  cw 3.53e-07
+plan=D48/D48/G n=6912   f32  min   0.3952 s  med   0.3952 s   1671.0 GFLOP/s(2mkn)  speedup 0.790  relerr 3.20e-06  split L 0.028 R 0.026 gemm 0.313 P 0.027  plan D48/D48/G  pred 0.352 s (-10.8%)  perr 3.29e-06  err64 2.15e-06  cw 4.64e-07
+plan=R363/R336/G n=6912   f32  min   0.4015 s  med   0.4015 s   1644.8 GFLOP/s(2mkn)  speedup 0.777  relerr 2.78e-06  split L 0.021 R 0.018 gemm 0.316 P 0.046  plan R363/R336/G  pred 0.217 s (-45.9%)  perr 2.11e-06  err64 1.36e-06  cw 3.58e-07
+## n=6912 f input outer:6 prescale 0  21:31
+# inputs outer:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.3148 s  med   0.3148 s   2098.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.315 P 0.000  plan G  pred 0.197 s (-37.6%)  perr 3.94e-06  err64 2.59e-06  cw 3.97e-07
+auto       n=6912   f32  min   0.1928 s  med   0.1928 s   3425.7 GFLOP/s(2mkn)  speedup 1.633  relerr 2.67e-06  split L 0.004 R 0.004 gemm 0.173 P 0.012  plan R363+4/R633/G6  pred 0.136 s (-29.7%)  perr 2.32e-06  err64 2.57e-07  cw 6.01e+02
+plan=SW/G  n=6912   f32  min   0.2868 s  med   0.2868 s   2303.1 GFLOP/s(2mkn)  speedup 1.098  relerr 2.59e-06  split L 0.007 R 0.005 gemm 0.271 P 0.003  plan SW/G  pred 0.194 s (-32.5%)  perr 3.72e-06  err64 1.74e-06  cw 2.75e-01
+plan=D48/G n=6912   f32  min   0.2958 s  med   0.2958 s   2233.1 GFLOP/s(2mkn)  speedup 1.064  relerr 2.63e-06  split L 0.006 R 0.006 gemm 0.278 P 0.006  plan D48/G  pred 0.155 s (-47.7%)  perr 2.44e-06  err64 1.05e-06  cw 8.10e+01
+plan=R336/G n=6912   f32  min   0.4246 s  med   0.4246 s   1555.6 GFLOP/s(2mkn)  speedup 0.741  relerr 2.74e-06  split L 0.009 R 0.007 gemm 0.403 P 0.007  plan R336/G  pred 0.168 s (-60.5%)  perr 2.16e-06  err64 7.13e-07  cw 5.79e+01
+plan=R363/G n=6912   f32  min   0.2737 s  med   0.2737 s   2413.4 GFLOP/s(2mkn)  speedup 1.150  relerr 2.74e-06  split L 0.005 R 0.005 gemm 0.256 P 0.008  plan R363/G  pred 0.149 s (-45.5%)  perr 1.76e-06  err64 5.98e-07  cw 3.61e+00
+plan=R633/G n=6912   f32  min   0.2888 s  med   0.2888 s   2286.8 GFLOP/s(2mkn)  speedup 1.090  relerr 2.67e-06  split L 0.005 R 0.009 gemm 0.270 P 0.006  plan R633/G  pred 0.162 s (-43.9%)  perr 2.37e-06  err64 8.61e-07  cw 5.10e+01
+plan=D48/D48/G n=6912   f32  min   0.3996 s  med   0.3996 s   1652.7 GFLOP/s(2mkn)  speedup 0.788  relerr 2.74e-06  split L 0.030 R 0.033 gemm 0.309 P 0.028  plan D48/D48/G  pred 0.352 s (-11.8%)  perr 3.29e-06  err64 4.29e-07  cw 3.94e+03
+plan=R363/R336/G n=6912   f32  min   0.3870 s  med   0.3870 s   1706.4 GFLOP/s(2mkn)  speedup 0.813  relerr 2.52e-06  split L 0.021 R 0.020 gemm 0.313 P 0.033  plan R363/R336/G  pred 0.217 s (-43.8%)  perr 2.11e-06  err64 2.65e-07  cw 6.40e+02
+## n=6912 f input outer:6 prescale 1  21:31
+# inputs outer:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.9564 s  med   0.9564 s    690.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.956 P 0.000  plan G  pred 0.197 s (-79.5%)  perr 3.94e-06  err64 2.59e-06  cw 3.97e-07
+auto       n=6912   f32  min   0.3234 s  med   0.3234 s   2041.9 GFLOP/s(2mkn)  speedup 2.957  relerr 3.00e-06  split L 0.009 R 0.007 gemm 0.299 P 0.009  plan R363+4/R633/G6  pred 0.136 s (-58.1%)  perr 2.32e-06  err64 1.63e-06  cw 3.27e-07
+plan=SW/G  n=6912   f32  min   1.0178 s  med   1.0178 s    648.9 GFLOP/s(2mkn)  speedup 0.940  relerr 3.67e-06  split L 0.004 R 0.005 gemm 1.005 P 0.004  plan SW/G  pred 0.194 s (-81.0%)  perr 3.72e-06  err64 2.22e-06  cw 5.27e-07
+plan=D48/G n=6912   f32  min   1.2437 s  med   1.2437 s    531.0 GFLOP/s(2mkn)  speedup 0.769  relerr 2.89e-06  split L 0.006 R 0.007 gemm 1.224 P 0.007  plan D48/G  pred 0.155 s (-87.6%)  perr 2.44e-06  err64 2.51e-06  cw 3.83e-07
+plan=R336/G n=6912   f32  min   1.1749 s  med   1.1749 s    562.1 GFLOP/s(2mkn)  speedup 0.814  relerr 3.04e-06  split L 0.009 R 0.008 gemm 1.152 P 0.006  plan R336/G  pred 0.168 s (-85.7%)  perr 2.16e-06  err64 1.49e-06  cw 3.65e-07
+plan=R363/G n=6912   f32  min   0.9975 s  med   0.9975 s    662.1 GFLOP/s(2mkn)  speedup 0.959  relerr 2.59e-06  split L 0.005 R 0.005 gemm 0.979 P 0.009  plan R363/G  pred 0.149 s (-85.0%)  perr 1.76e-06  err64 1.50e-06  cw 2.76e-07
+plan=R633/G n=6912   f32  min   1.1919 s  med   1.1919 s    554.1 GFLOP/s(2mkn)  speedup 0.802  relerr 2.59e-06  split L 0.005 R 0.010 gemm 1.170 P 0.007  plan R633/G  pred 0.162 s (-86.4%)  perr 2.37e-06  err64 1.58e-06  cw 3.66e-07
+plan=D48/D48/G n=6912   f32  min   0.9041 s  med   0.9041 s    730.5 GFLOP/s(2mkn)  speedup 1.058  relerr 2.74e-06  split L 0.060 R 0.059 gemm 0.709 P 0.075  plan D48/D48/G  pred 0.352 s (-61.0%)  perr 3.29e-06  err64 2.32e-06  cw 4.73e-07
+plan=R363/R336/G n=6912   f32  min   0.7006 s  med   0.7006 s    942.7 GFLOP/s(2mkn)  speedup 1.365  relerr 2.82e-06  split L 0.030 R 0.024 gemm 0.607 P 0.039  plan R363/R336/G  pred 0.217 s (-69.0%)  perr 2.11e-06  err64 1.44e-06  cw 3.72e-07
+## n=6912 f input outerp:6 prescale 0  21:32
+# inputs outerp:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.3977 s  med   0.3977 s   1660.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.398 P 0.000  plan G  pred 0.197 s (-50.6%)  perr 3.94e-06  err64 2.71e-06  cw 3.87e-07
+auto       n=6912   f32  min   0.1930 s  med   0.1930 s   3422.0 GFLOP/s(2mkn)  speedup 2.061  relerr 2.68e-06  split L 0.004 R 0.004 gemm 0.177 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-29.7%)  perr 2.32e-06  err64 3.11e-07  cw 1.69e+03
+plan=SW/G  n=6912   f32  min   0.3975 s  med   0.3975 s   1661.5 GFLOP/s(2mkn)  speedup 1.001  relerr 2.97e-06  split L 0.004 R 0.004 gemm 0.385 P 0.004  plan SW/G  pred 0.194 s (-51.3%)  perr 3.72e-06  err64 1.63e-06  cw 2.16e-01
+plan=D48/G n=6912   f32  min   0.3695 s  med   0.3695 s   1787.7 GFLOP/s(2mkn)  speedup 1.077  relerr 2.85e-06  split L 0.005 R 0.005 gemm 0.353 P 0.006  plan D48/G  pred 0.155 s (-58.1%)  perr 2.44e-06  err64 1.13e-06  cw 7.11e+01
+plan=R336/G n=6912   f32  min   0.3744 s  med   0.3744 s   1763.9 GFLOP/s(2mkn)  speedup 1.062  relerr 2.68e-06  split L 0.007 R 0.004 gemm 0.358 P 0.005  plan R336/G  pred 0.168 s (-55.2%)  perr 2.16e-06  err64 8.57e-07  cw 6.98e+01
+plan=R363/G n=6912   f32  min   0.3779 s  med   0.3779 s   1747.8 GFLOP/s(2mkn)  speedup 1.053  relerr 2.68e-06  split L 0.004 R 0.005 gemm 0.361 P 0.009  plan R363/G  pred 0.149 s (-60.5%)  perr 1.76e-06  err64 6.64e-07  cw 6.54e+00
+plan=R633/G n=6912   f32  min   0.3294 s  med   0.3294 s   2005.3 GFLOP/s(2mkn)  speedup 1.208  relerr 2.68e-06  split L 0.004 R 0.007 gemm 0.312 P 0.005  plan R633/G  pred 0.162 s (-50.8%)  perr 2.37e-06  err64 8.50e-07  cw 6.26e+01
+plan=D48/D48/G n=6912   f32  min   0.6007 s  med   0.6007 s   1099.5 GFLOP/s(2mkn)  speedup 0.662  relerr 2.60e-06  split L 0.025 R 0.024 gemm 0.525 P 0.027  plan D48/D48/G  pred 0.352 s (-41.3%)  perr 3.29e-06  err64 4.99e-07  cw 4.46e+03
+plan=R363/R336/G n=6912   f32  min   0.5144 s  med   0.5144 s   1283.9 GFLOP/s(2mkn)  speedup 0.773  relerr 2.68e-06  split L 0.021 R 0.020 gemm 0.442 P 0.031  plan R363/R336/G  pred 0.217 s (-57.7%)  perr 2.11e-06  err64 3.62e-07  cw 2.08e+03
+## n=6912 f input outerp:6 prescale 1  21:32
+# inputs outerp:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.4388 s  med   0.4388 s   1505.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.439 P 0.000  plan G  pred 0.197 s (-55.2%)  perr 3.94e-06  err64 2.71e-06  cw 3.87e-07
+auto       n=6912   f32  min   0.1986 s  med   0.1986 s   3325.3 GFLOP/s(2mkn)  speedup 2.209  relerr 2.72e-06  split L 0.005 R 0.005 gemm 0.180 P 0.009  plan R363+4/R633/G6  pred 0.136 s (-31.7%)  perr 2.32e-06  err64 1.62e-06  cw 3.65e-07
+plan=SW/G  n=6912   f32  min   0.4376 s  med   0.4376 s   1509.3 GFLOP/s(2mkn)  speedup 1.003  relerr 3.58e-06  split L 0.004 R 0.005 gemm 0.426 P 0.003  plan SW/G  pred 0.194 s (-55.8%)  perr 3.72e-06  err64 2.26e-06  cw 4.88e-07
+plan=D48/G n=6912   f32  min   0.5032 s  med   0.5032 s   1312.6 GFLOP/s(2mkn)  speedup 0.872  relerr 3.46e-06  split L 0.005 R 0.005 gemm 0.487 P 0.006  plan D48/G  pred 0.155 s (-69.3%)  perr 2.44e-06  err64 2.96e-06  cw 4.10e-07
+plan=R336/G n=6912   f32  min   0.5190 s  med   0.5190 s   1272.6 GFLOP/s(2mkn)  speedup 0.845  relerr 3.01e-06  split L 0.007 R 0.004 gemm 0.502 P 0.005  plan R336/G  pred 0.168 s (-67.7%)  perr 2.16e-06  err64 1.92e-06  cw 3.44e-07
+plan=R363/G n=6912   f32  min   0.3548 s  med   0.3548 s   1861.4 GFLOP/s(2mkn)  speedup 1.237  relerr 2.64e-06  split L 0.004 R 0.004 gemm 0.338 P 0.008  plan R363/G  pred 0.149 s (-57.9%)  perr 1.76e-06  err64 1.24e-06  cw 2.65e-07
+plan=R633/G n=6912   f32  min   0.5248 s  med   0.5248 s   1258.5 GFLOP/s(2mkn)  speedup 0.836  relerr 2.68e-06  split L 0.004 R 0.007 gemm 0.509 P 0.005  plan R633/G  pred 0.162 s (-69.1%)  perr 2.37e-06  err64 1.69e-06  cw 3.48e-07
+plan=D48/D48/G n=6912   f32  min   0.6802 s  med   0.6802 s    971.0 GFLOP/s(2mkn)  speedup 0.645  relerr 3.13e-06  split L 0.025 R 0.024 gemm 0.606 P 0.024  plan D48/D48/G  pred 0.352 s (-48.2%)  perr 3.29e-06  err64 2.41e-06  cw 4.84e-07
+plan=R363/R336/G n=6912   f32  min   0.5443 s  med   0.5443 s   1213.4 GFLOP/s(2mkn)  speedup 0.806  relerr 3.21e-06  split L 0.021 R 0.018 gemm 0.473 P 0.032  plan R363/R336/G  pred 0.217 s (-60.1%)  perr 2.11e-06  err64 1.82e-06  cw 3.79e-07
+## n=6912 f input inner:3 prescale 0  21:32
+# inputs inner:3
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.4127 s  med   0.4127 s   1600.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.413 P 0.000  plan G  pred 0.197 s (-52.4%)  perr 3.94e-06  err64 3.76e-06  cw 3.66e-07
+auto       n=6912   f32  min   0.1914 s  med   0.1914 s   3449.8 GFLOP/s(2mkn)  speedup 2.156  relerr 1.49e-04  split L 0.004 R 0.005 gemm 0.175 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-29.2%)  perr 2.32e-06  err64 1.49e-04  cw 1.44e-05
+plan=SW/G  n=6912   f32  min   0.4337 s  med   0.4337 s   1522.9 GFLOP/s(2mkn)  speedup 0.952  relerr 7.04e-05  split L 0.004 R 0.004 gemm 0.422 P 0.003  plan SW/G  pred 0.194 s (-55.4%)  perr 3.72e-06  err64 7.02e-05  cw 6.96e-06
+plan=D48/G n=6912   f32  min   0.4276 s  med   0.4276 s   1544.4 GFLOP/s(2mkn)  speedup 0.965  relerr 1.80e-04  split L 0.005 R 0.005 gemm 0.411 P 0.006  plan D48/G  pred 0.155 s (-63.8%)  perr 2.44e-06  err64 1.80e-04  cw 1.75e-05
+plan=R336/G n=6912   f32  min   0.3326 s  med   0.3326 s   1985.9 GFLOP/s(2mkn)  speedup 1.241  relerr 1.10e-04  split L 0.007 R 0.004 gemm 0.316 P 0.005  plan R336/G  pred 0.168 s (-49.6%)  perr 2.16e-06  err64 1.10e-04  cw 1.07e-05
+plan=R363/G n=6912   f32  min   0.4088 s  med   0.4088 s   1615.5 GFLOP/s(2mkn)  speedup 1.010  relerr 1.21e-04  split L 0.004 R 0.004 gemm 0.392 P 0.008  plan R363/G  pred 0.149 s (-63.5%)  perr 1.76e-06  err64 1.21e-04  cw 1.18e-05
+plan=R633/G n=6912   f32  min   0.4814 s  med   0.4814 s   1372.1 GFLOP/s(2mkn)  speedup 0.857  relerr 9.62e-05  split L 0.004 R 0.007 gemm 0.465 P 0.005  plan R633/G  pred 0.162 s (-66.3%)  perr 2.37e-06  err64 9.61e-05  cw 9.33e-06
+plan=D48/D48/G n=6912   f32  min   0.7210 s  med   0.7210 s    916.1 GFLOP/s(2mkn)  speedup 0.572  relerr 2.37e-04  split L 0.026 R 0.024 gemm 0.645 P 0.025  plan D48/D48/G  pred 0.352 s (-51.1%)  perr 3.29e-06  err64 2.37e-04  cw 2.27e-05
+plan=R363/R336/G n=6912   f32  min   0.6534 s  med   0.6534 s   1010.8 GFLOP/s(2mkn)  speedup 0.632  relerr 1.74e-04  split L 0.022 R 0.022 gemm 0.555 P 0.055  plan R363/R336/G  pred 0.217 s (-66.7%)  perr 2.11e-06  err64 1.74e-04  cw 1.67e-05
+## n=6912 f input inner:3 prescale 1  21:33
+# inputs inner:3
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.4175 s  med   0.4175 s   1581.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.418 P 0.000  plan G  pred 0.197 s (-52.9%)  perr 3.94e-06  err64 3.76e-06  cw 3.66e-07
+auto       n=6912   f32  min   0.1986 s  med   0.1986 s   3325.3 GFLOP/s(2mkn)  speedup 2.102  relerr 4.46e-06  split L 0.004 R 0.005 gemm 0.182 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-31.7%)  perr 2.32e-06  err64 2.71e-06  cw 2.63e-07
+plan=SW/G  n=6912   f32  min   0.3931 s  med   0.3931 s   1680.2 GFLOP/s(2mkn)  speedup 1.062  relerr 4.84e-06  split L 0.004 R 0.004 gemm 0.381 P 0.003  plan SW/G  pred 0.194 s (-50.7%)  perr 3.72e-06  err64 4.72e-06  cw 4.53e-07
+plan=D48/G n=6912   f32  min   0.3803 s  med   0.3803 s   1736.6 GFLOP/s(2mkn)  speedup 1.098  relerr 4.82e-06  split L 0.005 R 0.006 gemm 0.363 P 0.006  plan D48/G  pred 0.155 s (-59.3%)  perr 2.44e-06  err64 3.67e-06  cw 3.58e-07
+plan=R336/G n=6912   f32  min   0.3951 s  med   0.3951 s   1671.6 GFLOP/s(2mkn)  speedup 1.057  relerr 3.91e-06  split L 0.007 R 0.004 gemm 0.378 P 0.005  plan R336/G  pred 0.168 s (-57.5%)  perr 2.16e-06  err64 3.07e-06  cw 2.98e-07
+plan=R363/G n=6912   f32  min   0.4589 s  med   0.4589 s   1439.3 GFLOP/s(2mkn)  speedup 0.910  relerr 3.64e-06  split L 0.004 R 0.004 gemm 0.444 P 0.007  plan R363/G  pred 0.149 s (-67.5%)  perr 1.76e-06  err64 2.61e-06  cw 2.51e-07
+plan=R633/G n=6912   f32  min   0.3872 s  med   0.3872 s   1705.6 GFLOP/s(2mkn)  speedup 1.078  relerr 4.32e-06  split L 0.004 R 0.007 gemm 0.371 P 0.005  plan R633/G  pred 0.162 s (-58.2%)  perr 2.37e-06  err64 3.15e-06  cw 3.07e-07
+plan=D48/D48/G n=6912   f32  min   0.6403 s  med   0.6403 s   1031.5 GFLOP/s(2mkn)  speedup 0.652  relerr 5.37e-06  split L 0.025 R 0.026 gemm 0.564 P 0.025  plan D48/D48/G  pred 0.352 s (-45.0%)  perr 3.29e-06  err64 4.03e-06  cw 3.94e-07
+plan=R363/R336/G n=6912   f32  min   0.5455 s  med   0.5455 s   1210.8 GFLOP/s(2mkn)  speedup 0.765  relerr 4.59e-06  split L 0.022 R 0.019 gemm 0.476 P 0.029  plan R363/R336/G  pred 0.217 s (-60.1%)  perr 2.11e-06  err64 3.02e-06  cw 2.97e-07
+## n=6912 f input inner:6 prescale 0  21:33
+# inputs inner:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.2764 s  med   0.2764 s   2389.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.276 P 0.000  plan G  pred 0.197 s (-28.9%)  perr 3.94e-06  err64 3.81e-06  cw 3.70e-07
+auto       n=6912   f32  min   0.1582 s  med   0.1582 s   4175.3 GFLOP/s(2mkn)  speedup 1.747  relerr 6.51e-02  split L 0.004 R 0.004 gemm 0.142 P 0.007  plan R363+4/R633/G6  pred 0.136 s (-14.3%)  perr 2.32e-06  err64 6.51e-02  cw 6.40e-03
+plan=SW/G  n=6912   f32  min   0.2379 s  med   0.2379 s   2776.1 GFLOP/s(2mkn)  speedup 1.162  relerr 2.07e-03  split L 0.004 R 0.004 gemm 0.227 P 0.003  plan SW/G  pred 0.194 s (-18.6%)  perr 3.72e-06  err64 2.07e-03  cw 2.03e-04
+plan=D48/G n=6912   f32  min   0.2690 s  med   0.2690 s   2454.8 GFLOP/s(2mkn)  speedup 1.027  relerr 2.99e-02  split L 0.005 R 0.005 gemm 0.253 P 0.006  plan D48/G  pred 0.155 s (-42.5%)  perr 2.44e-06  err64 2.99e-02  cw 2.93e-03
+plan=R336/G n=6912   f32  min   0.2921 s  med   0.2921 s   2260.8 GFLOP/s(2mkn)  speedup 0.946  relerr 9.10e-03  split L 0.007 R 0.004 gemm 0.276 P 0.005  plan R336/G  pred 0.168 s (-42.6%)  perr 2.16e-06  err64 9.10e-03  cw 8.97e-04
+plan=R363/G n=6912   f32  min   0.2525 s  med   0.2525 s   2615.8 GFLOP/s(2mkn)  speedup 1.095  relerr 3.29e-02  split L 0.004 R 0.004 gemm 0.236 P 0.008  plan R363/G  pred 0.149 s (-40.9%)  perr 1.76e-06  err64 3.29e-02  cw 3.17e-03
+plan=R633/G n=6912   f32  min   0.2804 s  med   0.2804 s   2355.7 GFLOP/s(2mkn)  speedup 0.986  relerr 9.13e-03  split L 0.004 R 0.007 gemm 0.264 P 0.005  plan R633/G  pred 0.162 s (-42.2%)  perr 2.37e-06  err64 9.13e-03  cw 9.00e-04
+plan=D48/D48/G n=6912   f32  min   0.3981 s  med   0.3981 s   1659.1 GFLOP/s(2mkn)  speedup 0.694  relerr 1.25e-01  split L 0.025 R 0.028 gemm 0.316 P 0.029  plan D48/D48/G  pred 0.352 s (-11.5%)  perr 3.29e-06  err64 1.25e-01  cw 1.22e-02
+plan=R363/R336/G n=6912   f32  min   0.4190 s  med   0.4190 s   1576.2 GFLOP/s(2mkn)  speedup 0.660  relerr 7.72e-02  split L 0.021 R 0.017 gemm 0.346 P 0.035  plan R363/R336/G  pred 0.217 s (-48.1%)  perr 2.11e-06  err64 7.72e-02  cw 7.54e-03
+## n=6912 f input inner:6 prescale 1  21:33
+# inputs inner:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.2498 s  med   0.2498 s   2644.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.250 P 0.000  plan G  pred 0.197 s (-21.3%)  perr 3.94e-06  err64 3.81e-06  cw 3.70e-07
+auto       n=6912   f32  min   0.1570 s  med   0.1570 s   4208.0 GFLOP/s(2mkn)  speedup 1.591  relerr 4.09e-06  split L 0.004 R 0.004 gemm 0.141 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-13.6%)  perr 2.32e-06  err64 2.71e-06  cw 2.63e-07
+plan=SW/G  n=6912   f32  min   0.2671 s  med   0.2671 s   2473.0 GFLOP/s(2mkn)  speedup 0.935  relerr 5.11e-06  split L 0.004 R 0.004 gemm 0.256 P 0.003  plan SW/G  pred 0.194 s (-27.5%)  perr 3.72e-06  err64 4.63e-06  cw 4.44e-07
+plan=D48/G n=6912   f32  min   0.2711 s  med   0.2711 s   2436.0 GFLOP/s(2mkn)  speedup 0.921  relerr 4.41e-06  split L 0.006 R 0.006 gemm 0.253 P 0.006  plan D48/G  pred 0.155 s (-43.0%)  perr 2.44e-06  err64 4.08e-06  cw 3.92e-07
+plan=R336/G n=6912   f32  min   0.2885 s  med   0.2885 s   2289.4 GFLOP/s(2mkn)  speedup 0.866  relerr 4.41e-06  split L 0.006 R 0.004 gemm 0.273 P 0.005  plan R336/G  pred 0.168 s (-41.8%)  perr 2.16e-06  err64 2.92e-06  cw 2.87e-07
+plan=R363/G n=6912   f32  min   0.2607 s  med   0.2607 s   2533.1 GFLOP/s(2mkn)  speedup 0.958  relerr 3.87e-06  split L 0.004 R 0.004 gemm 0.244 P 0.008  plan R363/G  pred 0.149 s (-42.8%)  perr 1.76e-06  err64 2.19e-06  cw 2.15e-07
+plan=R633/G n=6912   f32  min   0.4665 s  med   0.4665 s   1415.9 GFLOP/s(2mkn)  speedup 0.535  relerr 4.59e-06  split L 0.009 R 0.007 gemm 0.445 P 0.005  plan R633/G  pred 0.162 s (-65.3%)  perr 2.37e-06  err64 3.25e-06  cw 3.13e-07
+plan=D48/D48/G n=6912   f32  min   0.7993 s  med   0.7993 s    826.3 GFLOP/s(2mkn)  speedup 0.312  relerr 4.69e-06  split L 0.043 R 0.037 gemm 0.684 P 0.035  plan D48/D48/G  pred 0.352 s (-55.9%)  perr 3.29e-06  err64 4.13e-06  cw 3.99e-07
+plan=R363/R336/G n=6912   f32  min   0.6968 s  med   0.6968 s    947.8 GFLOP/s(2mkn)  speedup 0.358  relerr 4.18e-06  split L 0.025 R 0.019 gemm 0.606 P 0.047  plan R363/R336/G  pred 0.217 s (-68.8%)  perr 2.11e-06  err64 3.16e-06  cw 3.11e-07
+## n=6912 f input innerp:6 prescale 0  21:33
+# inputs innerp:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.9007 s  med   0.9007 s    733.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.901 P 0.000  plan G  pred 0.197 s (-78.2%)  perr 3.94e-06  err64 3.80e-06  cw 3.69e-07
+auto       n=6912   f32  min   0.2910 s  med   0.2910 s   2269.8 GFLOP/s(2mkn)  speedup 3.095  relerr 6.84e-02  split L 0.005 R 0.005 gemm 0.273 P 0.009  plan R363+4/R633/G6  pred 0.136 s (-53.4%)  perr 2.32e-06  err64 6.84e-02  cw 6.49e-03
+plan=SW/G  n=6912   f32  min   0.7355 s  med   0.7355 s    898.0 GFLOP/s(2mkn)  speedup 1.225  relerr 2.18e-03  split L 0.004 R 0.005 gemm 0.723 P 0.003  plan SW/G  pred 0.194 s (-73.7%)  perr 3.72e-06  err64 2.18e-03  cw 2.09e-04
+plan=D48/G n=6912   f32  min   0.7782 s  med   0.7782 s    848.7 GFLOP/s(2mkn)  speedup 1.157  relerr 2.32e-02  split L 0.006 R 0.005 gemm 0.761 P 0.006  plan D48/G  pred 0.155 s (-80.1%)  perr 2.44e-06  err64 2.32e-02  cw 2.26e-03
+plan=R336/G n=6912   f32  min   1.0423 s  med   1.0423 s    633.7 GFLOP/s(2mkn)  speedup 0.864  relerr 8.32e-03  split L 0.007 R 0.006 gemm 1.024 P 0.005  plan R336/G  pred 0.168 s (-83.9%)  perr 2.16e-06  err64 8.32e-03  cw 8.02e-04
+plan=R363/G n=6912   f32  min   0.8087 s  med   0.8087 s    816.7 GFLOP/s(2mkn)  speedup 1.114  relerr 3.39e-02  split L 0.004 R 0.006 gemm 0.790 P 0.008  plan R363/G  pred 0.149 s (-81.5%)  perr 1.76e-06  err64 3.39e-02  cw 3.28e-03
+plan=R633/G n=6912   f32  min   0.8321 s  med   0.8321 s    793.7 GFLOP/s(2mkn)  speedup 1.082  relerr 8.02e-03  split L 0.005 R 0.009 gemm 0.814 P 0.005  plan R633/G  pred 0.162 s (-80.5%)  perr 2.37e-06  err64 8.02e-03  cw 7.87e-04
+plan=D48/D48/G n=6912   f32  min   0.8666 s  med   0.8666 s    762.1 GFLOP/s(2mkn)  speedup 1.039  relerr 9.69e-02  split L 0.027 R 0.025 gemm 0.788 P 0.026  plan D48/D48/G  pred 0.352 s (-59.3%)  perr 3.29e-06  err64 9.69e-02  cw 9.39e-03
+plan=R363/R336/G n=6912   f32  min   0.7295 s  med   0.7295 s    905.3 GFLOP/s(2mkn)  speedup 1.235  relerr 7.65e-02  split L 0.021 R 0.018 gemm 0.656 P 0.034  plan R363/R336/G  pred 0.217 s (-70.2%)  perr 2.11e-06  err64 7.65e-02  cw 7.31e-03
+## n=6912 f input innerp:6 prescale 1  21:34
+# inputs innerp:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.2033 s  med   0.2033 s   3248.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.203 P 0.000  plan G  pred 0.197 s (-3.3%)  perr 3.94e-06  err64 3.80e-06  cw 3.69e-07
+auto       n=6912   f32  min   0.1358 s  med   0.1358 s   4865.0 GFLOP/s(2mkn)  speedup 1.497  relerr 4.18e-06  split L 0.004 R 0.004 gemm 0.121 P 0.007  plan R363+4/R633/G6  pred 0.136 s (-0.1%)  perr 2.32e-06  err64 2.70e-06  cw 2.62e-07
+plan=SW/G  n=6912   f32  min   0.2031 s  med   0.2031 s   3252.3 GFLOP/s(2mkn)  speedup 1.001  relerr 5.16e-06  split L 0.004 R 0.004 gemm 0.193 P 0.003  plan SW/G  pred 0.194 s (-4.7%)  perr 3.72e-06  err64 5.21e-06  cw 5.07e-07
+plan=D48/G n=6912   f32  min   0.1635 s  med   0.1635 s   4039.5 GFLOP/s(2mkn)  speedup 1.243  relerr 4.00e-06  split L 0.005 R 0.005 gemm 0.149 P 0.005  plan D48/G  pred 0.155 s (-5.4%)  perr 2.44e-06  err64 3.40e-06  cw 3.26e-07
+plan=R336/G n=6912   f32  min   0.2015 s  med   0.2015 s   3277.5 GFLOP/s(2mkn)  speedup 1.009  relerr 4.18e-06  split L 0.007 R 0.004 gemm 0.186 P 0.005  plan R336/G  pred 0.168 s (-16.7%)  perr 2.16e-06  err64 3.01e-06  cw 2.91e-07
+plan=R363/G n=6912   f32  min   0.1774 s  med   0.1774 s   3723.9 GFLOP/s(2mkn)  speedup 1.146  relerr 4.23e-06  split L 0.004 R 0.004 gemm 0.163 P 0.007  plan R363/G  pred 0.149 s (-15.9%)  perr 1.76e-06  err64 2.29e-06  cw 2.25e-07
+plan=R633/G n=6912   f32  min   0.1784 s  med   0.1784 s   3701.7 GFLOP/s(2mkn)  speedup 1.139  relerr 4.37e-06  split L 0.004 R 0.006 gemm 0.163 P 0.005  plan R633/G  pred 0.162 s (-9.2%)  perr 2.37e-06  err64 3.24e-06  cw 3.16e-07
+plan=D48/D48/G n=6912   f32  min   0.3722 s  med   0.3722 s   1774.6 GFLOP/s(2mkn)  speedup 0.546  relerr 4.61e-06  split L 0.020 R 0.022 gemm 0.306 P 0.024  plan D48/D48/G  pred 0.352 s (-5.3%)  perr 3.29e-06  err64 3.77e-06  cw 3.68e-07
+plan=R363/R336/G n=6912   f32  min   0.2366 s  med   0.2366 s   2791.3 GFLOP/s(2mkn)  speedup 0.859  relerr 4.28e-06  split L 0.019 R 0.017 gemm 0.173 P 0.028  plan R363/R336/G  pred 0.217 s (-8.1%)  perr 2.11e-06  err64 3.17e-06  cw 3.09e-07
+## n=6912 f input cross:3 prescale 0  21:34
+# inputs cross:3
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.2315 s  med   0.2315 s   2852.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.232 P 0.000  plan G  pred 0.197 s (-15.1%)  perr 3.94e-06  err64 2.51e-06  cw 3.89e-07
+auto       n=6912   f32  min   0.1378 s  med   0.1378 s   4791.9 GFLOP/s(2mkn)  speedup 1.680  relerr 2.58e-06  split L 0.004 R 0.004 gemm 0.122 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-1.6%)  perr 2.32e-06  err64 1.44e-06  cw 9.73e-05
+plan=SW/G  n=6912   f32  min   0.1942 s  med   0.1942 s   3401.3 GFLOP/s(2mkn)  speedup 1.192  relerr 3.10e-06  split L 0.004 R 0.004 gemm 0.184 P 0.003  plan SW/G  pred 0.194 s (-0.3%)  perr 3.72e-06  err64 2.17e-06  cw 1.33e-04
+plan=D48/G n=6912   f32  min   0.1627 s  med   0.1627 s   4059.9 GFLOP/s(2mkn)  speedup 1.423  relerr 2.90e-06  split L 0.005 R 0.005 gemm 0.148 P 0.005  plan D48/G  pred 0.155 s (-4.9%)  perr 2.44e-06  err64 2.10e-06  cw 1.36e-04
+plan=R336/G n=6912   f32  min   0.1792 s  med   0.1792 s   3685.6 GFLOP/s(2mkn)  speedup 1.292  relerr 2.64e-06  split L 0.006 R 0.004 gemm 0.165 P 0.004  plan R336/G  pred 0.168 s (-6.4%)  perr 2.16e-06  err64 1.68e-06  cw 1.03e-04
+plan=R363/G n=6912   f32  min   0.1683 s  med   0.1683 s   3923.3 GFLOP/s(2mkn)  speedup 1.375  relerr 2.58e-06  split L 0.004 R 0.004 gemm 0.154 P 0.007  plan R363/G  pred 0.149 s (-11.4%)  perr 1.76e-06  err64 1.24e-06  cw 8.11e-05
+plan=R633/G n=6912   f32  min   0.1752 s  med   0.1752 s   3770.4 GFLOP/s(2mkn)  speedup 1.322  relerr 2.48e-06  split L 0.004 R 0.007 gemm 0.160 P 0.004  plan R633/G  pred 0.162 s (-7.5%)  perr 2.37e-06  err64 1.80e-06  cw 1.13e-04
+plan=D48/D48/G n=6912   f32  min   0.3698 s  med   0.3698 s   1785.9 GFLOP/s(2mkn)  speedup 0.626  relerr 3.03e-06  split L 0.020 R 0.021 gemm 0.305 P 0.023  plan D48/D48/G  pred 0.352 s (-4.7%)  perr 3.29e-06  err64 2.34e-06  cw 1.60e-04
+plan=R363/R336/G n=6912   f32  min   0.2357 s  med   0.2357 s   2801.7 GFLOP/s(2mkn)  speedup 0.982  relerr 2.71e-06  split L 0.019 R 0.016 gemm 0.173 P 0.027  plan R363/R336/G  pred 0.217 s (-7.8%)  perr 2.11e-06  err64 1.60e-06  cw 1.10e-04
+## n=6912 f input cross:3 prescale 1  21:34
+# inputs cross:3
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.3790 s  med   0.3790 s   1742.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.379 P 0.000  plan G  pred 0.197 s (-48.2%)  perr 3.94e-06  err64 2.51e-06  cw 3.89e-07
+auto       n=6912   f32  min   0.1996 s  med   0.1996 s   3308.3 GFLOP/s(2mkn)  speedup 1.899  relerr 2.58e-06  split L 0.004 R 0.005 gemm 0.183 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-32.1%)  perr 2.32e-06  err64 1.67e-06  cw 1.14e-04
+plan=SW/G  n=6912   f32  min   0.4186 s  med   0.4186 s   1577.7 GFLOP/s(2mkn)  speedup 0.905  relerr 3.10e-06  split L 0.004 R 0.004 gemm 0.400 P 0.010  plan SW/G  pred 0.194 s (-53.7%)  perr 3.72e-06  err64 2.24e-06  cw 1.33e-04
+plan=D48/G n=6912   f32  min   0.1647 s  med   0.1647 s   4009.1 GFLOP/s(2mkn)  speedup 2.301  relerr 3.19e-06  split L 0.005 R 0.005 gemm 0.150 P 0.005  plan D48/G  pred 0.155 s (-6.1%)  perr 2.44e-06  err64 3.19e-06  cw 2.18e-04
+plan=R336/G n=6912   f32  min   0.1640 s  med   0.1640 s   4027.6 GFLOP/s(2mkn)  speedup 2.311  relerr 2.64e-06  split L 0.007 R 0.004 gemm 0.148 P 0.005  plan R336/G  pred 0.168 s (+2.3%)  perr 2.16e-06  err64 2.14e-06  cw 1.47e-04
+plan=R363/G n=6912   f32  min   0.1549 s  med   0.1549 s   4265.0 GFLOP/s(2mkn)  speedup 2.448  relerr 2.58e-06  split L 0.004 R 0.004 gemm 0.139 P 0.007  plan R363/G  pred 0.149 s (-3.6%)  perr 1.76e-06  err64 1.31e-06  cw 9.00e-05
+plan=R633/G n=6912   f32  min   0.1605 s  med   0.1605 s   4114.6 GFLOP/s(2mkn)  speedup 2.361  relerr 2.52e-06  split L 0.004 R 0.007 gemm 0.145 P 0.004  plan R633/G  pred 0.162 s (+0.9%)  perr 2.37e-06  err64 2.23e-06  cw 1.19e-04
+plan=D48/D48/G n=6912   f32  min   0.7579 s  med   0.7579 s    871.5 GFLOP/s(2mkn)  speedup 0.500  relerr 3.03e-06  split L 0.026 R 0.026 gemm 0.678 P 0.028  plan D48/D48/G  pred 0.352 s (-53.5%)  perr 3.29e-06  err64 2.94e-06  cw 1.75e-04
+plan=R363/R336/G n=6912   f32  min   0.6141 s  med   0.6141 s   1075.5 GFLOP/s(2mkn)  speedup 0.617  relerr 2.71e-06  split L 0.021 R 0.020 gemm 0.540 P 0.032  plan R363/R336/G  pred 0.217 s (-64.6%)  perr 2.11e-06  err64 1.95e-06  cw 1.33e-04
+## n=6912 f input cross:6 prescale 0  21:34
+# inputs cross:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.1977 s  med   0.1977 s   3341.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.198 P 0.000  plan G  pred 0.197 s (-0.6%)  perr 3.94e-06  err64 2.48e-06  cw 3.98e-07
+auto       n=6912   f32  min   0.1376 s  med   0.1376 s   4798.1 GFLOP/s(2mkn)  speedup 1.436  relerr 2.64e-06  split L 0.004 R 0.004 gemm 0.123 P 0.007  plan R363+4/R633/G6  pred 0.136 s (-1.5%)  perr 2.32e-06  err64 1.46e-06  cw 9.96e-02
+plan=SW/G  n=6912   f32  min   0.2033 s  med   0.2033 s   3248.1 GFLOP/s(2mkn)  speedup 0.972  relerr 2.97e-06  split L 0.004 R 0.004 gemm 0.193 P 0.003  plan SW/G  pred 0.194 s (-4.8%)  perr 3.72e-06  err64 2.04e-06  cw 1.21e-01
+plan=D48/G n=6912   f32  min   0.5153 s  med   0.5153 s   1281.7 GFLOP/s(2mkn)  speedup 0.384  relerr 2.97e-06  split L 0.005 R 0.005 gemm 0.500 P 0.006  plan D48/G  pred 0.155 s (-70.0%)  perr 2.44e-06  err64 2.11e-06  cw 1.43e-01
+plan=R336/G n=6912   f32  min   0.4440 s  med   0.4440 s   1487.4 GFLOP/s(2mkn)  speedup 0.445  relerr 2.77e-06  split L 0.007 R 0.005 gemm 0.428 P 0.004  plan R336/G  pred 0.168 s (-62.2%)  perr 2.16e-06  err64 1.83e-06  cw 1.20e-01
+plan=R363/G n=6912   f32  min   0.3692 s  med   0.3692 s   1789.1 GFLOP/s(2mkn)  speedup 0.535  relerr 2.52e-06  split L 0.004 R 0.004 gemm 0.353 P 0.008  plan R363/G  pred 0.149 s (-59.6%)  perr 1.76e-06  err64 1.28e-06  cw 8.87e-02
+plan=R633/G n=6912   f32  min   0.4337 s  med   0.4337 s   1522.8 GFLOP/s(2mkn)  speedup 0.456  relerr 2.97e-06  split L 0.004 R 0.007 gemm 0.418 P 0.005  plan R633/G  pred 0.162 s (-62.6%)  perr 2.37e-06  err64 1.70e-06  cw 1.03e-01
+plan=D48/D48/G n=6912   f32  min   0.6639 s  med   0.6639 s    994.8 GFLOP/s(2mkn)  speedup 0.298  relerr 2.90e-06  split L 0.025 R 0.024 gemm 0.590 P 0.024  plan D48/D48/G  pred 0.352 s (-46.9%)  perr 3.29e-06  err64 2.71e-06  cw 1.51e-01
+plan=R363/R336/G n=6912   f32  min   0.4968 s  med   0.4968 s   1329.5 GFLOP/s(2mkn)  speedup 0.398  relerr 2.52e-06  split L 0.021 R 0.018 gemm 0.428 P 0.030  plan R363/R336/G  pred 0.217 s (-56.2%)  perr 2.11e-06  err64 1.75e-06  cw 1.20e-01
+## n=6912 f input cross:6 prescale 1  21:34
+# inputs cross:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.3792 s  med   0.3792 s   1741.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.379 P 0.000  plan G  pred 0.197 s (-48.2%)  perr 3.94e-06  err64 2.48e-06  cw 3.98e-07
+auto       n=6912   f32  min   0.1956 s  med   0.1956 s   3376.3 GFLOP/s(2mkn)  speedup 1.938  relerr 2.64e-06  split L 0.004 R 0.005 gemm 0.180 P 0.007  plan R363+4/R633/G6  pred 0.136 s (-30.7%)  perr 2.32e-06  err64 1.79e-06  cw 1.23e-01
+plan=SW/G  n=6912   f32  min   0.3580 s  med   0.3580 s   1845.1 GFLOP/s(2mkn)  speedup 1.059  relerr 2.97e-06  split L 0.005 R 0.004 gemm 0.346 P 0.003  plan SW/G  pred 0.194 s (-45.9%)  perr 3.72e-06  err64 2.14e-06  cw 1.21e-01
+plan=D48/G n=6912   f32  min   0.4329 s  med   0.4329 s   1525.5 GFLOP/s(2mkn)  speedup 0.876  relerr 2.97e-06  split L 0.005 R 0.005 gemm 0.416 P 0.007  plan D48/G  pred 0.155 s (-64.3%)  perr 2.44e-06  err64 2.14e-06  cw 1.47e-01
+plan=R336/G n=6912   f32  min   0.3930 s  med   0.3930 s   1680.7 GFLOP/s(2mkn)  speedup 0.965  relerr 2.77e-06  split L 0.007 R 0.005 gemm 0.376 P 0.005  plan R336/G  pred 0.168 s (-57.3%)  perr 2.16e-06  err64 1.97e-06  cw 1.33e-01
+plan=R363/G n=6912   f32  min   0.2943 s  med   0.2943 s   2244.1 GFLOP/s(2mkn)  speedup 1.288  relerr 2.52e-06  split L 0.005 R 0.006 gemm 0.277 P 0.007  plan R363/G  pred 0.149 s (-49.3%)  perr 1.76e-06  err64 1.33e-06  cw 9.05e-02
+plan=R633/G n=6912   f32  min   0.4206 s  med   0.4206 s   1570.2 GFLOP/s(2mkn)  speedup 0.901  relerr 2.97e-06  split L 0.005 R 0.008 gemm 0.403 P 0.005  plan R633/G  pred 0.162 s (-61.5%)  perr 2.37e-06  err64 2.05e-06  cw 1.41e-01
+plan=D48/D48/G n=6912   f32  min   0.3572 s  med   0.3572 s   1849.2 GFLOP/s(2mkn)  speedup 1.062  relerr 3.03e-06  split L 0.023 R 0.024 gemm 0.287 P 0.023  plan D48/D48/G  pred 0.352 s (-1.3%)  perr 3.29e-06  err64 2.72e-06  cw 1.83e-01
+plan=R363/R336/G n=6912   f32  min   0.2304 s  med   0.2304 s   2866.8 GFLOP/s(2mkn)  speedup 1.646  relerr 2.52e-06  split L 0.020 R 0.018 gemm 0.165 P 0.027  plan R363/R336/G  pred 0.217 s (-5.6%)  perr 2.11e-06  err64 2.17e-06  cw 1.47e-01
+## n=6912 f input entry:3 prescale 0  21:35
+# inputs entry:3
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.3412 s  med   0.3412 s   1935.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.341 P 0.000  plan G  pred 0.197 s (-42.4%)  perr 3.94e-06  err64 3.39e-06  cw 1.09e-06
+auto       n=6912   f32  min   0.1929 s  med   0.1929 s   3423.1 GFLOP/s(2mkn)  speedup 1.768  relerr 3.85e-06  split L 0.004 R 0.004 gemm 0.177 P 0.007  plan R363+4/R633/G6  pred 0.136 s (-29.7%)  perr 2.32e-06  err64 2.11e-06  cw 7.43e-07
+plan=SW/G  n=6912   f32  min   0.3283 s  med   0.3283 s   2011.6 GFLOP/s(2mkn)  speedup 1.039  relerr 3.95e-06  split L 0.004 R 0.004 gemm 0.317 P 0.003  plan SW/G  pred 0.194 s (-41.0%)  perr 3.72e-06  err64 3.70e-06  cw 1.35e-06
+plan=D48/G n=6912   f32  min   0.1643 s  med   0.1643 s   4019.0 GFLOP/s(2mkn)  speedup 2.076  relerr 4.16e-06  split L 0.005 R 0.005 gemm 0.149 P 0.005  plan D48/G  pred 0.155 s (-5.9%)  perr 2.44e-06  err64 2.91e-06  cw 9.58e-07
+plan=R336/G n=6912   f32  min   0.1733 s  med   0.1733 s   3810.7 GFLOP/s(2mkn)  speedup 1.968  relerr 3.61e-06  split L 0.006 R 0.004 gemm 0.158 P 0.005  plan R336/G  pred 0.168 s (-3.2%)  perr 2.16e-06  err64 2.36e-06  cw 8.26e-07
+plan=R363/G n=6912   f32  min   0.1620 s  med   0.1620 s   4077.6 GFLOP/s(2mkn)  speedup 2.106  relerr 3.42e-06  split L 0.004 R 0.004 gemm 0.147 P 0.007  plan R363/G  pred 0.149 s (-7.9%)  perr 1.76e-06  err64 1.75e-06  cw 6.18e-07
+plan=R633/G n=6912   f32  min   0.1638 s  med   0.1638 s   4031.4 GFLOP/s(2mkn)  speedup 2.082  relerr 4.00e-06  split L 0.004 R 0.007 gemm 0.148 P 0.005  plan R633/G  pred 0.162 s (-1.1%)  perr 2.37e-06  err64 2.35e-06  cw 7.75e-07
+plan=D48/D48/G n=6912   f32  min   0.7013 s  med   0.7013 s    941.7 GFLOP/s(2mkn)  speedup 0.486  relerr 4.28e-06  split L 0.026 R 0.025 gemm 0.625 P 0.025  plan D48/D48/G  pred 0.352 s (-49.8%)  perr 3.29e-06  err64 3.01e-06  cw 1.10e-06
+plan=R363/R336/G n=6912   f32  min   0.6028 s  med   0.6028 s   1095.6 GFLOP/s(2mkn)  speedup 0.566  relerr 4.08e-06  split L 0.022 R 0.020 gemm 0.529 P 0.033  plan R363/R336/G  pred 0.217 s (-63.9%)  perr 2.11e-06  err64 2.37e-06  cw 8.53e-07
+## n=6912 f input entry:3 prescale 1  21:35
+# inputs entry:3
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.1952 s  med   0.1952 s   3382.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.195 P 0.000  plan G  pred 0.197 s (+0.6%)  perr 3.94e-06  err64 3.39e-06  cw 1.09e-06
+auto       n=6912   f32  min   0.1381 s  med   0.1381 s   4783.6 GFLOP/s(2mkn)  speedup 1.414  relerr 3.85e-06  split L 0.004 R 0.004 gemm 0.124 P 0.007  plan R363+4/R633/G6  pred 0.136 s (-1.8%)  perr 2.32e-06  err64 2.11e-06  cw 7.43e-07
+plan=SW/G  n=6912   f32  min   0.3719 s  med   0.3719 s   1775.8 GFLOP/s(2mkn)  speedup 0.525  relerr 3.95e-06  split L 0.004 R 0.004 gemm 0.360 P 0.003  plan SW/G  pred 0.194 s (-47.9%)  perr 3.72e-06  err64 3.70e-06  cw 1.35e-06
+plan=D48/G n=6912   f32  min   0.3995 s  med   0.3995 s   1653.1 GFLOP/s(2mkn)  speedup 0.489  relerr 4.16e-06  split L 0.005 R 0.005 gemm 0.384 P 0.005  plan D48/G  pred 0.155 s (-61.3%)  perr 2.44e-06  err64 2.91e-06  cw 9.58e-07
+plan=R336/G n=6912   f32  min   0.3476 s  med   0.3476 s   1900.1 GFLOP/s(2mkn)  speedup 0.562  relerr 3.61e-06  split L 0.007 R 0.004 gemm 0.331 P 0.005  plan R336/G  pred 0.168 s (-51.7%)  perr 2.16e-06  err64 2.36e-06  cw 8.26e-07
+plan=R363/G n=6912   f32  min   0.2997 s  med   0.2997 s   2203.4 GFLOP/s(2mkn)  speedup 0.651  relerr 3.42e-06  split L 0.005 R 0.005 gemm 0.282 P 0.008  plan R363/G  pred 0.149 s (-50.2%)  perr 1.76e-06  err64 1.75e-06  cw 6.18e-07
+plan=R633/G n=6912   f32  min   0.4615 s  med   0.4615 s   1431.2 GFLOP/s(2mkn)  speedup 0.423  relerr 4.00e-06  split L 0.004 R 0.007 gemm 0.445 P 0.005  plan R633/G  pred 0.162 s (-64.9%)  perr 2.37e-06  err64 2.35e-06  cw 7.75e-07
+plan=D48/D48/G n=6912   f32  min   0.6620 s  med   0.6620 s    997.6 GFLOP/s(2mkn)  speedup 0.295  relerr 4.28e-06  split L 0.026 R 0.025 gemm 0.584 P 0.026  plan D48/D48/G  pred 0.352 s (-46.8%)  perr 3.29e-06  err64 3.01e-06  cw 1.10e-06
+plan=R363/R336/G n=6912   f32  min   0.4866 s  med   0.4866 s   1357.3 GFLOP/s(2mkn)  speedup 0.401  relerr 4.08e-06  split L 0.021 R 0.020 gemm 0.414 P 0.032  plan R363/R336/G  pred 0.217 s (-55.3%)  perr 2.11e-06  err64 2.37e-06  cw 8.53e-07
+## n=6912 f input entry:6 prescale 0  21:35
+# inputs entry:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+classical  n=6912   f32  min   0.2318 s  med   0.2318 s   2849.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.232 P 0.000  plan G  pred 0.197 s (-15.2%)  perr 3.94e-06  err64 3.15e-06  cw 1.94e-06
+auto       n=6912   f32  min   0.1638 s  med   0.1638 s   4031.5 GFLOP/s(2mkn)  speedup 1.415  relerr 3.38e-06  split L 0.004 R 0.005 gemm 0.148 P 0.008  plan R363+4/R633/G6  pred 0.136 s (-17.2%)  perr 2.32e-06  err64 2.12e-06  cw 1.63e-06
+plan=SW/G  n=6912   f32  min   0.2486 s  med   0.2486 s   2656.9 GFLOP/s(2mkn)  speedup 0.932  relerr 3.86e-06  split L 0.004 R 0.004 gemm 0.237 P 0.003  plan SW/G  pred 0.194 s (-22.1%)  perr 3.72e-06  err64 3.70e-06  cw 2.67e-06
+plan=D48/G n=6912   f32  min   0.2716 s  med   0.2716 s   2431.4 GFLOP/s(2mkn)  speedup 0.853  relerr 3.61e-06  split L 0.005 R 0.005 gemm 0.256 P 0.006  plan D48/G  pred 0.155 s (-43.1%)  perr 2.44e-06  err64 2.94e-06  cw 2.43e-06
+plan=R336/G n=6912   f32  min   0.2968 s  med   0.2968 s   2225.3 GFLOP/s(2mkn)  speedup 0.781  relerr 3.65e-06  split L 0.007 R 0.004 gemm 0.281 P 0.005  plan R336/G  pred 0.168 s (-43.5%)  perr 2.16e-06  err64 2.30e-06  cw 1.88e-06
+plan=R363/G n=6912   f32  min   0.2615 s  med   0.2615 s   2525.3 GFLOP/s(2mkn)  speedup 0.886  relerr 3.34e-06  split L 0.004 R 0.004 gemm 0.246 P 0.008  plan R363/G  pred 0.149 s (-42.9%)  perr 1.76e-06  err64 1.98e-06  cw 1.35e-06
+plan=R633/G n=6912   f32  min   0.2727 s  med   0.2727 s   2422.0 GFLOP/s(2mkn)  speedup 0.850  relerr 3.19e-06  split L 0.004 R 0.007 gemm 0.256 P 0.005  plan R633/G  pred 0.162 s (-40.6%)  perr 2.37e-06  err64 2.28e-06  cw 1.73e-06
+plan=D48/D48/G n=6912   f32  min   0.3937 s  med   0.3937 s   1677.5 GFLOP/s(2mkn)  speedup 0.589  relerr 3.72e-06  split L 0.025 R 0.028 gemm 0.311 P 0.029  plan D48/D48/G  pred 0.352 s (-10.5%)  perr 3.29e-06  err64 2.85e-06  cw 2.26e-06
+plan=R363/R336/G n=6912   f32  min   0.3771 s  med   0.3771 s   1751.5 GFLOP/s(2mkn)  speedup 0.615  relerr 3.15e-06  split L 0.019 R 0.018 gemm 0.308 P 0.032  plan R363/R336/G  pred 0.217 s (-42.3%)  perr 2.11e-06  err64 2.58e-06  cw 2.02e-06
+## n=6912 f input entry:6 prescale 1  21:35
+# inputs entry:6
+# auto n=6912   f32: plan R363+4/R633/G6, predicted 0.136 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f32  min   0.3434 s  med   0.3434 s   1923.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.343 P 0.000  plan G  pred 0.197 s (-42.8%)  perr 3.94e-06  err64 3.15e-06  cw 1.94e-06
+auto       n=6912   f32  min   0.1569 s  med   0.1569 s   4209.3 GFLOP/s(2mkn)  speedup 2.189  relerr 3.38e-06  split L 0.004 R 0.004 gemm 0.141 P 0.007  plan R363+4/R633/G6  pred 0.136 s (-13.6%)  perr 2.32e-06  err64 2.12e-06  cw 1.63e-06
+plan=SW/G  n=6912   f32  min   0.2540 s  med   0.2540 s   2600.1 GFLOP/s(2mkn)  speedup 1.352  relerr 3.86e-06  split L 0.004 R 0.004 gemm 0.242 P 0.004  plan SW/G  pred 0.194 s (-23.8%)  perr 3.72e-06  err64 3.70e-06  cw 2.67e-06
+plan=D48/G n=6912   f32  min   0.2762 s  med   0.2762 s   2390.8 GFLOP/s(2mkn)  speedup 1.243  relerr 3.61e-06  split L 0.005 R 0.005 gemm 0.261 P 0.006  plan D48/G  pred 0.155 s (-44.0%)  perr 2.44e-06  err64 2.94e-06  cw 2.43e-06
+plan=R336/G n=6912   f32  min   0.2849 s  med   0.2849 s   2318.3 GFLOP/s(2mkn)  speedup 1.205  relerr 3.65e-06  split L 0.008 R 0.004 gemm 0.268 P 0.005  plan R336/G  pred 0.168 s (-41.1%)  perr 2.16e-06  err64 2.30e-06  cw 1.88e-06
+plan=R363/G n=6912   f32  min   0.2940 s  med   0.2940 s   2246.4 GFLOP/s(2mkn)  speedup 1.168  relerr 3.34e-06  split L 0.005 R 0.005 gemm 0.272 P 0.013  plan R363/G  pred 0.149 s (-49.2%)  perr 1.76e-06  err64 1.98e-06  cw 1.35e-06
+plan=R633/G n=6912   f32  min   0.4534 s  med   0.4534 s   1456.8 GFLOP/s(2mkn)  speedup 0.757  relerr 3.19e-06  split L 0.009 R 0.033 gemm 0.402 P 0.009  plan R633/G  pred 0.162 s (-64.3%)  perr 2.37e-06  err64 2.28e-06  cw 1.73e-06
+plan=D48/D48/G n=6912   f32  min   0.6321 s  med   0.6321 s   1044.9 GFLOP/s(2mkn)  speedup 0.543  relerr 3.72e-06  split L 0.065 R 0.087 gemm 0.405 P 0.074  plan D48/D48/G  pred 0.352 s (-44.2%)  perr 3.29e-06  err64 2.85e-06  cw 2.26e-06
+plan=R363/R336/G n=6912   f32  min   0.6390 s  med   0.6390 s   1033.5 GFLOP/s(2mkn)  speedup 0.537  relerr 3.15e-06  split L 0.049 R 0.033 gemm 0.478 P 0.078  plan R363/R336/G  pred 0.217 s (-66.0%)  perr 2.11e-06  err64 2.58e-06  cw 2.02e-06
+## n=6912 d input uniform prescale 0  21:36
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 17.2 s
+classical  n=6912   f64  min   0.8155 s  med   0.8155 s    809.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.815 P 0.000  plan G  pred 0.773 s (-5.3%)  perr 6.65e-15  err64 6.69e-15  cw 6.60e-16
+auto       n=6912   f64  min   1.1186 s  med   1.1186 s    590.4 GFLOP/s(2mkn)  speedup 0.729  relerr 7.03e-15  split L 0.009 R 0.009 gemm 1.086 P 0.015  plan R363+2/R336/G6  pred 0.451 s (-59.7%)  perr 3.42e-15  err64 4.32e-15  cw 4.24e-16
+plan=SW/G  n=6912   f64  min   3.0653 s  med   3.0653 s    215.5 GFLOP/s(2mkn)  speedup 0.266  relerr 7.75e-15  split L 0.008 R 0.009 gemm 3.041 P 0.007  plan SW/G  pred 0.709 s (-76.9%)  perr 6.38e-15  err64 6.29e-15  cw 6.08e-16
+plan=D48/G n=6912   f64  min   2.4362 s  med   2.4362 s    271.1 GFLOP/s(2mkn)  speedup 0.335  relerr 7.79e-15  split L 0.012 R 0.013 gemm 2.401 P 0.010  plan D48/G  pred 0.610 s (-75.0%)  perr 4.78e-15  err64 4.89e-15  cw 4.81e-16
+plan=R336/G n=6912   f64  min   0.6052 s  med   0.6052 s   1091.2 GFLOP/s(2mkn)  speedup 1.347  relerr 6.78e-15  split L 0.014 R 0.008 gemm 0.574 P 0.008  plan R336/G  pred 0.598 s (-1.2%)  perr 4.72e-15  err64 4.53e-15  cw 4.38e-16
+plan=R363/G n=6912   f64  min   0.6948 s  med   0.6948 s    950.6 GFLOP/s(2mkn)  speedup 1.174  relerr 6.78e-15  split L 0.009 R 0.007 gemm 0.655 P 0.024  plan R363/G  pred 0.642 s (-7.5%)  perr 3.14e-15  err64 2.86e-15  cw 2.77e-16
+plan=R633/G n=6912   f64  min   2.1507 s  med   2.1507 s    307.1 GFLOP/s(2mkn)  speedup 0.379  relerr 7.54e-15  split L 0.008 R 0.015 gemm 2.120 P 0.007  plan R633/G  pred 0.632 s (-70.6%)  perr 4.23e-15  err64 4.29e-15  cw 4.18e-16
+plan=D48/D48/G n=6912   f64  min   1.5784 s  med   1.5784 s    418.4 GFLOP/s(2mkn)  speedup 0.517  relerr 7.92e-15  split L 0.045 R 0.046 gemm 1.440 P 0.047  plan D48/D48/G  pred 0.641 s (-59.4%)  perr 5.28e-15  err64 5.60e-15  cw 5.53e-16
+plan=R363/R336/G n=6912   f64  min   1.3523 s  med   1.3523 s    488.4 GFLOP/s(2mkn)  speedup 0.603  relerr 7.03e-15  split L 0.040 R 0.030 gemm 1.232 P 0.050  plan R363/R336/G  pred 0.583 s (-56.9%)  perr 3.42e-15  err64 4.32e-15  cw 4.24e-16
+## n=6912 d input uniform prescale 1  21:36
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 16.0 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   1.5619 s  med   1.5619 s    422.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.562 P 0.000  plan G  pred 0.773 s (-50.5%)  perr 6.65e-15  err64 6.69e-15  cw 6.60e-16
+auto       n=6912   f64  min   0.6916 s  med   0.6916 s    954.9 GFLOP/s(2mkn)  speedup 2.258  relerr 7.03e-15  split L 0.009 R 0.007 gemm 0.662 P 0.013  plan R363+2/R336/G6  pred 0.451 s (-34.8%)  perr 3.42e-15  err64 4.32e-15  cw 4.24e-16
+plan=SW/G  n=6912   f64  min   1.2258 s  med   1.2258 s    538.8 GFLOP/s(2mkn)  speedup 1.274  relerr 7.75e-15  split L 0.008 R 0.008 gemm 1.203 P 0.007  plan SW/G  pred 0.709 s (-42.2%)  perr 6.38e-15  err64 6.29e-15  cw 6.08e-16
+plan=D48/G n=6912   f64  min   1.1538 s  med   1.1538 s    572.4 GFLOP/s(2mkn)  speedup 1.354  relerr 7.79e-15  split L 0.010 R 0.011 gemm 1.123 P 0.010  plan D48/G  pred 0.610 s (-47.2%)  perr 4.78e-15  err64 4.89e-15  cw 4.81e-16
+plan=R336/G n=6912   f64  min   1.2404 s  med   1.2404 s    532.4 GFLOP/s(2mkn)  speedup 1.259  relerr 6.78e-15  split L 0.014 R 0.008 gemm 1.210 P 0.009  plan R336/G  pred 0.598 s (-51.8%)  perr 4.72e-15  err64 4.53e-15  cw 4.38e-16
+plan=R363/G n=6912   f64  min   1.6371 s  med   1.6371 s    403.4 GFLOP/s(2mkn)  speedup 0.954  relerr 6.78e-15  split L 0.009 R 0.011 gemm 1.606 P 0.012  plan R363/G  pred 0.642 s (-60.8%)  perr 3.14e-15  err64 2.86e-15  cw 2.77e-16
+plan=R633/G n=6912   f64  min   1.2443 s  med   1.2443 s    530.8 GFLOP/s(2mkn)  speedup 1.255  relerr 7.54e-15  split L 0.008 R 0.014 gemm 1.214 P 0.008  plan R633/G  pred 0.632 s (-49.2%)  perr 4.23e-15  err64 4.29e-15  cw 4.18e-16
+plan=D48/D48/G n=6912   f64  min   1.4753 s  med   1.4753 s    447.7 GFLOP/s(2mkn)  speedup 1.059  relerr 7.92e-15  split L 0.048 R 0.045 gemm 1.335 P 0.047  plan D48/D48/G  pred 0.641 s (-56.6%)  perr 5.28e-15  err64 5.60e-15  cw 5.53e-16
+plan=R363/R336/G n=6912   f64  min   1.4888 s  med   1.4888 s    443.6 GFLOP/s(2mkn)  speedup 1.049  relerr 7.03e-15  split L 0.042 R 0.037 gemm 1.357 P 0.051  plan R363/R336/G  pred 0.583 s (-60.8%)  perr 3.42e-15  err64 4.32e-15  cw 4.24e-16
+## n=6912 d input nonneg prescale 0  21:37
+# inputs nonneg
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 15.0 s
+classical  n=6912   f64  min   0.7685 s  med   0.7685 s    859.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.768 P 0.000  plan G  pred 0.773 s (+0.5%)  perr 6.65e-15  err64 1.18e-14  cw 1.25e-14
+auto       n=6912   f64  min   0.4488 s  med   0.4488 s   1471.5 GFLOP/s(2mkn)  speedup 1.712  relerr 1.89e-14  split L 0.008 R 0.007 gemm 0.422 P 0.012  plan R363+2/R336/G6  pred 0.451 s (+0.4%)  perr 3.42e-15  err64 1.37e-14  cw 1.47e-14
+plan=SW/G  n=6912   f64  min   0.7381 s  med   0.7381 s    894.8 GFLOP/s(2mkn)  speedup 1.041  relerr 1.60e-14  split L 0.008 R 0.007 gemm 0.717 P 0.006  plan SW/G  pred 0.709 s (-3.9%)  perr 6.38e-15  err64 1.14e-14  cw 1.20e-14
+plan=D48/G n=6912   f64  min   0.6644 s  med   0.6644 s    994.0 GFLOP/s(2mkn)  speedup 1.157  relerr 1.74e-14  split L 0.009 R 0.009 gemm 0.636 P 0.010  plan D48/G  pred 0.610 s (-8.2%)  perr 4.78e-15  err64 1.36e-14  cw 1.43e-14
+plan=R336/G n=6912   f64  min   0.6100 s  med   0.6100 s   1082.6 GFLOP/s(2mkn)  speedup 1.260  relerr 2.14e-14  split L 0.014 R 0.008 gemm 0.580 P 0.008  plan R336/G  pred 0.598 s (-2.0%)  perr 4.72e-15  err64 1.68e-14  cw 1.81e-14
+plan=R363/G n=6912   f64  min   0.6502 s  med   0.6502 s   1015.7 GFLOP/s(2mkn)  speedup 1.182  relerr 1.32e-14  split L 0.008 R 0.007 gemm 0.622 P 0.013  plan R363/G  pred 0.642 s (-1.2%)  perr 3.14e-15  err64 6.59e-15  cw 6.98e-15
+plan=R633/G n=6912   f64  min   0.6548 s  med   0.6548 s   1008.6 GFLOP/s(2mkn)  speedup 1.174  relerr 2.05e-14  split L 0.007 R 0.013 gemm 0.627 P 0.008  plan R633/G  pred 0.632 s (-3.5%)  perr 4.23e-15  err64 1.74e-14  cw 1.82e-14
+plan=D48/D48/G n=6912   f64  min   0.6372 s  med   0.6372 s   1036.6 GFLOP/s(2mkn)  speedup 1.206  relerr 1.79e-14  split L 0.038 R 0.038 gemm 0.523 P 0.037  plan D48/D48/G  pred 0.641 s (+0.6%)  perr 5.28e-15  err64 1.41e-14  cw 1.50e-14
+plan=R363/R336/G n=6912   f64  min   0.6034 s  med   0.6034 s   1094.6 GFLOP/s(2mkn)  speedup 1.274  relerr 1.89e-14  split L 0.038 R 0.028 gemm 0.491 P 0.046  plan R363/R336/G  pred 0.583 s (-3.4%)  perr 3.42e-15  err64 1.37e-14  cw 1.47e-14
+## n=6912 d input nonneg prescale 1  21:38
+# inputs nonneg
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.9 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.7875 s  med   0.7875 s    838.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.788 P 0.000  plan G  pred 0.773 s (-1.9%)  perr 6.65e-15  err64 1.18e-14  cw 1.25e-14
+auto       n=6912   f64  min   0.4558 s  med   0.4558 s   1448.9 GFLOP/s(2mkn)  speedup 1.728  relerr 1.89e-14  split L 0.008 R 0.007 gemm 0.429 P 0.011  plan R363+2/R336/G6  pred 0.451 s (-1.2%)  perr 3.42e-15  err64 1.37e-14  cw 1.47e-14
+plan=SW/G  n=6912   f64  min   0.7464 s  med   0.7464 s    884.8 GFLOP/s(2mkn)  speedup 1.055  relerr 1.60e-14  split L 0.008 R 0.008 gemm 0.725 P 0.006  plan SW/G  pred 0.709 s (-5.0%)  perr 6.38e-15  err64 1.14e-14  cw 1.20e-14
+plan=D48/G n=6912   f64  min   0.6055 s  med   0.6055 s   1090.7 GFLOP/s(2mkn)  speedup 1.301  relerr 1.74e-14  split L 0.009 R 0.009 gemm 0.578 P 0.009  plan D48/G  pred 0.610 s (+0.7%)  perr 4.78e-15  err64 1.36e-14  cw 1.43e-14
+plan=R336/G n=6912   f64  min   0.5899 s  med   0.5899 s   1119.6 GFLOP/s(2mkn)  speedup 1.335  relerr 2.14e-14  split L 0.013 R 0.007 gemm 0.562 P 0.008  plan R336/G  pred 0.598 s (+1.3%)  perr 4.72e-15  err64 1.68e-14  cw 1.81e-14
+plan=R363/G n=6912   f64  min   0.6371 s  med   0.6371 s   1036.6 GFLOP/s(2mkn)  speedup 1.236  relerr 1.32e-14  split L 0.007 R 0.007 gemm 0.611 P 0.011  plan R363/G  pred 0.642 s (+0.8%)  perr 3.14e-15  err64 6.59e-15  cw 6.98e-15
+plan=R633/G n=6912   f64  min   0.6206 s  med   0.6206 s   1064.2 GFLOP/s(2mkn)  speedup 1.269  relerr 2.05e-14  split L 0.008 R 0.014 gemm 0.592 P 0.007  plan R633/G  pred 0.632 s (+1.9%)  perr 4.23e-15  err64 1.74e-14  cw 1.82e-14
+plan=D48/D48/G n=6912   f64  min   0.6466 s  med   0.6466 s   1021.4 GFLOP/s(2mkn)  speedup 1.218  relerr 1.79e-14  split L 0.038 R 0.038 gemm 0.534 P 0.037  plan D48/D48/G  pred 0.641 s (-0.9%)  perr 5.28e-15  err64 1.41e-14  cw 1.50e-14
+plan=R363/R336/G n=6912   f64  min   0.5751 s  med   0.5751 s   1148.4 GFLOP/s(2mkn)  speedup 1.369  relerr 1.89e-14  split L 0.035 R 0.025 gemm 0.472 P 0.042  plan R363/R336/G  pred 0.583 s (+1.4%)  perr 3.42e-15  err64 1.37e-14  cw 1.47e-14
+## n=6912 d input outer:3 prescale 0  21:38
+# inputs outer:3
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.7 s
+classical  n=6912   f64  min   0.7712 s  med   0.7712 s    856.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.771 P 0.000  plan G  pred 0.773 s (+0.2%)  perr 6.65e-15  err64 5.31e-15  cw 6.55e-16
+auto       n=6912   f64  min   0.4609 s  med   0.4609 s   1432.9 GFLOP/s(2mkn)  speedup 1.673  relerr 5.44e-15  split L 0.009 R 0.008 gemm 0.433 P 0.011  plan R363+2/R336/G6  pred 0.451 s (-2.2%)  perr 3.42e-15  err64 7.19e-16  cw 5.19e-12
+plan=SW/G  n=6912   f64  min   0.7217 s  med   0.7217 s    915.2 GFLOP/s(2mkn)  speedup 1.069  relerr 6.21e-15  split L 0.007 R 0.007 gemm 0.701 P 0.006  plan SW/G  pred 0.709 s (-1.8%)  perr 6.38e-15  err64 4.27e-15  cw 3.95e-13
+plan=D48/G n=6912   f64  min   0.6042 s  med   0.6042 s   1093.1 GFLOP/s(2mkn)  speedup 1.276  relerr 4.79e-15  split L 0.009 R 0.009 gemm 0.577 P 0.010  plan D48/G  pred 0.610 s (+0.9%)  perr 4.78e-15  err64 2.09e-15  cw 5.58e-12
+plan=R336/G n=6912   f64  min   0.5919 s  med   0.5919 s   1115.8 GFLOP/s(2mkn)  speedup 1.303  relerr 5.31e-15  split L 0.013 R 0.007 gemm 0.565 P 0.007  plan R336/G  pred 0.598 s (+1.0%)  perr 4.72e-15  err64 1.47e-15  cw 3.07e-12
+plan=R363/G n=6912   f64  min   0.6439 s  med   0.6439 s   1025.7 GFLOP/s(2mkn)  speedup 1.198  relerr 5.82e-15  split L 0.008 R 0.008 gemm 0.617 P 0.011  plan R363/G  pred 0.642 s (-0.2%)  perr 3.14e-15  err64 1.05e-15  cw 7.13e-13
+plan=R633/G n=6912   f64  min   0.6276 s  med   0.6276 s   1052.4 GFLOP/s(2mkn)  speedup 1.229  relerr 5.44e-15  split L 0.008 R 0.014 gemm 0.599 P 0.007  plan R633/G  pred 0.632 s (+0.7%)  perr 4.23e-15  err64 1.43e-15  cw 3.06e-12
+plan=D48/D48/G n=6912   f64  min   0.6458 s  med   0.6458 s   1022.7 GFLOP/s(2mkn)  speedup 1.194  relerr 5.57e-15  split L 0.038 R 0.040 gemm 0.530 P 0.037  plan D48/D48/G  pred 0.641 s (-0.7%)  perr 5.28e-15  err64 1.08e-15  cw 2.21e-11
+plan=R363/R336/G n=6912   f64  min   0.5810 s  med   0.5810 s   1136.8 GFLOP/s(2mkn)  speedup 1.327  relerr 5.44e-15  split L 0.036 R 0.025 gemm 0.475 P 0.044  plan R363/R336/G  pred 0.583 s (+0.4%)  perr 3.42e-15  err64 7.19e-16  cw 5.19e-12
+## n=6912 d input outer:3 prescale 1  21:39
+# inputs outer:3
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.7 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.7684 s  med   0.7684 s    859.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.768 P 0.000  plan G  pred 0.773 s (+0.5%)  perr 6.65e-15  err64 5.31e-15  cw 6.55e-16
+auto       n=6912   f64  min   0.4542 s  med   0.4542 s   1454.0 GFLOP/s(2mkn)  speedup 1.692  relerr 5.44e-15  split L 0.008 R 0.007 gemm 0.428 P 0.011  plan R363+2/R336/G6  pred 0.451 s (-0.8%)  perr 3.42e-15  err64 2.70e-15  cw 7.30e-16
+plan=SW/G  n=6912   f64  min   0.7113 s  med   0.7113 s    928.5 GFLOP/s(2mkn)  speedup 1.080  relerr 7.25e-15  split L 0.008 R 0.007 gemm 0.690 P 0.006  plan SW/G  pred 0.709 s (-0.3%)  perr 6.38e-15  err64 5.11e-15  cw 8.71e-16
+plan=D48/G n=6912   f64  min   0.6089 s  med   0.6089 s   1084.6 GFLOP/s(2mkn)  speedup 1.262  relerr 5.70e-15  split L 0.009 R 0.009 gemm 0.581 P 0.009  plan D48/G  pred 0.610 s (+0.1%)  perr 4.78e-15  err64 3.25e-15  cw 6.59e-16
+plan=R336/G n=6912   f64  min   0.6148 s  med   0.6148 s   1074.2 GFLOP/s(2mkn)  speedup 1.250  relerr 5.82e-15  split L 0.014 R 0.007 gemm 0.587 P 0.007  plan R336/G  pred 0.598 s (-2.8%)  perr 4.72e-15  err64 2.98e-15  cw 6.88e-16
+plan=R363/G n=6912   f64  min   0.6363 s  med   0.6363 s   1038.0 GFLOP/s(2mkn)  speedup 1.208  relerr 5.31e-15  split L 0.007 R 0.007 gemm 0.610 P 0.011  plan R363/G  pred 0.642 s (+0.9%)  perr 3.14e-15  err64 2.43e-15  cw 5.47e-16
+plan=R633/G n=6912   f64  min   0.6240 s  med   0.6240 s   1058.3 GFLOP/s(2mkn)  speedup 1.231  relerr 5.44e-15  split L 0.008 R 0.013 gemm 0.596 P 0.007  plan R633/G  pred 0.632 s (+1.3%)  perr 4.23e-15  err64 3.32e-15  cw 7.18e-16
+plan=D48/D48/G n=6912   f64  min   0.6381 s  med   0.6381 s   1035.0 GFLOP/s(2mkn)  speedup 1.204  relerr 5.70e-15  split L 0.038 R 0.040 gemm 0.524 P 0.036  plan D48/D48/G  pred 0.641 s (+0.5%)  perr 5.28e-15  err64 3.76e-15  cw 8.79e-16
+plan=R363/R336/G n=6912   f64  min   0.5809 s  med   0.5809 s   1136.9 GFLOP/s(2mkn)  speedup 1.323  relerr 5.44e-15  split L 0.036 R 0.026 gemm 0.474 P 0.044  plan R363/R336/G  pred 0.583 s (+0.4%)  perr 3.42e-15  err64 2.70e-15  cw 7.30e-16
+## n=6912 d input outer:6 prescale 0  21:39
+# inputs outer:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.6 s
+classical  n=6912   f64  min   0.7707 s  med   0.7707 s    857.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.771 P 0.000  plan G  pred 0.773 s (+0.2%)  perr 6.65e-15  err64 4.42e-15  cw 6.60e-16
+auto       n=6912   f64  min   0.4545 s  med   0.4545 s   1453.1 GFLOP/s(2mkn)  speedup 1.696  relerr 4.42e-15  split L 0.008 R 0.007 gemm 0.428 P 0.011  plan R363+2/R336/G6  pred 0.451 s (-0.9%)  perr 3.42e-15  err64 5.53e-16  cw 1.20e-06
+plan=SW/G  n=6912   f64  min   0.6959 s  med   0.6959 s    949.1 GFLOP/s(2mkn)  speedup 1.108  relerr 5.24e-15  split L 0.008 R 0.007 gemm 0.675 P 0.006  plan SW/G  pred 0.709 s (+1.9%)  perr 6.38e-15  err64 3.51e-15  cw 3.80e-10
+plan=D48/G n=6912   f64  min   0.6054 s  med   0.6054 s   1090.9 GFLOP/s(2mkn)  speedup 1.273  relerr 4.62e-15  split L 0.009 R 0.009 gemm 0.578 P 0.010  plan D48/G  pred 0.610 s (+0.7%)  perr 4.78e-15  err64 1.77e-15  cw 1.51e-07
+plan=R336/G n=6912   f64  min   0.6017 s  med   0.6017 s   1097.6 GFLOP/s(2mkn)  speedup 1.281  relerr 4.83e-15  split L 0.013 R 0.007 gemm 0.574 P 0.008  plan R336/G  pred 0.598 s (-0.7%)  perr 4.72e-15  err64 1.35e-15  cw 9.88e-08
+plan=R363/G n=6912   f64  min   0.6388 s  med   0.6388 s   1033.9 GFLOP/s(2mkn)  speedup 1.206  relerr 4.28e-15  split L 0.008 R 0.007 gemm 0.612 P 0.011  plan R363/G  pred 0.642 s (+0.6%)  perr 3.14e-15  err64 1.09e-15  cw 6.28e-09
+plan=R633/G n=6912   f64  min   0.6319 s  med   0.6319 s   1045.1 GFLOP/s(2mkn)  speedup 1.220  relerr 4.83e-15  split L 0.008 R 0.014 gemm 0.603 P 0.007  plan R633/G  pred 0.632 s (+0.0%)  perr 4.23e-15  err64 1.35e-15  cw 9.76e-08
+plan=D48/D48/G n=6912   f64  min   0.6404 s  med   0.6404 s   1031.4 GFLOP/s(2mkn)  speedup 1.203  relerr 4.21e-15  split L 0.038 R 0.038 gemm 0.526 P 0.038  plan D48/D48/G  pred 0.641 s (+0.1%)  perr 5.28e-15  err64 7.93e-16  cw 6.67e-06
+plan=R363/R336/G n=6912   f64  min   0.5827 s  med   0.5827 s   1133.4 GFLOP/s(2mkn)  speedup 1.323  relerr 4.42e-15  split L 0.037 R 0.027 gemm 0.475 P 0.044  plan R363/R336/G  pred 0.583 s (+0.1%)  perr 3.42e-15  err64 5.53e-16  cw 1.20e-06
+## n=6912 d input outer:6 prescale 1  21:40
+# inputs outer:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.4 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.8012 s  med   0.8012 s    824.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.801 P 0.000  plan G  pred 0.773 s (-3.6%)  perr 6.65e-15  err64 4.42e-15  cw 6.60e-16
+auto       n=6912   f64  min   0.4499 s  med   0.4499 s   1467.9 GFLOP/s(2mkn)  speedup 1.781  relerr 4.69e-15  split L 0.008 R 0.008 gemm 0.423 P 0.011  plan R363+2/R336/G6  pred 0.451 s (+0.1%)  perr 3.42e-15  err64 2.95e-15  cw 7.10e-16
+plan=SW/G  n=6912   f64  min   0.6973 s  med   0.6973 s    947.2 GFLOP/s(2mkn)  speedup 1.149  relerr 6.42e-15  split L 0.008 R 0.008 gemm 0.676 P 0.006  plan SW/G  pred 0.709 s (+1.7%)  perr 6.38e-15  err64 5.14e-15  cw 1.01e-15
+plan=D48/G n=6912   f64  min   0.6047 s  med   0.6047 s   1092.2 GFLOP/s(2mkn)  speedup 1.325  relerr 5.80e-15  split L 0.010 R 0.009 gemm 0.577 P 0.009  plan D48/G  pred 0.610 s (+0.8%)  perr 4.78e-15  err64 4.07e-15  cw 7.25e-16
+plan=R336/G n=6912   f64  min   0.5853 s  med   0.5853 s   1128.4 GFLOP/s(2mkn)  speedup 1.369  relerr 5.24e-15  split L 0.013 R 0.007 gemm 0.557 P 0.008  plan R336/G  pred 0.598 s (+2.1%)  perr 4.72e-15  err64 2.97e-15  cw 6.31e-16
+plan=R363/G n=6912   f64  min   0.6364 s  med   0.6364 s   1037.7 GFLOP/s(2mkn)  speedup 1.259  relerr 4.48e-15  split L 0.008 R 0.007 gemm 0.610 P 0.011  plan R363/G  pred 0.642 s (+0.9%)  perr 3.14e-15  err64 2.35e-15  cw 4.81e-16
+plan=R633/G n=6912   f64  min   0.6249 s  med   0.6249 s   1056.9 GFLOP/s(2mkn)  speedup 1.282  relerr 4.97e-15  split L 0.008 R 0.014 gemm 0.595 P 0.008  plan R633/G  pred 0.632 s (+1.2%)  perr 4.23e-15  err64 3.10e-15  cw 6.81e-16
+plan=D48/D48/G n=6912   f64  min   0.6343 s  med   0.6343 s   1041.2 GFLOP/s(2mkn)  speedup 1.263  relerr 6.28e-15  split L 0.038 R 0.039 gemm 0.521 P 0.036  plan D48/D48/G  pred 0.641 s (+1.1%)  perr 5.28e-15  err64 4.00e-15  cw 8.12e-16
+plan=R363/R336/G n=6912   f64  min   0.5802 s  med   0.5802 s   1138.4 GFLOP/s(2mkn)  speedup 1.381  relerr 4.69e-15  split L 0.036 R 0.027 gemm 0.474 P 0.044  plan R363/R336/G  pred 0.583 s (+0.5%)  perr 3.42e-15  err64 2.95e-15  cw 7.10e-16
+## n=6912 d input outerp:6 prescale 0  21:40
+# inputs outerp:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.5 s
+classical  n=6912   f64  min   0.9273 s  med   0.9273 s    712.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.927 P 0.000  plan G  pred 0.773 s (-16.7%)  perr 6.65e-15  err64 5.15e-15  cw 5.89e-16
+auto       n=6912   f64  min   0.4573 s  med   0.4573 s   1444.4 GFLOP/s(2mkn)  speedup 2.028  relerr 5.15e-15  split L 0.008 R 0.007 gemm 0.430 P 0.012  plan R363+2/R336/G6  pred 0.451 s (-1.5%)  perr 3.42e-15  err64 6.74e-16  cw 4.06e-06
+plan=SW/G  n=6912   f64  min   0.7277 s  med   0.7277 s    907.6 GFLOP/s(2mkn)  speedup 1.274  relerr 4.92e-15  split L 0.008 R 0.007 gemm 0.707 P 0.006  plan SW/G  pred 0.709 s (-2.6%)  perr 6.38e-15  err64 3.29e-15  cw 3.41e-10
+plan=D48/G n=6912   f64  min   0.6069 s  med   0.6069 s   1088.2 GFLOP/s(2mkn)  speedup 1.528  relerr 5.38e-15  split L 0.009 R 0.009 gemm 0.579 P 0.009  plan D48/G  pred 0.610 s (+0.5%)  perr 4.78e-15  err64 2.33e-15  cw 1.33e-07
+plan=R336/G n=6912   f64  min   0.5857 s  med   0.5857 s   1127.6 GFLOP/s(2mkn)  speedup 1.583  relerr 5.38e-15  split L 0.013 R 0.007 gemm 0.558 P 0.008  plan R336/G  pred 0.598 s (+2.0%)  perr 4.72e-15  err64 1.54e-15  cw 1.20e-07
+plan=R363/G n=6912   f64  min   0.6359 s  med   0.6359 s   1038.6 GFLOP/s(2mkn)  speedup 1.458  relerr 5.30e-15  split L 0.008 R 0.007 gemm 0.609 P 0.012  plan R363/G  pred 0.642 s (+1.0%)  perr 3.14e-15  err64 1.44e-15  cw 1.13e-08
+plan=R633/G n=6912   f64  min   0.6246 s  med   0.6246 s   1057.4 GFLOP/s(2mkn)  speedup 1.485  relerr 5.53e-15  split L 0.008 R 0.014 gemm 0.596 P 0.007  plan R633/G  pred 0.632 s (+1.2%)  perr 4.23e-15  err64 1.50e-15  cw 1.26e-07
+plan=D48/D48/G n=6912   f64  min   0.6342 s  med   0.6342 s   1041.4 GFLOP/s(2mkn)  speedup 1.462  relerr 5.23e-15  split L 0.038 R 0.038 gemm 0.522 P 0.037  plan D48/D48/G  pred 0.641 s (+1.1%)  perr 5.28e-15  err64 1.11e-15  cw 6.66e-06
+plan=R363/R336/G n=6912   f64  min   0.5783 s  med   0.5783 s   1142.1 GFLOP/s(2mkn)  speedup 1.604  relerr 5.15e-15  split L 0.036 R 0.026 gemm 0.473 P 0.044  plan R363/R336/G  pred 0.583 s (+0.8%)  perr 3.42e-15  err64 6.74e-16  cw 4.06e-06
+## n=6912 d input outerp:6 prescale 1  21:41
+# inputs outerp:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.5 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.7710 s  med   0.7710 s    856.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.771 P 0.000  plan G  pred 0.773 s (+0.2%)  perr 6.65e-15  err64 5.15e-15  cw 5.89e-16
+auto       n=6912   f64  min   0.4474 s  med   0.4474 s   1476.1 GFLOP/s(2mkn)  speedup 1.723  relerr 5.60e-15  split L 0.008 R 0.007 gemm 0.420 P 0.012  plan R363+2/R336/G6  pred 0.451 s (+0.7%)  perr 3.42e-15  err64 3.29e-15  cw 7.57e-16
+plan=SW/G  n=6912   f64  min   0.7063 s  med   0.7063 s    935.1 GFLOP/s(2mkn)  speedup 1.092  relerr 6.59e-15  split L 0.008 R 0.007 gemm 0.685 P 0.006  plan SW/G  pred 0.709 s (+0.4%)  perr 6.38e-15  err64 4.88e-15  cw 7.88e-16
+plan=D48/G n=6912   f64  min   0.6061 s  med   0.6061 s   1089.7 GFLOP/s(2mkn)  speedup 1.272  relerr 6.06e-15  split L 0.010 R 0.009 gemm 0.578 P 0.010  plan D48/G  pred 0.610 s (+0.6%)  perr 4.78e-15  err64 4.01e-15  cw 6.56e-16
+plan=R336/G n=6912   f64  min   0.5927 s  med   0.5927 s   1114.4 GFLOP/s(2mkn)  speedup 1.301  relerr 5.68e-15  split L 0.012 R 0.007 gemm 0.566 P 0.007  plan R336/G  pred 0.598 s (+0.8%)  perr 4.72e-15  err64 3.78e-15  cw 6.95e-16
+plan=R363/G n=6912   f64  min   0.6561 s  med   0.6561 s   1006.7 GFLOP/s(2mkn)  speedup 1.175  relerr 5.30e-15  split L 0.008 R 0.008 gemm 0.628 P 0.012  plan R363/G  pred 0.642 s (-2.1%)  perr 3.14e-15  err64 2.47e-15  cw 4.87e-16
+plan=R633/G n=6912   f64  min   0.6342 s  med   0.6342 s   1041.4 GFLOP/s(2mkn)  speedup 1.216  relerr 5.00e-15  split L 0.007 R 0.013 gemm 0.606 P 0.007  plan R633/G  pred 0.632 s (-0.3%)  perr 4.23e-15  err64 3.46e-15  cw 6.66e-16
+plan=D48/D48/G n=6912   f64  min   0.6444 s  med   0.6444 s   1024.9 GFLOP/s(2mkn)  speedup 1.196  relerr 6.21e-15  split L 0.039 R 0.039 gemm 0.528 P 0.038  plan D48/D48/G  pred 0.641 s (-0.5%)  perr 5.28e-15  err64 4.51e-15  cw 8.24e-16
+plan=R363/R336/G n=6912   f64  min   0.5851 s  med   0.5851 s   1128.8 GFLOP/s(2mkn)  speedup 1.318  relerr 5.60e-15  split L 0.036 R 0.026 gemm 0.477 P 0.045  plan R363/R336/G  pred 0.583 s (-0.3%)  perr 3.42e-15  err64 3.29e-15  cw 7.57e-16
+## n=6912 d input inner:3 prescale 0  21:42
+# inputs inner:3
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.6 s
+classical  n=6912   f64  min   0.7703 s  med   0.7703 s    857.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.770 P 0.000  plan G  pred 0.773 s (+0.3%)  perr 6.65e-15  err64 6.78e-15  cw 6.69e-16
+auto       n=6912   f64  min   0.4613 s  med   0.4613 s   1431.6 GFLOP/s(2mkn)  speedup 1.670  relerr 3.04e-13  split L 0.008 R 0.007 gemm 0.434 P 0.012  plan R363+2/R336/G6  pred 0.451 s (-2.3%)  perr 3.42e-15  err64 3.04e-13  cw 2.96e-14
+plan=SW/G  n=6912   f64  min   0.7001 s  med   0.7001 s    943.4 GFLOP/s(2mkn)  speedup 1.100  relerr 9.76e-14  split L 0.008 R 0.007 gemm 0.679 P 0.006  plan SW/G  pred 0.709 s (+1.3%)  perr 6.38e-15  err64 9.76e-14  cw 9.58e-15
+plan=D48/G n=6912   f64  min   0.6060 s  med   0.6060 s   1089.8 GFLOP/s(2mkn)  speedup 1.271  relerr 2.84e-13  split L 0.010 R 0.009 gemm 0.577 P 0.010  plan D48/G  pred 0.610 s (+0.6%)  perr 4.78e-15  err64 2.84e-13  cw 2.76e-14
+plan=R336/G n=6912   f64  min   0.5838 s  med   0.5838 s   1131.3 GFLOP/s(2mkn)  speedup 1.319  relerr 1.76e-13  split L 0.012 R 0.007 gemm 0.557 P 0.007  plan R336/G  pred 0.598 s (+2.4%)  perr 4.72e-15  err64 1.76e-13  cw 1.70e-14
+plan=R363/G n=6912   f64  min   0.6354 s  med   0.6354 s   1039.4 GFLOP/s(2mkn)  speedup 1.212  relerr 2.24e-13  split L 0.008 R 0.007 gemm 0.609 P 0.012  plan R363/G  pred 0.642 s (+1.1%)  perr 3.14e-15  err64 2.24e-13  cw 2.19e-14
+plan=R633/G n=6912   f64  min   0.6289 s  med   0.6289 s   1050.1 GFLOP/s(2mkn)  speedup 1.225  relerr 1.67e-13  split L 0.008 R 0.013 gemm 0.601 P 0.007  plan R633/G  pred 0.632 s (+0.5%)  perr 4.23e-15  err64 1.67e-13  cw 1.64e-14
+plan=D48/D48/G n=6912   f64  min   0.6399 s  med   0.6399 s   1032.1 GFLOP/s(2mkn)  speedup 1.204  relerr 4.95e-13  split L 0.038 R 0.039 gemm 0.526 P 0.037  plan D48/D48/G  pred 0.641 s (+0.2%)  perr 5.28e-15  err64 4.94e-13  cw 4.80e-14
+plan=R363/R336/G n=6912   f64  min   0.5808 s  med   0.5808 s   1137.1 GFLOP/s(2mkn)  speedup 1.326  relerr 3.04e-13  split L 0.036 R 0.026 gemm 0.474 P 0.045  plan R363/R336/G  pred 0.583 s (+0.4%)  perr 3.42e-15  err64 3.04e-13  cw 2.96e-14
+## n=6912 d input inner:3 prescale 1  21:42
+# inputs inner:3
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.5 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.7806 s  med   0.7806 s    846.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.781 P 0.000  plan G  pred 0.773 s (-1.0%)  perr 6.65e-15  err64 6.78e-15  cw 6.69e-16
+auto       n=6912   f64  min   0.4491 s  med   0.4491 s   1470.6 GFLOP/s(2mkn)  speedup 1.738  relerr 8.05e-15  split L 0.008 R 0.007 gemm 0.422 P 0.012  plan R363+2/R336/G6  pred 0.451 s (+0.3%)  perr 3.42e-15  err64 5.59e-15  cw 5.46e-16
+plan=SW/G  n=6912   f64  min   0.7097 s  med   0.7097 s    930.6 GFLOP/s(2mkn)  speedup 1.100  relerr 9.53e-15  split L 0.007 R 0.007 gemm 0.689 P 0.006  plan SW/G  pred 0.709 s (-0.1%)  perr 6.38e-15  err64 8.64e-15  cw 8.38e-16
+plan=D48/G n=6912   f64  min   0.6033 s  med   0.6033 s   1094.8 GFLOP/s(2mkn)  speedup 1.294  relerr 7.79e-15  split L 0.009 R 0.009 gemm 0.575 P 0.010  plan D48/G  pred 0.610 s (+1.1%)  perr 4.78e-15  err64 7.07e-15  cw 6.92e-16
+plan=R336/G n=6912   f64  min   0.5974 s  med   0.5974 s   1105.6 GFLOP/s(2mkn)  speedup 1.307  relerr 8.13e-15  split L 0.013 R 0.007 gemm 0.569 P 0.008  plan R336/G  pred 0.598 s (+0.1%)  perr 4.72e-15  err64 5.97e-15  cw 5.60e-16
+plan=R363/G n=6912   f64  min   0.6593 s  med   0.6593 s   1001.8 GFLOP/s(2mkn)  speedup 1.184  relerr 7.84e-15  split L 0.008 R 0.008 gemm 0.632 P 0.012  plan R363/G  pred 0.642 s (-2.6%)  perr 3.14e-15  err64 4.79e-15  cw 4.67e-16
+plan=R633/G n=6912   f64  min   0.6453 s  med   0.6453 s   1023.4 GFLOP/s(2mkn)  speedup 1.210  relerr 7.84e-15  split L 0.008 R 0.014 gemm 0.617 P 0.007  plan R633/G  pred 0.632 s (-2.0%)  perr 4.23e-15  err64 6.57e-15  cw 6.29e-16
+plan=D48/D48/G n=6912   f64  min   0.6453 s  med   0.6453 s   1023.5 GFLOP/s(2mkn)  speedup 1.210  relerr 9.28e-15  split L 0.039 R 0.039 gemm 0.531 P 0.037  plan D48/D48/G  pred 0.641 s (-0.7%)  perr 5.28e-15  err64 8.13e-15  cw 8.11e-16
+plan=R363/R336/G n=6912   f64  min   0.5965 s  med   0.5965 s   1107.2 GFLOP/s(2mkn)  speedup 1.309  relerr 8.05e-15  split L 0.037 R 0.027 gemm 0.486 P 0.046  plan R363/R336/G  pred 0.583 s (-2.2%)  perr 3.42e-15  err64 5.59e-15  cw 5.46e-16
+## n=6912 d input inner:6 prescale 0  21:43
+# inputs inner:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.6 s
+classical  n=6912   f64  min   0.7785 s  med   0.7785 s    848.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.779 P 0.000  plan G  pred 0.773 s (-0.8%)  perr 6.65e-15  err64 6.86e-15  cw 6.77e-16
+auto       n=6912   f64  min   0.4555 s  med   0.4555 s   1450.0 GFLOP/s(2mkn)  speedup 1.709  relerr 1.32e-10  split L 0.008 R 0.007 gemm 0.428 P 0.012  plan R363+2/R336/G6  pred 0.451 s (-1.1%)  perr 3.42e-15  err64 1.32e-10  cw 1.28e-11
+plan=SW/G  n=6912   f64  min   0.7736 s  med   0.7736 s    853.7 GFLOP/s(2mkn)  speedup 1.006  relerr 3.78e-12  split L 0.008 R 0.008 gemm 0.752 P 0.006  plan SW/G  pred 0.709 s (-8.4%)  perr 6.38e-15  err64 3.78e-12  cw 3.69e-13
+plan=D48/G n=6912   f64  min   0.6998 s  med   0.6998 s    943.7 GFLOP/s(2mkn)  speedup 1.112  relerr 5.13e-11  split L 0.009 R 0.009 gemm 0.671 P 0.010  plan D48/G  pred 0.610 s (-12.9%)  perr 4.78e-15  err64 5.13e-11  cw 4.89e-12
+plan=R336/G n=6912   f64  min   0.6090 s  med   0.6090 s   1084.4 GFLOP/s(2mkn)  speedup 1.278  relerr 1.69e-11  split L 0.013 R 0.007 gemm 0.581 P 0.008  plan R336/G  pred 0.598 s (-1.9%)  perr 4.72e-15  err64 1.69e-11  cw 1.63e-12
+plan=R363/G n=6912   f64  min   0.6930 s  med   0.6930 s    953.0 GFLOP/s(2mkn)  speedup 1.123  relerr 5.84e-11  split L 0.016 R 0.014 gemm 0.652 P 0.011  plan R363/G  pred 0.642 s (-7.3%)  perr 3.14e-15  err64 5.84e-11  cw 5.69e-12
+plan=R633/G n=6912   f64  min   0.6395 s  med   0.6395 s   1032.8 GFLOP/s(2mkn)  speedup 1.217  relerr 1.63e-11  split L 0.008 R 0.013 gemm 0.611 P 0.007  plan R633/G  pred 0.632 s (-1.1%)  perr 4.23e-15  err64 1.63e-11  cw 1.59e-12
+plan=D48/D48/G n=6912   f64  min   0.6489 s  med   0.6489 s   1017.8 GFLOP/s(2mkn)  speedup 1.200  relerr 2.14e-10  split L 0.040 R 0.041 gemm 0.531 P 0.037  plan D48/D48/G  pred 0.641 s (-1.2%)  perr 5.28e-15  err64 2.14e-10  cw 2.11e-11
+plan=R363/R336/G n=6912   f64  min   0.5917 s  med   0.5917 s   1116.2 GFLOP/s(2mkn)  speedup 1.316  relerr 1.32e-10  split L 0.037 R 0.028 gemm 0.481 P 0.045  plan R363/R336/G  pred 0.583 s (-1.4%)  perr 3.42e-15  err64 1.32e-10  cw 1.28e-11
+## n=6912 d input inner:6 prescale 1  21:43
+# inputs inner:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 13.4 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.8150 s  med   0.8150 s    810.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.815 P 0.000  plan G  pred 0.773 s (-5.2%)  perr 6.65e-15  err64 6.86e-15  cw 6.77e-16
+auto       n=6912   f64  min   0.4564 s  med   0.4564 s   1447.0 GFLOP/s(2mkn)  speedup 1.786  relerr 7.46e-15  split L 0.009 R 0.009 gemm 0.427 P 0.012  plan R363+2/R336/G6  pred 0.451 s (-1.3%)  perr 3.42e-15  err64 6.46e-15  cw 6.34e-16
+plan=SW/G  n=6912   f64  min   0.7445 s  med   0.7445 s    887.2 GFLOP/s(2mkn)  speedup 1.095  relerr 8.74e-15  split L 0.008 R 0.008 gemm 0.723 P 0.006  plan SW/G  pred 0.709 s (-4.8%)  perr 6.38e-15  err64 8.36e-15  cw 8.18e-16
+plan=D48/G n=6912   f64  min   0.6484 s  med   0.6484 s   1018.6 GFLOP/s(2mkn)  speedup 1.257  relerr 7.63e-15  split L 0.010 R 0.010 gemm 0.618 P 0.010  plan D48/G  pred 0.610 s (-6.0%)  perr 4.78e-15  err64 7.16e-15  cw 7.11e-16
+plan=R336/G n=6912   f64  min   0.6302 s  med   0.6302 s   1047.9 GFLOP/s(2mkn)  speedup 1.293  relerr 7.63e-15  split L 0.014 R 0.008 gemm 0.600 P 0.008  plan R336/G  pred 0.598 s (-5.2%)  perr 4.72e-15  err64 5.90e-15  cw 5.75e-16
+plan=R363/G n=6912   f64  min   0.6877 s  med   0.6877 s    960.4 GFLOP/s(2mkn)  speedup 1.185  relerr 7.12e-15  split L 0.009 R 0.008 gemm 0.659 P 0.012  plan R363/G  pred 0.642 s (-6.6%)  perr 3.14e-15  err64 4.45e-15  cw 4.28e-16
+plan=R633/G n=6912   f64  min   0.6705 s  med   0.6705 s    985.0 GFLOP/s(2mkn)  speedup 1.215  relerr 7.46e-15  split L 0.009 R 0.014 gemm 0.639 P 0.008  plan R633/G  pred 0.632 s (-5.7%)  perr 4.23e-15  err64 7.06e-15  cw 6.70e-16
+plan=D48/D48/G n=6912   f64  min   0.6680 s  med   0.6680 s    988.7 GFLOP/s(2mkn)  speedup 1.220  relerr 8.81e-15  split L 0.039 R 0.041 gemm 0.548 P 0.039  plan D48/D48/G  pred 0.641 s (-4.0%)  perr 5.28e-15  err64 7.48e-15  cw 7.29e-16
+plan=R363/R336/G n=6912   f64  min   0.6071 s  med   0.6071 s   1087.9 GFLOP/s(2mkn)  speedup 1.342  relerr 7.46e-15  split L 0.038 R 0.027 gemm 0.495 P 0.047  plan R363/R336/G  pred 0.583 s (-4.0%)  perr 3.42e-15  err64 6.46e-15  cw 6.34e-16
+## n=6912 d input innerp:6 prescale 0  21:44
+# inputs innerp:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.9 s
+classical  n=6912   f64  min   0.7697 s  med   0.7697 s    858.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.770 P 0.000  plan G  pred 0.773 s (+0.4%)  perr 6.65e-15  err64 6.69e-15  cw 6.60e-16
+auto       n=6912   f64  min   0.4498 s  med   0.4498 s   1468.2 GFLOP/s(2mkn)  speedup 1.711  relerr 1.35e-10  split L 0.008 R 0.008 gemm 0.423 P 0.011  plan R363+2/R336/G6  pred 0.451 s (+0.2%)  perr 3.42e-15  err64 1.35e-10  cw 1.33e-11
+plan=SW/G  n=6912   f64  min   0.7170 s  med   0.7170 s    921.1 GFLOP/s(2mkn)  speedup 1.073  relerr 3.60e-12  split L 0.008 R 0.007 gemm 0.696 P 0.006  plan SW/G  pred 0.709 s (-1.1%)  perr 6.38e-15  err64 3.61e-12  cw 3.54e-13
+plan=D48/G n=6912   f64  min   0.6087 s  med   0.6087 s   1084.9 GFLOP/s(2mkn)  speedup 1.264  relerr 4.24e-11  split L 0.009 R 0.009 gemm 0.580 P 0.010  plan D48/G  pred 0.610 s (+0.2%)  perr 4.78e-15  err64 4.24e-11  cw 4.05e-12
+plan=R336/G n=6912   f64  min   0.5902 s  med   0.5902 s   1119.0 GFLOP/s(2mkn)  speedup 1.304  relerr 1.46e-11  split L 0.013 R 0.007 gemm 0.562 P 0.008  plan R336/G  pred 0.598 s (+1.3%)  perr 4.72e-15  err64 1.46e-11  cw 1.41e-12
+plan=R363/G n=6912   f64  min   0.6323 s  med   0.6323 s   1044.6 GFLOP/s(2mkn)  speedup 1.217  relerr 5.41e-11  split L 0.008 R 0.008 gemm 0.605 P 0.012  plan R363/G  pred 0.642 s (+1.6%)  perr 3.14e-15  err64 5.41e-11  cw 5.29e-12
+plan=R633/G n=6912   f64  min   0.6269 s  med   0.6269 s   1053.5 GFLOP/s(2mkn)  speedup 1.228  relerr 1.41e-11  split L 0.008 R 0.014 gemm 0.598 P 0.007  plan R633/G  pred 0.632 s (+0.8%)  perr 4.23e-15  err64 1.41e-11  cw 1.40e-12
+plan=D48/D48/G n=6912   f64  min   0.6401 s  med   0.6401 s   1031.7 GFLOP/s(2mkn)  speedup 1.202  relerr 1.95e-10  split L 0.038 R 0.038 gemm 0.528 P 0.036  plan D48/D48/G  pred 0.641 s (+0.1%)  perr 5.28e-15  err64 1.95e-10  cw 1.88e-11
+plan=R363/R336/G n=6912   f64  min   0.5812 s  med   0.5812 s   1136.4 GFLOP/s(2mkn)  speedup 1.324  relerr 1.35e-10  split L 0.036 R 0.026 gemm 0.475 P 0.044  plan R363/R336/G  pred 0.583 s (+0.3%)  perr 3.42e-15  err64 1.35e-10  cw 1.33e-11
+## n=6912 d input innerp:6 prescale 1  21:44
+# inputs innerp:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.5 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.7691 s  med   0.7691 s    858.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.769 P 0.000  plan G  pred 0.773 s (+0.4%)  perr 6.65e-15  err64 6.69e-15  cw 6.60e-16
+auto       n=6912   f64  min   0.4527 s  med   0.4527 s   1459.0 GFLOP/s(2mkn)  speedup 1.699  relerr 8.22e-15  split L 0.008 R 0.007 gemm 0.426 P 0.011  plan R363+2/R336/G6  pred 0.451 s (-0.5%)  perr 3.42e-15  err64 5.89e-15  cw 5.71e-16
+plan=SW/G  n=6912   f64  min   0.6999 s  med   0.6999 s    943.6 GFLOP/s(2mkn)  speedup 1.099  relerr 1.02e-14  split L 0.008 R 0.007 gemm 0.679 P 0.006  plan SW/G  pred 0.709 s (+1.3%)  perr 6.38e-15  err64 9.02e-15  cw 8.86e-16
+plan=D48/G n=6912   f64  min   0.6052 s  med   0.6052 s   1091.3 GFLOP/s(2mkn)  speedup 1.271  relerr 7.20e-15  split L 0.010 R 0.010 gemm 0.577 P 0.009  plan D48/G  pred 0.610 s (+0.8%)  perr 4.78e-15  err64 6.46e-15  cw 6.13e-16
+plan=R336/G n=6912   f64  min   0.5940 s  med   0.5940 s   1112.0 GFLOP/s(2mkn)  speedup 1.295  relerr 8.13e-15  split L 0.012 R 0.007 gemm 0.566 P 0.008  plan R336/G  pred 0.598 s (+0.6%)  perr 4.72e-15  err64 5.83e-15  cw 5.63e-16
+plan=R363/G n=6912   f64  min   0.6374 s  med   0.6374 s   1036.2 GFLOP/s(2mkn)  speedup 1.207  relerr 7.03e-15  split L 0.008 R 0.007 gemm 0.610 P 0.012  plan R363/G  pred 0.642 s (+0.8%)  perr 3.14e-15  err64 4.52e-15  cw 4.37e-16
+plan=R633/G n=6912   f64  min   0.6243 s  med   0.6243 s   1057.9 GFLOP/s(2mkn)  speedup 1.232  relerr 7.63e-15  split L 0.007 R 0.014 gemm 0.596 P 0.008  plan R633/G  pred 0.632 s (+1.3%)  perr 4.23e-15  err64 5.45e-15  cw 5.26e-16
+plan=D48/D48/G n=6912   f64  min   0.6415 s  med   0.6415 s   1029.5 GFLOP/s(2mkn)  speedup 1.199  relerr 9.32e-15  split L 0.040 R 0.041 gemm 0.523 P 0.037  plan D48/D48/G  pred 0.641 s (-0.1%)  perr 5.28e-15  err64 7.14e-15  cw 6.89e-16
+plan=R363/R336/G n=6912   f64  min   0.5808 s  med   0.5808 s   1137.2 GFLOP/s(2mkn)  speedup 1.324  relerr 8.22e-15  split L 0.036 R 0.027 gemm 0.474 P 0.044  plan R363/R336/G  pred 0.583 s (+0.4%)  perr 3.42e-15  err64 5.89e-15  cw 5.71e-16
+## n=6912 d input cross:3 prescale 0  21:45
+# inputs cross:3
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.6 s
+classical  n=6912   f64  min   0.7735 s  med   0.7735 s    853.9 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.773 P 0.000  plan G  pred 0.773 s (-0.1%)  perr 6.65e-15  err64 8.17e-15  cw 1.14e-15
+auto       n=6912   f64  min   0.4559 s  med   0.4559 s   1448.6 GFLOP/s(2mkn)  speedup 1.697  relerr 8.05e-15  split L 0.008 R 0.008 gemm 0.429 P 0.011  plan R363+2/R336/G6  pred 0.451 s (-1.2%)  perr 3.42e-15  err64 2.92e-15  cw 1.99e-13
+plan=SW/G  n=6912   f64  min   0.6993 s  med   0.6993 s    944.4 GFLOP/s(2mkn)  speedup 1.106  relerr 9.73e-15  split L 0.008 R 0.007 gemm 0.678 P 0.006  plan SW/G  pred 0.709 s (+1.4%)  perr 6.38e-15  err64 3.72e-15  cw 2.34e-13
+plan=D48/G n=6912   f64  min   0.6043 s  med   0.6043 s   1093.0 GFLOP/s(2mkn)  speedup 1.280  relerr 9.13e-15  split L 0.009 R 0.009 gemm 0.576 P 0.010  plan D48/G  pred 0.610 s (+0.9%)  perr 4.78e-15  err64 4.51e-15  cw 2.63e-13
+plan=R336/G n=6912   f64  min   0.6050 s  med   0.6050 s   1091.6 GFLOP/s(2mkn)  speedup 1.278  relerr 8.41e-15  split L 0.012 R 0.007 gemm 0.578 P 0.007  plan R336/G  pred 0.598 s (-1.2%)  perr 4.72e-15  err64 3.20e-15  cw 2.22e-13
+plan=R363/G n=6912   f64  min   0.6354 s  med   0.6354 s   1039.4 GFLOP/s(2mkn)  speedup 1.217  relerr 8.17e-15  split L 0.008 R 0.007 gemm 0.609 P 0.012  plan R363/G  pred 0.642 s (+1.1%)  perr 3.14e-15  err64 2.43e-15  cw 1.55e-13
+plan=R633/G n=6912   f64  min   0.6277 s  med   0.6277 s   1052.2 GFLOP/s(2mkn)  speedup 1.232  relerr 8.41e-15  split L 0.008 R 0.013 gemm 0.599 P 0.007  plan R633/G  pred 0.632 s (+0.7%)  perr 4.23e-15  err64 2.97e-15  cw 1.89e-13
+plan=D48/D48/G n=6912   f64  min   0.6465 s  med   0.6465 s   1021.6 GFLOP/s(2mkn)  speedup 1.196  relerr 8.65e-15  split L 0.039 R 0.039 gemm 0.531 P 0.038  plan D48/D48/G  pred 0.641 s (-0.8%)  perr 5.28e-15  err64 4.33e-15  cw 2.98e-13
+plan=R363/R336/G n=6912   f64  min   0.5810 s  med   0.5810 s   1136.7 GFLOP/s(2mkn)  speedup 1.331  relerr 8.05e-15  split L 0.036 R 0.026 gemm 0.474 P 0.045  plan R363/R336/G  pred 0.583 s (+0.4%)  perr 3.42e-15  err64 2.92e-15  cw 1.99e-13
+## n=6912 d input cross:3 prescale 1  21:45
+# inputs cross:3
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.5 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.8012 s  med   0.8012 s    824.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.801 P 0.000  plan G  pred 0.773 s (-3.6%)  perr 6.65e-15  err64 8.17e-15  cw 1.14e-15
+auto       n=6912   f64  min   0.4641 s  med   0.4641 s   1423.0 GFLOP/s(2mkn)  speedup 1.726  relerr 8.05e-15  split L 0.009 R 0.009 gemm 0.434 P 0.012  plan R363+2/R336/G6  pred 0.451 s (-2.9%)  perr 3.42e-15  err64 2.92e-15  cw 1.99e-13
+plan=SW/G  n=6912   f64  min   0.8249 s  med   0.8249 s    800.7 GFLOP/s(2mkn)  speedup 0.971  relerr 9.73e-15  split L 0.008 R 0.008 gemm 0.803 P 0.006  plan SW/G  pred 0.709 s (-14.1%)  perr 6.38e-15  err64 3.72e-15  cw 2.34e-13
+plan=D48/G n=6912   f64  min   0.6852 s  med   0.6852 s    963.8 GFLOP/s(2mkn)  speedup 1.169  relerr 9.13e-15  split L 0.011 R 0.010 gemm 0.654 P 0.011  plan D48/G  pred 0.610 s (-11.0%)  perr 4.78e-15  err64 4.51e-15  cw 2.63e-13
+plan=R336/G n=6912   f64  min   0.7440 s  med   0.7440 s    887.7 GFLOP/s(2mkn)  speedup 1.077  relerr 8.41e-15  split L 0.015 R 0.010 gemm 0.710 P 0.009  plan R336/G  pred 0.598 s (-19.7%)  perr 4.72e-15  err64 3.20e-15  cw 2.22e-13
+plan=R363/G n=6912   f64  min   0.7900 s  med   0.7900 s    836.0 GFLOP/s(2mkn)  speedup 1.014  relerr 8.17e-15  split L 0.009 R 0.009 gemm 0.760 P 0.013  plan R363/G  pred 0.642 s (-18.7%)  perr 3.14e-15  err64 2.43e-15  cw 1.55e-13
+plan=R633/G n=6912   f64  min   0.7656 s  med   0.7656 s    862.6 GFLOP/s(2mkn)  speedup 1.046  relerr 8.41e-15  split L 0.009 R 0.016 gemm 0.733 P 0.008  plan R633/G  pred 0.632 s (-17.4%)  perr 4.23e-15  err64 2.97e-15  cw 1.89e-13
+plan=D48/D48/G n=6912   f64  min   0.6639 s  med   0.6639 s    994.9 GFLOP/s(2mkn)  speedup 1.207  relerr 8.65e-15  split L 0.040 R 0.042 gemm 0.542 P 0.039  plan D48/D48/G  pred 0.641 s (-3.4%)  perr 5.28e-15  err64 4.33e-15  cw 2.98e-13
+plan=R363/R336/G n=6912   f64  min   0.5999 s  med   0.5999 s   1101.0 GFLOP/s(2mkn)  speedup 1.336  relerr 8.05e-15  split L 0.037 R 0.028 gemm 0.487 P 0.048  plan R363/R336/G  pred 0.583 s (-2.8%)  perr 3.42e-15  err64 2.92e-15  cw 1.99e-13
+## n=6912 d input cross:6 prescale 0  21:46
+# inputs cross:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 13.7 s
+classical  n=6912   f64  min   0.7661 s  med   0.7661 s    862.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.766 P 0.000  plan G  pred 0.773 s (+0.8%)  perr 6.65e-15  err64 1.20e-14  cw 1.62e-15
+auto       n=6912   f64  min   0.4622 s  med   0.4622 s   1429.0 GFLOP/s(2mkn)  speedup 1.658  relerr 1.23e-14  split L 0.008 R 0.007 gemm 0.435 P 0.012  plan R363+2/R336/G6  pred 0.451 s (-2.5%)  perr 3.42e-15  err64 2.98e-15  cw 2.07e-10
+plan=SW/G  n=6912   f64  min   0.7176 s  med   0.7176 s    920.4 GFLOP/s(2mkn)  speedup 1.068  relerr 1.18e-14  split L 0.008 R 0.008 gemm 0.697 P 0.006  plan SW/G  pred 0.709 s (-1.2%)  perr 6.38e-15  err64 4.20e-15  cw 2.66e-10
+plan=D48/G n=6912   f64  min   0.6153 s  med   0.6153 s   1073.5 GFLOP/s(2mkn)  speedup 1.245  relerr 1.08e-14  split L 0.010 R 0.010 gemm 0.585 P 0.010  plan D48/G  pred 0.610 s (-0.9%)  perr 4.78e-15  err64 3.99e-15  cw 2.60e-10
+plan=R336/G n=6912   f64  min   0.5980 s  med   0.5980 s   1104.4 GFLOP/s(2mkn)  speedup 1.281  relerr 1.18e-14  split L 0.013 R 0.008 gemm 0.570 P 0.008  plan R336/G  pred 0.598 s (-0.1%)  perr 4.72e-15  err64 3.72e-15  cw 2.51e-10
+plan=R363/G n=6912   f64  min   0.6366 s  med   0.6366 s   1037.5 GFLOP/s(2mkn)  speedup 1.203  relerr 1.20e-14  split L 0.008 R 0.008 gemm 0.609 P 0.012  plan R363/G  pred 0.642 s (+0.9%)  perr 3.14e-15  err64 2.48e-15  cw 1.67e-10
+plan=R633/G n=6912   f64  min   0.6244 s  med   0.6244 s   1057.7 GFLOP/s(2mkn)  speedup 1.227  relerr 1.19e-14  split L 0.008 R 0.013 gemm 0.596 P 0.008  plan R633/G  pred 0.632 s (+1.2%)  perr 4.23e-15  err64 2.86e-15  cw 1.96e-10
+plan=D48/D48/G n=6912   f64  min   0.6356 s  med   0.6356 s   1039.1 GFLOP/s(2mkn)  speedup 1.205  relerr 1.26e-14  split L 0.038 R 0.039 gemm 0.521 P 0.038  plan D48/D48/G  pred 0.641 s (+0.9%)  perr 5.28e-15  err64 4.67e-15  cw 2.86e-10
+plan=R363/R336/G n=6912   f64  min   0.5786 s  med   0.5786 s   1141.6 GFLOP/s(2mkn)  speedup 1.324  relerr 1.23e-14  split L 0.036 R 0.025 gemm 0.473 P 0.044  plan R363/R336/G  pred 0.583 s (+0.8%)  perr 3.42e-15  err64 2.98e-15  cw 2.07e-10
+## n=6912 d input cross:6 prescale 1  21:46
+# inputs cross:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.7 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.7711 s  med   0.7711 s    856.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.771 P 0.000  plan G  pred 0.773 s (+0.2%)  perr 6.65e-15  err64 1.20e-14  cw 1.62e-15
+auto       n=6912   f64  min   0.4500 s  med   0.4500 s   1467.6 GFLOP/s(2mkn)  speedup 1.714  relerr 1.23e-14  split L 0.008 R 0.007 gemm 0.423 P 0.011  plan R363+2/R336/G6  pred 0.451 s (+0.1%)  perr 3.42e-15  err64 2.98e-15  cw 2.07e-10
+plan=SW/G  n=6912   f64  min   0.7299 s  med   0.7299 s    904.9 GFLOP/s(2mkn)  speedup 1.057  relerr 1.18e-14  split L 0.008 R 0.007 gemm 0.709 P 0.006  plan SW/G  pred 0.709 s (-2.9%)  perr 6.38e-15  err64 4.20e-15  cw 2.66e-10
+plan=D48/G n=6912   f64  min   0.5982 s  med   0.5982 s   1104.1 GFLOP/s(2mkn)  speedup 1.289  relerr 1.08e-14  split L 0.009 R 0.009 gemm 0.571 P 0.009  plan D48/G  pred 0.610 s (+1.9%)  perr 4.78e-15  err64 3.99e-15  cw 2.60e-10
+plan=R336/G n=6912   f64  min   0.5927 s  med   0.5927 s   1114.3 GFLOP/s(2mkn)  speedup 1.301  relerr 1.18e-14  split L 0.013 R 0.007 gemm 0.564 P 0.008  plan R336/G  pred 0.598 s (+0.8%)  perr 4.72e-15  err64 3.72e-15  cw 2.51e-10
+plan=R363/G n=6912   f64  min   0.6354 s  med   0.6354 s   1039.4 GFLOP/s(2mkn)  speedup 1.214  relerr 1.20e-14  split L 0.008 R 0.008 gemm 0.607 P 0.012  plan R363/G  pred 0.642 s (+1.1%)  perr 3.14e-15  err64 2.48e-15  cw 1.67e-10
+plan=R633/G n=6912   f64  min   0.6283 s  med   0.6283 s   1051.1 GFLOP/s(2mkn)  speedup 1.227  relerr 1.19e-14  split L 0.008 R 0.013 gemm 0.600 P 0.007  plan R633/G  pred 0.632 s (+0.6%)  perr 4.23e-15  err64 2.86e-15  cw 1.96e-10
+plan=D48/D48/G n=6912   f64  min   0.6404 s  med   0.6404 s   1031.4 GFLOP/s(2mkn)  speedup 1.204  relerr 1.26e-14  split L 0.038 R 0.039 gemm 0.526 P 0.037  plan D48/D48/G  pred 0.641 s (+0.1%)  perr 5.28e-15  err64 4.67e-15  cw 2.86e-10
+plan=R363/R336/G n=6912   f64  min   0.5834 s  med   0.5834 s   1132.1 GFLOP/s(2mkn)  speedup 1.322  relerr 1.23e-14  split L 0.036 R 0.026 gemm 0.478 P 0.044  plan R363/R336/G  pred 0.583 s (-0.0%)  perr 3.42e-15  err64 2.98e-15  cw 2.07e-10
+## n=6912 d input entry:3 prescale 0  21:47
+# inputs entry:3
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.5 s
+classical  n=6912   f64  min   0.9196 s  med   0.9196 s    718.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.920 P 0.000  plan G  pred 0.773 s (-16.0%)  perr 6.65e-15  err64 7.02e-15  cw 2.28e-15
+auto       n=6912   f64  min   0.4488 s  med   0.4488 s   1471.6 GFLOP/s(2mkn)  speedup 2.049  relerr 6.87e-15  split L 0.007 R 0.007 gemm 0.423 P 0.011  plan R363+2/R336/G6  pred 0.451 s (+0.4%)  perr 3.42e-15  err64 4.20e-15  cw 1.45e-15
+plan=SW/G  n=6912   f64  min   0.7179 s  med   0.7179 s    920.0 GFLOP/s(2mkn)  speedup 1.281  relerr 8.19e-15  split L 0.008 R 0.007 gemm 0.696 P 0.006  plan SW/G  pred 0.709 s (-1.2%)  perr 6.38e-15  err64 6.86e-15  cw 2.42e-15
+plan=D48/G n=6912   f64  min   0.6134 s  med   0.6134 s   1076.7 GFLOP/s(2mkn)  speedup 1.499  relerr 8.04e-15  split L 0.009 R 0.010 gemm 0.586 P 0.009  plan D48/G  pred 0.610 s (-0.6%)  perr 4.78e-15  err64 5.30e-15  cw 1.68e-15
+plan=R336/G n=6912   f64  min   0.5979 s  med   0.5979 s   1104.6 GFLOP/s(2mkn)  speedup 1.538  relerr 7.53e-15  split L 0.013 R 0.007 gemm 0.570 P 0.007  plan R336/G  pred 0.598 s (-0.0%)  perr 4.72e-15  err64 4.17e-15  cw 1.40e-15
+plan=R363/G n=6912   f64  min   0.6418 s  med   0.6418 s   1029.1 GFLOP/s(2mkn)  speedup 1.433  relerr 7.24e-15  split L 0.008 R 0.007 gemm 0.615 P 0.012  plan R363/G  pred 0.642 s (+0.1%)  perr 3.14e-15  err64 3.25e-15  cw 1.09e-15
+plan=R633/G n=6912   f64  min   0.6247 s  med   0.6247 s   1057.3 GFLOP/s(2mkn)  speedup 1.472  relerr 7.75e-15  split L 0.008 R 0.014 gemm 0.595 P 0.008  plan R633/G  pred 0.632 s (+1.2%)  perr 4.23e-15  err64 4.06e-15  cw 1.47e-15
+plan=D48/D48/G n=6912   f64  min   0.6384 s  med   0.6384 s   1034.6 GFLOP/s(2mkn)  speedup 1.441  relerr 7.82e-15  split L 0.038 R 0.040 gemm 0.522 P 0.038  plan D48/D48/G  pred 0.641 s (+0.4%)  perr 5.28e-15  err64 5.45e-15  cw 1.87e-15
+plan=R363/R336/G n=6912   f64  min   0.5797 s  med   0.5797 s   1139.2 GFLOP/s(2mkn)  speedup 1.586  relerr 6.87e-15  split L 0.036 R 0.026 gemm 0.473 P 0.044  plan R363/R336/G  pred 0.583 s (+0.6%)  perr 3.42e-15  err64 4.20e-15  cw 1.45e-15
+## n=6912 d input entry:3 prescale 1  21:47
+# inputs entry:3
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.6 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.7702 s  med   0.7702 s    857.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.770 P 0.000  plan G  pred 0.773 s (+0.3%)  perr 6.65e-15  err64 7.02e-15  cw 2.28e-15
+auto       n=6912   f64  min   0.4525 s  med   0.4525 s   1459.5 GFLOP/s(2mkn)  speedup 1.702  relerr 6.87e-15  split L 0.008 R 0.007 gemm 0.426 P 0.011  plan R363+2/R336/G6  pred 0.451 s (-0.4%)  perr 3.42e-15  err64 4.20e-15  cw 1.45e-15
+plan=SW/G  n=6912   f64  min   0.7466 s  med   0.7466 s    884.6 GFLOP/s(2mkn)  speedup 1.032  relerr 8.19e-15  split L 0.008 R 0.008 gemm 0.725 P 0.006  plan SW/G  pred 0.709 s (-5.0%)  perr 6.38e-15  err64 6.86e-15  cw 2.42e-15
+plan=D48/G n=6912   f64  min   0.6062 s  med   0.6062 s   1089.4 GFLOP/s(2mkn)  speedup 1.271  relerr 8.04e-15  split L 0.009 R 0.009 gemm 0.579 P 0.010  plan D48/G  pred 0.610 s (+0.6%)  perr 4.78e-15  err64 5.30e-15  cw 1.68e-15
+plan=R336/G n=6912   f64  min   0.5941 s  med   0.5941 s   1111.7 GFLOP/s(2mkn)  speedup 1.296  relerr 7.53e-15  split L 0.012 R 0.008 gemm 0.567 P 0.007  plan R336/G  pred 0.598 s (+0.6%)  perr 4.72e-15  err64 4.17e-15  cw 1.40e-15
+plan=R363/G n=6912   f64  min   0.6389 s  med   0.6389 s   1033.7 GFLOP/s(2mkn)  speedup 1.205  relerr 7.24e-15  split L 0.008 R 0.007 gemm 0.612 P 0.012  plan R363/G  pred 0.642 s (+0.5%)  perr 3.14e-15  err64 3.25e-15  cw 1.09e-15
+plan=R633/G n=6912   f64  min   0.6264 s  med   0.6264 s   1054.4 GFLOP/s(2mkn)  speedup 1.230  relerr 7.75e-15  split L 0.008 R 0.014 gemm 0.597 P 0.008  plan R633/G  pred 0.632 s (+0.9%)  perr 4.23e-15  err64 4.06e-15  cw 1.47e-15
+plan=D48/D48/G n=6912   f64  min   0.6451 s  med   0.6451 s   1023.7 GFLOP/s(2mkn)  speedup 1.194  relerr 7.82e-15  split L 0.039 R 0.042 gemm 0.525 P 0.038  plan D48/D48/G  pred 0.641 s (-0.6%)  perr 5.28e-15  err64 5.45e-15  cw 1.87e-15
+plan=R363/R336/G n=6912   f64  min   0.5813 s  med   0.5813 s   1136.2 GFLOP/s(2mkn)  speedup 1.325  relerr 6.87e-15  split L 0.036 R 0.026 gemm 0.474 P 0.045  plan R363/R336/G  pred 0.583 s (+0.3%)  perr 3.42e-15  err64 4.20e-15  cw 1.45e-15
+## n=6912 d input entry:6 prescale 0  21:48
+# inputs entry:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.7 s
+classical  n=6912   f64  min   0.8569 s  med   0.8569 s    770.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.857 P 0.000  plan G  pred 0.773 s (-9.8%)  perr 6.65e-15  err64 6.87e-15  cw 4.31e-15
+auto       n=6912   f64  min   0.4536 s  med   0.4536 s   1455.9 GFLOP/s(2mkn)  speedup 1.889  relerr 6.72e-15  split L 0.007 R 0.007 gemm 0.427 P 0.012  plan R363+2/R336/G6  pred 0.451 s (-0.7%)  perr 3.42e-15  err64 4.32e-15  cw 3.42e-15
+plan=SW/G  n=6912   f64  min   0.7445 s  med   0.7445 s    887.2 GFLOP/s(2mkn)  speedup 1.151  relerr 7.65e-15  split L 0.008 R 0.007 gemm 0.723 P 0.006  plan SW/G  pred 0.709 s (-4.8%)  perr 6.38e-15  err64 6.65e-15  cw 4.88e-15
+plan=D48/G n=6912   f64  min   0.6102 s  med   0.6102 s   1082.3 GFLOP/s(2mkn)  speedup 1.404  relerr 8.15e-15  split L 0.009 R 0.009 gemm 0.582 P 0.010  plan D48/G  pred 0.610 s (-0.1%)  perr 4.78e-15  err64 4.79e-15  cw 4.02e-15
+plan=R336/G n=6912   f64  min   0.6014 s  med   0.6014 s   1098.1 GFLOP/s(2mkn)  speedup 1.425  relerr 7.80e-15  split L 0.012 R 0.007 gemm 0.574 P 0.008  plan R336/G  pred 0.598 s (-0.6%)  perr 4.72e-15  err64 4.13e-15  cw 3.45e-15
+plan=R363/G n=6912   f64  min   0.6396 s  med   0.6396 s   1032.6 GFLOP/s(2mkn)  speedup 1.340  relerr 6.72e-15  split L 0.007 R 0.008 gemm 0.613 P 0.012  plan R363/G  pred 0.642 s (+0.4%)  perr 3.14e-15  err64 3.10e-15  cw 2.49e-15
+plan=R633/G n=6912   f64  min   0.6314 s  med   0.6314 s   1046.1 GFLOP/s(2mkn)  speedup 1.357  relerr 7.65e-15  split L 0.008 R 0.014 gemm 0.602 P 0.007  plan R633/G  pred 0.632 s (+0.1%)  perr 4.23e-15  err64 4.51e-15  cw 3.83e-15
+plan=D48/D48/G n=6912   f64  min   0.6758 s  med   0.6758 s    977.2 GFLOP/s(2mkn)  speedup 1.268  relerr 8.58e-15  split L 0.041 R 0.045 gemm 0.551 P 0.038  plan D48/D48/G  pred 0.641 s (-5.2%)  perr 5.28e-15  err64 5.20e-15  cw 4.35e-15
+plan=R363/R336/G n=6912   f64  min   0.5831 s  med   0.5831 s   1132.7 GFLOP/s(2mkn)  speedup 1.469  relerr 6.72e-15  split L 0.037 R 0.027 gemm 0.474 P 0.045  plan R363/R336/G  pred 0.583 s (+0.0%)  perr 3.42e-15  err64 4.32e-15  cw 3.42e-15
+## n=6912 d input entry:6 prescale 1  21:48
+# inputs entry:6
+# auto n=6912   f64: plan R363+2/R336/G6, predicted 0.451 s
+# compensated f64 reference in 12.8 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=6912   f64  min   0.7830 s  med   0.7830 s    843.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.783 P 0.000  plan G  pred 0.773 s (-1.3%)  perr 6.65e-15  err64 6.87e-15  cw 4.31e-15
+auto       n=6912   f64  min   0.4519 s  med   0.4519 s   1461.5 GFLOP/s(2mkn)  speedup 1.733  relerr 6.72e-15  split L 0.008 R 0.008 gemm 0.423 P 0.013  plan R363+2/R336/G6  pred 0.451 s (-0.3%)  perr 3.42e-15  err64 4.32e-15  cw 3.42e-15
+plan=SW/G  n=6912   f64  min   0.7202 s  med   0.7202 s    917.0 GFLOP/s(2mkn)  speedup 1.087  relerr 7.65e-15  split L 0.008 R 0.007 gemm 0.699 P 0.006  plan SW/G  pred 0.709 s (-1.6%)  perr 6.38e-15  err64 6.65e-15  cw 4.88e-15
+plan=D48/G n=6912   f64  min   0.6073 s  med   0.6073 s   1087.6 GFLOP/s(2mkn)  speedup 1.289  relerr 8.15e-15  split L 0.009 R 0.009 gemm 0.580 P 0.009  plan D48/G  pred 0.610 s (+0.4%)  perr 4.78e-15  err64 4.79e-15  cw 4.02e-15
+plan=R336/G n=6912   f64  min   0.6104 s  med   0.6104 s   1081.9 GFLOP/s(2mkn)  speedup 1.283  relerr 7.80e-15  split L 0.013 R 0.008 gemm 0.581 P 0.008  plan R336/G  pred 0.598 s (-2.1%)  perr 4.72e-15  err64 4.13e-15  cw 3.45e-15
+plan=R363/G n=6912   f64  min   0.6415 s  med   0.6415 s   1029.6 GFLOP/s(2mkn)  speedup 1.221  relerr 6.72e-15  split L 0.008 R 0.007 gemm 0.615 P 0.011  plan R363/G  pred 0.642 s (+0.1%)  perr 3.14e-15  err64 3.10e-15  cw 2.49e-15
+plan=R633/G n=6912   f64  min   0.6277 s  med   0.6277 s   1052.1 GFLOP/s(2mkn)  speedup 1.247  relerr 7.65e-15  split L 0.008 R 0.013 gemm 0.600 P 0.007  plan R633/G  pred 0.632 s (+0.7%)  perr 4.23e-15  err64 4.51e-15  cw 3.83e-15
+plan=D48/D48/G n=6912   f64  min   0.6371 s  med   0.6371 s   1036.6 GFLOP/s(2mkn)  speedup 1.229  relerr 8.58e-15  split L 0.038 R 0.039 gemm 0.524 P 0.037  plan D48/D48/G  pred 0.641 s (+0.6%)  perr 5.28e-15  err64 5.20e-15  cw 4.35e-15
+plan=R363/R336/G n=6912   f64  min   0.5782 s  med   0.5782 s   1142.3 GFLOP/s(2mkn)  speedup 1.354  relerr 6.72e-15  split L 0.036 R 0.026 gemm 0.473 P 0.043  plan R363/R336/G  pred 0.583 s (+0.9%)  perr 3.42e-15  err64 4.32e-15  cw 3.42e-15
+## n=13824 f input uniform prescale 0  21:49
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+classical  n=13824  f32  min   1.5508 s  med   1.5508 s   3407.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.551 P 0.000  plan G  pred 1.643 s (+5.9%)  perr 5.57e-06  err64 6.40e-06  cw 4.14e-07
+auto       n=13824  f32  min   0.9026 s  med   0.9026 s   5853.6 GFLOP/s(2mkn)  speedup 1.718  relerr 6.43e-06  split L 0.015 R 0.015 gemm 0.846 P 0.026  plan R363+3/R336/G6  pred 0.905 s (+0.3%)  perr 2.98e-06  err64 3.53e-06  cw 2.30e-07
+## n=13824 f input uniform prescale 1  21:49
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f32  min   1.8056 s  med   1.8056 s   2926.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.806 P 0.000  plan G  pred 1.643 s (-9.0%)  perr 5.57e-06  err64 6.40e-06  cw 4.14e-07
+auto       n=13824  f32  min   0.8993 s  med   0.8993 s   5875.3 GFLOP/s(2mkn)  speedup 2.008  relerr 6.43e-06  split L 0.016 R 0.015 gemm 0.842 P 0.026  plan R363+3/R336/G6  pred 0.905 s (+0.6%)  perr 2.98e-06  err64 4.94e-06  cw 3.18e-07
+## n=13824 f input outer:6 prescale 0  21:50
+# inputs outer:6
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+classical  n=13824  f32  min   1.5608 s  med   1.5608 s   3385.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.561 P 0.000  plan G  pred 1.643 s (+5.3%)  perr 5.57e-06  err64 4.00e-06  cw 3.90e-07
+auto       n=13824  f32  min   0.9039 s  med   0.9039 s   5845.6 GFLOP/s(2mkn)  speedup 1.727  relerr 4.05e-06  split L 0.016 R 0.016 gemm 0.842 P 0.030  plan R363+3/R336/G6  pred 0.905 s (+0.1%)  perr 2.98e-06  err64 4.17e-07  cw 6.84e+02
+## n=13824 f input outer:6 prescale 1  21:50
+# inputs outer:6
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f32  min   1.5521 s  med   1.5521 s   3404.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.552 P 0.000  plan G  pred 1.643 s (+5.8%)  perr 5.57e-06  err64 4.00e-06  cw 3.90e-07
+auto       n=13824  f32  min   0.9031 s  med   0.9031 s   5850.4 GFLOP/s(2mkn)  speedup 1.719  relerr 4.20e-06  split L 0.015 R 0.015 gemm 0.844 P 0.029  plan R363+3/R336/G6  pred 0.905 s (+0.2%)  perr 2.98e-06  err64 2.30e-06  cw 3.53e-07
+## n=13824 f input inner:6 prescale 0  21:51
+# inputs inner:6
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+classical  n=13824  f32  min   1.8215 s  med   1.8215 s   2900.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.821 P 0.000  plan G  pred 1.643 s (-9.8%)  perr 5.57e-06  err64 6.26e-06  cw 4.05e-07
+auto       n=13824  f32  min   0.9117 s  med   0.9117 s   5795.5 GFLOP/s(2mkn)  speedup 1.998  relerr 1.08e-01  split L 0.016 R 0.015 gemm 0.854 P 0.027  plan R363+3/R336/G6  pred 0.905 s (-0.7%)  perr 2.98e-06  err64 1.08e-01  cw 6.98e-03
+## n=13824 f input inner:6 prescale 1  21:51
+# inputs inner:6
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f32  min   1.5524 s  med   1.5524 s   3403.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.552 P 0.000  plan G  pred 1.643 s (+5.8%)  perr 5.57e-06  err64 6.26e-06  cw 4.05e-07
+auto       n=13824  f32  min   0.9168 s  med   0.9168 s   5763.3 GFLOP/s(2mkn)  speedup 1.693  relerr 6.36e-06  split L 0.015 R 0.015 gemm 0.858 P 0.028  plan R363+3/R336/G6  pred 0.905 s (-1.3%)  perr 2.98e-06  err64 4.45e-06  cw 2.86e-07
+## n=13824 f input cross:6 prescale 0  21:52
+# inputs cross:6
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+classical  n=13824  f32  min   1.8118 s  med   1.8118 s   2916.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.812 P 0.000  plan G  pred 1.643 s (-9.3%)  perr 5.57e-06  err64 4.08e-06  cw 4.29e-07
+auto       n=13824  f32  min   0.8871 s  med   0.8871 s   5955.8 GFLOP/s(2mkn)  speedup 2.042  relerr 4.49e-06  split L 0.016 R 0.015 gemm 0.829 P 0.027  plan R363+3/R336/G6  pred 0.905 s (+2.0%)  perr 2.98e-06  err64 2.25e-06  cw 1.06e-01
+## n=13824 f input cross:6 prescale 1  21:52
+# inputs cross:6
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f32  min   1.5484 s  med   1.5484 s   3412.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.548 P 0.000  plan G  pred 1.643 s (+6.1%)  perr 5.57e-06  err64 4.08e-06  cw 4.29e-07
+auto       n=13824  f32  min   0.9005 s  med   0.9005 s   5867.5 GFLOP/s(2mkn)  speedup 1.720  relerr 4.49e-06  split L 0.016 R 0.015 gemm 0.843 P 0.027  plan R363+3/R336/G6  pred 0.905 s (+0.5%)  perr 2.98e-06  err64 3.00e-06  cw 1.41e-01
+## n=13824 f input entry:6 prescale 0  21:53
+# inputs entry:6
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+classical  n=13824  f32  min   1.8041 s  med   1.8041 s   2928.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.804 P 0.000  plan G  pred 1.643 s (-8.9%)  perr 5.57e-06  err64 4.69e-06  cw 2.24e-06
+auto       n=13824  f32  min   0.8965 s  med   0.8965 s   5893.8 GFLOP/s(2mkn)  speedup 2.012  relerr 4.82e-06  split L 0.015 R 0.015 gemm 0.838 P 0.028  plan R363+3/R336/G6  pred 0.905 s (+1.0%)  perr 2.98e-06  err64 3.17e-06  cw 1.64e-06
+## n=13824 f input entry:6 prescale 1  21:53
+# inputs entry:6
+# auto n=13824  f32: plan R363+3/R336/G6, predicted 0.905 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f32  min   1.6929 s  med   1.6929 s   3121.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.693 P 0.000  plan G  pred 1.643 s (-3.0%)  perr 5.57e-06  err64 4.69e-06  cw 2.24e-06
+auto       n=13824  f32  min   0.9008 s  med   0.9008 s   5865.3 GFLOP/s(2mkn)  speedup 1.879  relerr 4.82e-06  split L 0.016 R 0.015 gemm 0.842 P 0.028  plan R363+3/R336/G6  pred 0.905 s (+0.5%)  perr 2.98e-06  err64 3.17e-06  cw 1.64e-06
+## n=13824 d input uniform prescale 0  21:54
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 116.9 s
+classical  n=13824  f64  min   7.1627 s  med   7.1627 s    737.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 7.163 P 0.000  plan G  pred 6.759 s (-5.6%)  perr 9.40e-15  err64 1.23e-14  cw 7.86e-16
+auto       n=13824  f64  min   3.2442 s  med   3.2442 s   1628.6 GFLOP/s(2mkn)  speedup 2.208  relerr 1.33e-14  split L 0.030 R 0.030 gemm 3.140 P 0.045  plan R363+4/R336/G3  pred 3.233 s (-0.3%)  perr 4.84e-15  err64 6.18e-15  cw 4.00e-16
+## n=13824 d input uniform prescale 1  21:56
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 109.9 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f64  min   6.5978 s  med   6.5978 s    800.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 6.598 P 0.000  plan G  pred 6.759 s (+2.4%)  perr 9.40e-15  err64 1.23e-14  cw 7.86e-16
+auto       n=13824  f64  min   3.2607 s  med   3.2607 s   1620.4 GFLOP/s(2mkn)  speedup 2.023  relerr 1.33e-14  split L 0.032 R 0.030 gemm 3.153 P 0.045  plan R363+4/R336/G3  pred 3.233 s (-0.8%)  perr 4.84e-15  err64 6.18e-15  cw 4.00e-16
+## n=13824 d input outer:6 prescale 0  21:59
+# inputs outer:6
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 108.7 s
+classical  n=13824  f64  min   7.1751 s  med   7.1751 s    736.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 7.175 P 0.000  plan G  pred 6.759 s (-5.8%)  perr 9.40e-15  err64 8.68e-15  cw 7.84e-16
+auto       n=13824  f64  min   3.2467 s  med   3.2467 s   1627.4 GFLOP/s(2mkn)  speedup 2.210  relerr 8.87e-15  split L 0.030 R 0.029 gemm 3.144 P 0.044  plan R363+4/R336/G3  pred 3.233 s (-0.4%)  perr 4.84e-15  err64 7.56e-16  cw 1.23e-06
+## n=13824 d input outer:6 prescale 1  22:01
+# inputs outer:6
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 104.8 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f64  min   7.1884 s  med   7.1884 s    735.0 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 7.188 P 0.000  plan G  pred 6.759 s (-6.0%)  perr 9.40e-15  err64 8.68e-15  cw 7.84e-16
+auto       n=13824  f64  min   3.2537 s  med   3.2537 s   1623.9 GFLOP/s(2mkn)  speedup 2.209  relerr 8.21e-15  split L 0.030 R 0.029 gemm 3.149 P 0.045  plan R363+4/R336/G3  pred 3.233 s (-0.6%)  perr 4.84e-15  err64 4.31e-15  cw 7.49e-16
+## n=13824 d input inner:6 prescale 0  22:04
+# inputs inner:6
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 107.1 s
+classical  n=13824  f64  min   6.8833 s  med   6.8833 s    767.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 6.883 P 0.000  plan G  pred 6.759 s (-1.8%)  perr 9.40e-15  err64 1.22e-14  cw 7.78e-16
+auto       n=13824  f64  min   3.2673 s  med   3.2673 s   1617.1 GFLOP/s(2mkn)  speedup 2.107  relerr 1.99e-10  split L 0.030 R 0.029 gemm 3.161 P 0.047  plan R363+4/R336/G3  pred 3.233 s (-1.0%)  perr 4.84e-15  err64 1.99e-10  cw 1.27e-11
+## n=13824 d input inner:6 prescale 1  22:06
+# inputs inner:6
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 106.1 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f64  min   7.1609 s  med   7.1609 s    737.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 7.161 P 0.000  plan G  pred 6.759 s (-5.6%)  perr 9.40e-15  err64 1.22e-14  cw 7.78e-16
+auto       n=13824  f64  min   3.2626 s  med   3.2626 s   1619.4 GFLOP/s(2mkn)  speedup 2.195  relerr 1.38e-14  split L 0.030 R 0.029 gemm 3.158 P 0.045  plan R363+4/R336/G3  pred 3.233 s (-0.9%)  perr 4.84e-15  err64 8.19e-15  cw 5.25e-16
+## n=13824 d input cross:6 prescale 0  22:09
+# inputs cross:6
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 106.0 s
+classical  n=13824  f64  min   6.5824 s  med   6.5824 s    802.7 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 6.582 P 0.000  plan G  pred 6.759 s (+2.7%)  perr 9.40e-15  err64 1.36e-14  cw 1.27e-15
+auto       n=13824  f64  min   3.2602 s  med   3.2602 s   1620.6 GFLOP/s(2mkn)  speedup 2.019  relerr 1.39e-14  split L 0.031 R 0.029 gemm 3.155 P 0.045  plan R363+4/R336/G3  pred 3.233 s (-0.8%)  perr 4.84e-15  err64 4.20e-15  cw 1.97e-10
+## n=13824 d input cross:6 prescale 1  22:11
+# inputs cross:6
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 104.9 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f64  min   7.0318 s  med   7.0318 s    751.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 7.032 P 0.000  plan G  pred 6.759 s (-3.9%)  perr 9.40e-15  err64 1.36e-14  cw 1.27e-15
+auto       n=13824  f64  min   3.2536 s  med   3.2536 s   1623.9 GFLOP/s(2mkn)  speedup 2.161  relerr 1.39e-14  split L 0.030 R 0.029 gemm 3.147 P 0.047  plan R363+4/R336/G3  pred 3.233 s (-0.6%)  perr 4.84e-15  err64 4.20e-15  cw 1.97e-10
+## n=13824 d input entry:6 prescale 0  22:14
+# inputs entry:6
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 106.0 s
+classical  n=13824  f64  min   6.1784 s  med   6.1784 s    855.2 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 6.178 P 0.000  plan G  pred 6.759 s (+9.4%)  perr 9.40e-15  err64 1.16e-14  cw 5.97e-15
+auto       n=13824  f64  min   3.2459 s  med   3.2459 s   1627.8 GFLOP/s(2mkn)  speedup 1.903  relerr 1.23e-14  split L 0.030 R 0.029 gemm 3.143 P 0.044  plan R363+4/R336/G3  pred 3.233 s (-0.4%)  perr 4.84e-15  err64 6.02e-15  cw 3.09e-15
+## n=13824 d input entry:6 prescale 1  22:16
+# inputs entry:6
+# auto n=13824  f64: plan R363+4/R336/G3, predicted 3.233 s
+# compensated f64 reference in 104.6 s
+# prescaled: outside (rows of A, columns of B) and inside, by powers of two
+classical  n=13824  f64  min   7.3711 s  med   7.3711 s    716.8 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 7.371 P 0.000  plan G  pred 6.759 s (-8.3%)  perr 9.40e-15  err64 1.16e-14  cw 5.97e-15
+auto       n=13824  f64  min   3.2636 s  med   3.2636 s   1619.0 GFLOP/s(2mkn)  speedup 2.259  relerr 1.23e-14  split L 0.030 R 0.029 gemm 3.156 P 0.048  plan R363+4/R336/G3  pred 3.233 s (-0.9%)  perr 4.84e-15  err64 6.02e-15  cw 3.09e-15
+# done 22:19

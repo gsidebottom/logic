@@ -1,0 +1,48 @@
+# fused 2x2 levels against one-at-a-time Strassen-Winograd at equal depth; 2026-11-23 21:01; Apple M4 Pro; logic 51c0856 + working tree
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#     3.0   597 03-21:48:53 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+#     2.4 45098 02-07:27:54 /Applications/RustRover.app/Contents/MacOS/rustrover
+#     2.3 43455    01:44:45 /usr/libexec/PerfPowerServices
+#     1.9   667 03-21:48:45 /usr/libexec/syspolicyd
+#     1.1 43849 02-09:37:42 /Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer)
+## n=8192 f rounds=5  21:01
+classical  n=8192   f32  min   0.3282 s  med   0.3294 s   3338.1 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 0.329 P 0.000  plan G  pred 0.326 s (-1.0%)  perr 4.29e-06
+sw1        n=8192   f32  min   0.3093 s  med   0.3239 s   3394.3 GFLOP/s(2mkn)  speedup 1.017  relerr 5.05e-06  split L 0.005 R 0.005 gemm 0.310 P 0.004  plan SW/G  pred 0.325 s (+0.4%)  perr 4.04e-06
+gemms:1    n=8192   f32  min   0.3163 s  med   0.3200 s   3436.3 GFLOP/s(2mkn)  speedup 1.029  relerr 7.89e-06  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw2rec     n=8192   f32  min   0.2931 s  med   0.3007 s   3656.0 GFLOP/s(2mkn)  speedup 1.095  relerr 5.28e-06  split L 0.015 R 0.015 gemm 0.263 P 0.013  plan SW/SW/G  pred 0.295 s (-1.9%)  perr 8.34e-06
+gemms:2    n=8192   f32  min   0.3223 s  med   0.3294 s   3337.8 GFLOP/s(2mkn)  speedup 1.000  relerr 1.34e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw3rec     n=8192   f32  min   0.3527 s  med   0.3603 s   3051.5 GFLOP/s(2mkn)  speedup 0.914  relerr 5.72e-06  split L 0.032 R 0.034 gemm 0.269 P 0.025  plan SW/SW/SW/G  pred 0.358 s (-0.6%)  perr 1.72e-05
+gemms:3    n=8192   f32  min   0.4658 s  med   0.4672 s   2353.5 GFLOP/s(2mkn)  speedup 0.705  relerr 2.50e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+## n=8192 d rounds=5  21:01
+classical  n=8192   f64  min   1.2926 s  med   1.2930 s    850.4 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.300 P 0.000  plan G  pred 1.282 s (-0.8%)  perr 7.23e-15
+sw1        n=8192   f64  min   1.1706 s  med   1.1835 s    929.0 GFLOP/s(2mkn)  speedup 1.093  relerr 8.89e-15  split L 0.010 R 0.011 gemm 1.168 P 0.008  plan SW/G  pred 1.209 s (+2.1%)  perr 6.95e-15
+gemms:1    n=8192   f64  min   1.1827 s  med   1.2035 s    913.6 GFLOP/s(2mkn)  speedup 1.074  relerr 1.50e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw2rec     n=8192   f64  min   1.1025 s  med   1.1069 s    993.3 GFLOP/s(2mkn)  speedup 1.168  relerr 8.81e-15  split L 0.029 R 0.029 gemm 1.028 P 0.024  plan SW/SW/G  pred 1.097 s (-0.9%)  perr 1.02e-14
+gemms:2    n=8192   f64  min   1.1248 s  med   1.1299 s    973.1 GFLOP/s(2mkn)  speedup 1.144  relerr 2.33e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw3rec     n=8192   f64  min   1.0788 s  med   1.0825 s   1015.7 GFLOP/s(2mkn)  speedup 1.194  relerr 1.00e-14  split L 0.062 R 0.063 gemm 0.909 P 0.048  plan SW/SW/SW/G  pred 1.069 s (-1.2%)  perr 1.51e-14
+gemms:3    n=8192   f64  min   1.2147 s  med   1.2160 s    904.2 GFLOP/s(2mkn)  speedup 1.063  relerr 4.43e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+## n=13824 f rounds=3  21:02
+classical  n=13824  f32  min   1.5520 s  med   1.7164 s   3078.3 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.697 P 0.000  plan G  pred 1.643 s (-4.3%)  perr 5.57e-06
+sw1        n=13824  f32  min   1.4469 s  med   1.4777 s   3575.5 GFLOP/s(2mkn)  speedup 1.162  relerr 7.25e-06  split L 0.015 R 0.015 gemm 1.464 P 0.012  plan SW/G  pred 1.463 s (-1.0%)  perr 5.25e-06
+gemms:1    n=13824  f32  min   1.4460 s  med   1.4464 s   3652.9 GFLOP/s(2mkn)  speedup 1.187  relerr 1.14e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw2rec     n=13824  f32  min   1.3528 s  med   1.3559 s   3896.7 GFLOP/s(2mkn)  speedup 1.266  relerr 6.84e-06  split L 0.041 R 0.041 gemm 1.244 P 0.033  plan SW/SW/G  pred 1.398 s (+3.1%)  perr 1.08e-05
+gemms:2    n=13824  f32  min   1.3676 s  med   1.3690 s   3859.5 GFLOP/s(2mkn)  speedup 1.254  relerr 1.95e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw3rec     n=13824  f32  min   1.2441 s  med   1.2586 s   4198.1 GFLOP/s(2mkn)  speedup 1.364  relerr 6.91e-06  split L 0.087 R 0.089 gemm 1.009 P 0.069  plan SW/SW/SW/G  pred 1.230 s (-2.2%)  perr 2.23e-05
+gemms:3    n=13824  f32  min   1.3872 s  med   1.4025 s   3767.3 GFLOP/s(2mkn)  speedup 1.224  relerr 3.42e-05  split L 0.000 R 0.000 gemm 0.000 P 0.000
+## n=13824 d rounds=3  21:03
+classical  n=13824  f64  min   6.1841 s  med   6.1968 s    852.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 6.327 P 0.000  plan G  pred 6.759 s (+9.1%)  perr 9.40e-15
+sw1        n=13824  f64  min   5.5825 s  med   5.6627 s    933.1 GFLOP/s(2mkn)  speedup 1.094  relerr 1.45e-14  split L 0.030 R 0.030 gemm 5.714 P 0.025  plan SW/G  pred 5.723 s (+1.1%)  perr 9.02e-15
+gemms:1    n=13824  f64  min   5.5756 s  med   5.6458 s    935.9 GFLOP/s(2mkn)  speedup 1.098  relerr 1.95e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw2rec     n=13824  f64  min   4.9707 s  med   5.0217 s   1052.1 GFLOP/s(2mkn)  speedup 1.234  relerr 1.34e-14  split L 0.082 R 0.082 gemm 4.777 P 0.066  plan SW/SW/G  pred 5.049 s (+0.5%)  perr 1.33e-14
+gemms:2    n=13824  f64  min   5.0378 s  med   5.0516 s   1045.9 GFLOP/s(2mkn)  speedup 1.227  relerr 3.60e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+sw3rec     n=13824  f64  min   4.6128 s  med   4.6234 s   1142.8 GFLOP/s(2mkn)  speedup 1.340  relerr 1.53e-14  split L 0.174 R 0.175 gemm 4.130 P 0.141  plan SW/SW/SW/G  pred 4.638 s (+0.3%)  perr 1.96e-14
+gemms:3    n=13824  f64  min   4.7807 s  med   4.7823 s   1104.8 GFLOP/s(2mkn)  speedup 1.296  relerr 6.02e-14  split L 0.000 R 0.000 gemm 0.000 P 0.000
+# top CPU users after the run:
+#    %CPU   PID     ELAPSED COMM
+#     2.8 45098 02-07:32:44 /Applications/RustRover.app/Contents/MacOS/rustrover
+#     0.8  1226 03-21:52:45 /System/Applications/Utilities/Activity Monitor.app/Contents/MacOS/Activity Monitor
+#     0.4   703 03-21:53:34 /System/Library/DriverExtensions/com.apple.DriverKit-AppleBCMWLAN.dext/com.apple.DriverKit-AppleBCMWLAN
+#     0.3   733 03-21:53:32 /usr/libexec/wifip2pd
+#     0.2   597 03-21:53:43 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+# done 21:06

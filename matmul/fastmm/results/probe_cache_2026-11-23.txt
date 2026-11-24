@@ -1,0 +1,18 @@
+# probe_cache: a plain pass by where its arrays live; 2026-11-23 20:38; Apple M4 Pro; two rounds
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#   171.7  1052 03-21:25:42 /System/Library/PrivateFrameworks/MediaAnalysis.framework/Versions/A/mediaanalysis
+#    17.3   597 03-21:26:12 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+#    15.1 43836 02-09:15:01 /Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Clau
+# plain pass d = a + b (f64, NEON), three arrays per thread, 0.5 s per point; GB/s over all threads
+3 x     16 KB per thread (level 1    ):   1 threads   208.9 ( 208.9 per thread)   2 threads   467.6 ( 233.8 per thread)   5 threads  1106.5 ( 221.3 per thread)  10 threads  1787.6 ( 178.8 per thread)
+3 x     32 KB per thread (level 1    ):   1 threads   187.3 ( 187.3 per thread)   2 threads   422.6 ( 211.3 per thread)   5 threads   923.1 ( 184.6 per thread)  10 threads  1414.1 ( 141.4 per thread)
+3 x    256 KB per thread (level 2    ):   1 threads   174.1 ( 174.1 per thread)   2 threads   247.2 ( 123.6 per thread)   5 threads   794.1 ( 158.8 per thread)  10 threads  1201.9 ( 120.2 per thread)
+3 x    512 KB per thread (level 2    ):   1 threads   124.7 ( 124.7 per thread)   2 threads   248.5 ( 124.3 per thread)   5 threads   784.7 ( 156.9 per thread)  10 threads  1083.9 ( 108.4 per thread)
+3 x 196608 KB per thread (main memory):   1 threads   120.8 ( 120.8 per thread)   2 threads   212.1 ( 106.0 per thread)   5 threads   226.7 (  45.3 per thread)  10 threads   229.0 (  22.9 per thread)
+# plain pass d = a + b (f64, NEON), three arrays per thread, 0.5 s per point; GB/s over all threads
+3 x     16 KB per thread (level 1    ):   1 threads   206.3 ( 206.3 per thread)   2 threads   472.0 ( 236.0 per thread)   5 threads  1053.8 ( 210.8 per thread)  10 threads  1947.2 ( 194.7 per thread)
+3 x     32 KB per thread (level 1    ):   1 threads   176.8 ( 176.8 per thread)   2 threads   441.6 ( 220.8 per thread)   5 threads   883.2 ( 176.6 per thread)  10 threads  1621.9 ( 162.2 per thread)
+3 x    256 KB per thread (level 2    ):   1 threads   122.0 ( 122.0 per thread)   2 threads   239.6 ( 119.8 per thread)   5 threads   786.8 ( 157.4 per thread)  10 threads  1042.4 ( 104.2 per thread)
+3 x    512 KB per thread (level 2    ):   1 threads   174.1 ( 174.1 per thread)   2 threads   241.9 ( 120.9 per thread)   5 threads   781.3 ( 156.3 per thread)  10 threads  1018.1 ( 101.8 per thread)
+3 x 196608 KB per thread (main memory):   1 threads   119.2 ( 119.2 per thread)   2 threads   210.4 ( 105.2 per thread)   5 threads   225.2 (  45.0 per thread)  10 threads   226.9 (  22.7 per thread)

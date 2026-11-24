@@ -1,0 +1,37 @@
+# T42 f64 rows against the exact product; 2026-11-23 21:27; Apple M4 Pro; logic 51c0856
+# top CPU users before the run:
+#    %CPU   PID     ELAPSED COMM
+#   318.7 46830       00:34 target/release/crosscheck
+#    21.4 43849 02-10:03:47 /Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer)
+#    13.9 44582 02-08:08:01 /Users/greg/Library/Application Support/Claude/claude-code/2.1.330/4262a1273231/claude.app/Contents/MacOS/claude
+#     7.7 46889       00:00 /bin/zsh
+#     6.6 46890       00:00 /bin/zsh
+## n=13824 f64  21:27
+classical  n=13824  f64  min   7.7909 s  med   8.4866 s    622.6 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 8.744 P 0.000  plan G  pred 6.759 s (-20.4%)  perr 9.40e-15  err64 1.23e-14  cw 7.86e-16
+plan=D48/G n=13824  f64  min   6.5285 s  med   6.7239 s    785.8 GFLOP/s(2mkn)  speedup 1.262  relerr 1.40e-14  split L 0.043 R 0.044 gemm 6.895 P 0.039  plan D48/G  pred 4.927 s (-26.7%)  perr 6.77e-15  err64 7.80e-15  cw 5.03e-16
+plan=R336/G n=13824  f64  min   7.9015 s  med   8.2110 s    643.5 GFLOP/s(2mkn)  speedup 1.034  relerr 1.18e-14  split L 0.051 R 0.031 gemm 7.995 P 0.032  plan R336/G  pred 4.755 s (-42.1%)  perr 6.67e-15  err64 7.21e-15  cw 4.63e-16
+plan=T336/G n=13824  f64  min   6.7993 s  med   6.8787 s    768.1 GFLOP/s(2mkn)  speedup 1.234  relerr 2.62e-14  split L 0.056 R 0.034 gemm 6.903 P 0.030  plan T336/G  err64 2.49e-14  cw 1.59e-15
+plan=R363/G n=13824  f64  min   7.0829 s  med   8.1581 s    647.7 GFLOP/s(2mkn)  speedup 1.040  relerr 1.30e-14  split L 0.034 R 0.032 gemm 7.784 P 0.047  plan R363/G  pred 4.959 s (-39.2%)  perr 4.44e-15  err64 4.97e-15  cw 3.25e-16
+plan=T363/G n=13824  f64  min   6.9982 s  med   7.0055 s    754.2 GFLOP/s(2mkn)  speedup 1.211  relerr 1.34e-14  split L 0.031 R 0.033 gemm 7.521 P 0.054  plan T363/G  err64 1.25e-14  cw 8.05e-16
+plan=R633/G n=13824  f64  min   7.7481 s  med   8.3468 s    633.0 GFLOP/s(2mkn)  speedup 1.017  relerr 1.35e-14  split L 0.031 R 0.057 gemm 8.058 P 0.034  plan R633/G  pred 4.950 s (-40.7%)  perr 5.98e-15  err64 7.04e-15  cw 4.58e-16
+plan=T633/G n=13824  f64  min   6.8543 s  med   6.9347 s    761.9 GFLOP/s(2mkn)  speedup 1.224  relerr 1.94e-14  split L 0.033 R 0.055 gemm 7.137 P 0.031  plan T633/G  err64 1.83e-14  cw 1.20e-15
+plan=R336/R363/R633/G n=13824  f64  min   8.8384 s  med   9.6269 s    548.8 GFLOP/s(2mkn)  speedup 0.882  relerr 1.24e-14  split L 0.759 R 0.528 gemm 7.672 P 0.611  plan R336/R363/R633/G  pred 7.361 s (-23.5%)  perr 4.72e-15  err64 8.28e-15  cw 5.36e-16
+plan=T336/T363/T633/G n=13824  f64  min  11.0268 s  med  11.6241 s    454.5 GFLOP/s(2mkn)  speedup 0.730  relerr 8.08e-14  split L 1.195 R 0.912 gemm 9.038 P 1.070  plan T336/T363/T633/G  err64 7.99e-14  cw 5.20e-15
+plan=SW/R363+3/R633/G6 n=13824  f64  min   3.6274 s  med   4.7211 s   1119.2 GFLOP/s(2mkn)  speedup 1.798  relerr 1.38e-14  split L 0.105 R 0.102 gemm 4.209 P 0.140  plan SW/R363+3/R633/G6  pred 3.324 s (-29.6%)  perr 6.38e-15  err64 8.03e-15  cw 5.18e-16
+plan=SW/T363+3/T633/G6 n=13824  f64  min   5.0669 s  med   5.2390 s   1008.5 GFLOP/s(2mkn)  speedup 1.620  relerr 3.50e-14  split L 0.102 R 0.110 gemm 4.969 P 0.129  plan SW/T363+3/T633/G6  err64 3.55e-14  cw 2.29e-15
+plan=R363+3/R633/G6 n=13824  f64  min   6.9498 s  med   7.1038 s    743.8 GFLOP/s(2mkn)  speedup 1.195  relerr 1.26e-14  split L 0.033 R 0.032 gemm 7.023 P 0.047  plan R363+3/R633/G6  pred 6.039 s (-15.0%)  perr 4.33e-15  err64 6.37e-15  cw 4.14e-16
+plan=T363+3/T633/G6 n=13824  f64  min   7.3466 s  med   7.5165 s    702.9 GFLOP/s(2mkn)  speedup 1.129  relerr 2.63e-14  split L 0.031 R 0.032 gemm 7.522 P 0.056  plan T363+3/T633/G6  err64 2.51e-14  cw 1.63e-15
+## n=6912 f64  21:36
+classical  n=6912   f64  min   0.9919 s  med   1.0541 s    626.5 GFLOP/s(2mkn)  speedup 1.000  relerr 0.00e+00  split L 0.000 R 0.000 gemm 1.136 P 0.000  plan G  pred 0.773 s (-26.7%)  perr 6.65e-15  err64 6.69e-15  cw 6.60e-16
+plan=D48/G n=6912   f64  min   0.7981 s  med   1.1167 s    591.4 GFLOP/s(2mkn)  speedup 0.944  relerr 7.79e-15  split L 0.011 R 0.013 gemm 1.145 P 0.013  plan D48/G  pred 0.610 s (-45.4%)  perr 4.78e-15  err64 4.89e-15  cw 4.81e-16
+plan=R336/G n=6912   f64  min   0.6722 s  med   1.0395 s    635.3 GFLOP/s(2mkn)  speedup 1.014  relerr 6.78e-15  split L 0.015 R 0.011 gemm 0.994 P 0.010  plan R336/G  pred 0.598 s (-42.5%)  perr 4.72e-15  err64 4.53e-15  cw 4.38e-16
+plan=T336/G n=6912   f64  min   0.8425 s  med   1.0062 s    656.4 GFLOP/s(2mkn)  speedup 1.048  relerr 1.47e-14  split L 0.018 R 0.011 gemm 1.031 P 0.010  plan T336/G  err64 1.44e-14  cw 1.40e-15
+plan=R363/G n=6912   f64  min   0.8609 s  med   1.1447 s    577.0 GFLOP/s(2mkn)  speedup 0.921  relerr 6.78e-15  split L 0.011 R 0.011 gemm 1.094 P 0.018  plan R363/G  pred 0.642 s (-43.9%)  perr 3.14e-15  err64 2.86e-15  cw 2.77e-16
+plan=T363/G n=6912   f64  min   0.8958 s  med   1.2146 s    543.8 GFLOP/s(2mkn)  speedup 0.868  relerr 8.30e-15  split L 0.011 R 0.012 gemm 1.128 P 0.015  plan T363/G  err64 6.95e-15  cw 6.80e-16
+plan=R633/G n=6912   f64  min   0.8598 s  med   1.0253 s    644.1 GFLOP/s(2mkn)  speedup 1.028  relerr 7.54e-15  split L 0.013 R 0.017 gemm 1.024 P 0.012  plan R633/G  pred 0.632 s (-38.3%)  perr 4.23e-15  err64 4.29e-15  cw 4.18e-16
+plan=T633/G n=6912   f64  min   0.6653 s  med   1.1596 s    569.6 GFLOP/s(2mkn)  speedup 0.909  relerr 1.10e-14  split L 0.011 R 0.017 gemm 1.039 P 0.010  plan T633/G  err64 1.12e-14  cw 1.10e-15
+plan=R363+4/D48/G6 n=6912   f64  min   0.5128 s  med   0.5637 s   1171.6 GFLOP/s(2mkn)  speedup 1.870  relerr 7.03e-15  split L 0.011 R 0.012 gemm 0.593 P 0.015  plan R363+4/D48/G6  pred 0.456 s (-19.1%)  perr 3.47e-15  err64 4.32e-15  cw 4.27e-16
+plan=T363+4/D48/G6 n=6912   f64  min   0.5069 s  med   0.6523 s   1012.5 GFLOP/s(2mkn)  speedup 1.616  relerr 8.81e-15  split L 0.009 R 0.011 gemm 0.570 P 0.013  plan T363+4/D48/G6  err64 7.13e-15  cw 6.93e-16
+plan=R363+3/R633/G6 n=6912   f64  min   0.5393 s  med   0.6591 s   1002.1 GFLOP/s(2mkn)  speedup 1.599  relerr 6.74e-15  split L 0.008 R 0.008 gemm 0.618 P 0.013  plan R363+3/R633/G6  pred 0.463 s (-29.8%)  perr 3.06e-15  err64 3.75e-15  cw 3.69e-16
+plan=T363+3/T633/G6 n=6912   f64  min   0.5841 s  med   0.7028 s    939.8 GFLOP/s(2mkn)  speedup 1.500  relerr 1.63e-14  split L 0.008 R 0.008 gemm 0.670 P 0.015  plan T363+3/T633/G6  err64 1.60e-14  cw 1.53e-15
+# done 21:38

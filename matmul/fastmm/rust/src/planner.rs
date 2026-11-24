@@ -230,8 +230,8 @@ pub fn predicted_error(e: &ErrModel, plan: &Plan, s: Shape) -> f64 {
 /// the budget a call's max_growth = 0 means: no less accurate than the GEMM
 pub const DEFAULT_GROWTH: f64 = 1.0;
 
-/// plans predicted within 2% of the fastest are ties ...
-pub const PLAN_TIE: f64 = 0.02;
+/// plans predicted within 3% of the fastest are ties (2% until 2026-11-23, as in the C library) ...
+pub const PLAN_TIE: f64 = 0.03;
 /// ... which a plan predicted at least 25% more accurate wins (the error model is good to about
 /// 25%; smaller predicted gains picked the less accurate plan at 6912 in both precisions)
 pub const PLAN_TIE_GAIN: f64 = 0.25;

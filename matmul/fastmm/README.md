@@ -35,7 +35,7 @@ Levels (a plan names its levels from the top to the leaf, e.g. `D48+4/D48/G6`):
   PREFIX` builds the kernels from any other program of the class: `../dps48/cand48/p005_201n`
   (our 201-operation program), PLinOpt's `4x4x4_48_accurate` (284) or `4x4x4_48_rational` (the
   original, 315).
-- `R336`, `R363`, `R633`: their accurate <3x3x6:40> scheme in its three orientations,
+- `R336`, `R363`, `R633`: their accurate <3x3x6:40> scheme (Tichavský's Decomposition A, arXiv:2104.05323, in the class of Smirnov's) in its three orientations,
   rectangular levels whose products are rectangular sub-problems (the three in turn return to
   square blocks); `T336`, `T363`, `T633`: a ternary <3x3x6:42> scheme, a trial.
 - `SW`: a <2x2x2:7> level at DPS's most accurate point, in Q(sqrt 3) (`schemes/sw/q3_*`, written

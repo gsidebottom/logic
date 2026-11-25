@@ -89,9 +89,9 @@ two, so the assumption holds.
 | ⟨3×3×6:42⟩ ternary (Perminov's 3x3x6_m42_cr139), published ±1 point | 4.387 (5.066) | 24.50 (8.17) | 184.63 |
 | ⟨3×3×6:42⟩ ternary class, orbit minima | 2.447 (2.825) | 15.35 (5.12) | 131.41 |
 
-DPS's 3×3×6 point sits 5% above its class's amp floor and 5% above its γ∞,2 floor; their
+DPS's 3×3×6 point (Tichavský's Decomposition A, arXiv:2104.05323, up to scaling: the same 40 rank-one terms) sits 5% above its class's amp floor and 5% above its γ∞,2 floor; their
 3×6×3 point 14% and 41% above (that orientation's γ∞,2 floor, ratio 3.90, is far below
-the 4×4's 5.66).  The ±1 Smirnov point of the same class (`3x3x6_40`, amp ratio 10.8)
+the 4×4's 5.66).  Smirnov's original point of the same class (`3x3x6_40`, coefficients ±1 and ±1/8, amp ratio 10.8)
 reaches the same floors, so the class carries them, not the point.  In amplification per
 4×4-equivalent saving the floor is 2.17 against accurate_262's 2.83; DPS's exact points
 give 2.28 and 2.45.  A better exact point for the 3×6×3 orientation (amp 2.746 at the

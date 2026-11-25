@@ -144,7 +144,8 @@ different operator from the menu: Strassen's $\mm{2\times2\times2:7}$
 scheme at the accurate point of DPS in $\mathbb{Q}(\sqrt3)$ \cite{DPS24} (Section~\ref{sec:sw}); the
 accurate $\mm{4\times4\times4:48}$ scheme of DPS in its $262$-operation form
 \cite{DPS26a,PLinOpt}; or their accurate $\mm{3\times3\times6:40}$ scheme
-\cite{DPS26b}, a point in the class of Smirnov's \cite{Smirnov13}, in any of
+\cite{DPS26b}, which is Tichavsk\'y's Decomposition~A \cite{Tichavsky21}, a
+point in the class of Smirnov's \cite{Smirnov13}, in any of
 its three orientations, which differ in which of the problem's dimensions
 $m$, $k$, $n$ the level cuts into six parts and which into three.  The menu is these schemes because they measured
 useful: a screen of the published schemes (Section~\ref{sec:menu}) leaves
@@ -714,10 +715,11 @@ code & meaning & source\\
   & \cite{DPS25,DPS26a}; program \cite{PLinOpt,S26b}\\
 \lv{R336}, \lv{R363}, \lv{R633} & a level of the accurate
   $\mm{3\times3\times6:40}$ scheme of Dumas, Pernet and Sedoglavic, a point
-  in the class of Smirnov's scheme, in one of its three orientations, named by
+  in the class of Smirnov's scheme (Tichavsk\'y's Decomposition~A), in one
+  of its three orientations, named by
   the grids $g_1\times g_2\times g_3$ it cuts $A$ ($g_1\times g_2$) and $B$
   ($g_2\times g_3$) into; $40$ products instead of $54$ (\lv{R} for
-  rectangular) & \cite{Smirnov13}; point \cite{DPS26b,PLinOpt}\\
+  rectangular) & \cite{Smirnov13}; point \cite{Tichavsky21,DPS26b,PLinOpt}\\
 \lv{T336}, \lv{T363}, \lv{T633} & the same three orientations of a ternary
   $\mm{3\times3\times6:42}$ scheme, coefficients $-1$, $0$, $1$, $42$ products
   instead of $54$ (\lv{T} for ternary; Section~\ref{sec:ternary})
@@ -1134,7 +1136,7 @@ $\mm{2\times2\times2:7}$ DPS accurate (in $\mathbb{Q}(\sqrt3)$): \lv{SW} & 0.875
 $\mm{2\times2\times2:7}$ DPS dyadic, Eq.~(38) of \cite{DPS24} & 0.875 & 11/11/11 & 8.25 & 4.87 & 10.84\\
 $\mm{2\times2\times2:7}$ Strassen / Winograd & 0.875 & 11/11/11 & 8.25 & 6.89 / 10.66 & 14.1 / 19.8\\
 $\mm{3\times3\times3:23}$ best of four & 0.852 & 32/32/32 & 10.67 & 12.7 & 34.1\\
-$\mm{3\times3\times6:40}$ Smirnov ($\pm1$ point, same class) & 0.741 & 49/58/58 & 11.89 & 9.754 & 26.1\\
+$\mm{3\times3\times6:40}$ Smirnov's original (same class) & 0.741 & 49/58/58 & 11.89 & 9.754 & 26.1\\
 \bottomrule
 \end{tabular}
 \caption{The menu screen (\texttt{matmul/levels/levels.py}): the schemes that
@@ -1171,7 +1173,7 @@ $4\times4$-equivalent saving.}
 \node[anchor=west,font=\footnotesize,xshift=5pt] at (axis cs:11,4.87) {dyadic point};
 \node[anchor=west,font=\footnotesize,xshift=5pt] at (axis cs:11,3.855) {$\mathbb{Q}(\sqrt3)$ point};
 \node[anchor=west,font=\footnotesize,xshift=5pt] at (axis cs:32,12.7) {$\mm{3\times3\times3:23}$};
-\node[anchor=west,font=\footnotesize,xshift=5pt,fill=white,inner sep=1pt] at (axis cs:58,9.754) {Smirnov's $\pm1$ point};
+\node[anchor=west,font=\footnotesize,xshift=5pt,fill=white,inner sep=1pt] at (axis cs:58,9.754) {Smirnov's original point};
 \node[anchor=south east,font=\footnotesize,yshift=2pt] at (axis cs:62,4.962) {$\mm{2\times4\times5:32}$};
 \node[anchor=west,font=\footnotesize,xshift=5pt] at (axis cs:78,4.637) {$\mm{3\times4\times6:54}$};
 \node[anchor=west,font=\footnotesize,xshift=5pt] at (axis cs:91,5.734) {$\mm{3\times4\times7:63}$};
@@ -1279,6 +1281,23 @@ Table~1 point, while the $262$-operation point, with $\amp=2\sqrt2$ the
 orbit's minimum and the smallest $\ginf$ among dyadic points, measures
 $0.75$--$0.77$ of it \cite{S26b}.
 
+DPS's accurate $\mm{3\times3\times6:40}$ point is Decomposition~A of
+Tichavsk\'y \cite{Tichavsky21}: the same $40$ rank-one terms, in each of the
+three orientations of PLinOpt's files, with only the scaling of the three
+factors different (his coefficients are all $\pm\tfrac12$; checked in exact
+arithmetic against the matrices of his appendix).  He obtained it from
+Smirnov's decomposition, whose coefficients are $\pm1$ and $\pm\tfrac18$, by
+minimising the $\ell_1$ norm of the factors over the orbit; DPS reach the
+same point from Smirnov's by minimising the growth factor, which gives the
+diagonal transformation $\operatorname{diag}(\tfrac14,2,2,2,\tfrac14,2)$ of
+the six-sided grid \cite[Eq.~(97)]{DPS26b}.  His signature, an
+invariant of the class, takes the values $\tfrac32$ and $\tfrac54$ on it, so
+the class has no point with coefficients in $\{-1,0,1\}$.  His sparser
+Decomposition~B ($648$ nonzero coefficients against $960$) has amplification
+ratio $3.2$ in the $3\times3\times6$ orientation and $2.8$ in the
+$3\times6\times3$ one, against $2.36$ and $2.55$; we did not measure it as a
+level.
+
 Over its whole orbit under $GL_3\times GL_3\times GL_6$ the
 $\mm{3\times3\times6:40}$ class has, as far as we could find, no point with
 amplification ratio below $2.242$, in any orientation.  That floor is the smallest value found by L-BFGS, the
@@ -1290,8 +1309,8 @@ floor is a numerical minimum, not a proved bound.  DPS's
 $3\times3\times6$ point is 5\% above that floor and 5\% above its $\ginf$
 floor, their $3\times6\times3$ point 14\% above (and 41\% above that
 orientation's $\ginf$ floor of $3.90$, far below the $4\times4$ class's
-$5.66$).  The $\pm1$ Smirnov point of the same class (amplification ratio
-$10.8$) reaches the same floors, so the class carries them, not the point.
+$5.66$).  Smirnov's original point of the same class (coefficients $\pm1$
+and $\pm\tfrac18$, amplification ratio $10.8$) reaches the same floors, so the class carries them, not the point.
 Per $4\times4$-equivalent saving the floor is $2.17$ against the $4\times4$
 class's $2.83$, which is its orbit's minimum and, as far as continuous search
 from many starts can tell, a local minimum of the whole variety of rank-48
@@ -3389,6 +3408,8 @@ release, October 30, 2024,
 \bibitem{Smirnov13} A.~V.~Smirnov, \emph{The bilinear complexity and
 practical algorithms for matrix multiplication}, Comput.\ Math.\ Math.\
 Phys.\ 53 (2013) 1781--1795.
+\bibitem{Tichavsky21} P.~Tichavsk\'y, \emph{Characterization of
+decomposition of matrix multiplication tensors}, arXiv:2104.05323 (2021).
 \bibitem{S26} G.~Sidebottom, \emph{201 operations for rank-48 $4\times4$
 matrix multiplication over rings containing $1/2$}, preprint (2026);
 PLinOpt data file \texttt{4x4x4\_48\_201}.
